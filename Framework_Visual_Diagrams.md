@@ -153,26 +153,6 @@
 
 ---
 
-## HOW TO USE THESE DIAGRAMS
-
-### Rendering Options
-
-**Option 1: Markdown Viewers with Mermaid Support**
-- GitHub (renders automatically in .md files)
-- GitLab
-- Obsidian
-- Typora
-- VS Code with Mermaid extension
-
-**Option 2: Online Mermaid Editor**
-- Visit: https://mermaid.live/
-- Copy/paste diagram code
-- Export as PNG or SVG
-
-**Option 3: Embed in Documentation**
-- Use Mermaid CDN in HTML docs
-- Integrate with static site generators (Hugo, Jekyll, MkDocs)
-
 ### Diagram Legend
 
 **Dark Color Scheme (Optimized for White Text):**
@@ -185,20 +165,6 @@
 - 🟡 Dark Goldenrod (#b8860b): Informational stages
 - ⚫ Dark Gray (#4a5568): Neutral/End stages
 - 🔴 Crimson (#c41e3a): High-priority alerts
-
-All colors have been optimized for white text readability with sufficient contrast ratios.
-
----
-
-## DIAGRAM MAINTENANCE
-
-**Update Frequency:** Review diagrams when framework components change
-
-**Version Control:** Diagrams match Framework v4.0 specifications
-
-**Feedback:** Submit diagram improvement suggestions to framework team
-
-**Color Accessibility:** All colors meet WCAG AAA contrast standards for white text (7:1 minimum)
 
 ---
 

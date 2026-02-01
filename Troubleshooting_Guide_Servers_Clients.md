@@ -192,15 +192,7 @@ Run: Script 55 (Memory Optimization)
 Result: Memory drops to 65%, Performance Score improves to 78/100
 ```
 
-**Option B: User Education**
-```
-Action: Contact user
-Message: "Your PC has 87 browser tabs open using 2.4 GB of memory. 
-         Please close unused tabs to improve performance."
-Follow-up: Update UXUserEducationNeeded = True
-```
-
-**Option C: Hardware Upgrade**
+**Option B: Hardware Upgrade**
 ```
 If chronic issue:
   Check: CAPMemoryUpgradeCandidate = True (framework pre-identified)

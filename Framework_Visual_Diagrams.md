@@ -140,7 +140,7 @@
 ## 14. HEALTH SCORE CALCULATION
 
 ### OPSHealthScore Composite Formula
-<img width="7982" height="8192" alt="Drift to Automation Flow-2026-02-01-231528" src="https://github.com/user-attachments/assets/7b3b059f-1015-41a4-a181-1d84fae8f784" />
+<img width="7982" height="8192" alt="Drift to Automation Flow-2026-02-01-232055" src="https://github.com/user-attachments/assets/21f9c82e-d069-4665-9168-e2ea5a158aae" />
 
 
 ---

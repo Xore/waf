@@ -1,122 +1,171 @@
-# NinjaOne Framework v4.0 - PowerShell Scripts
+# NinjaRMM Framework v4.0 - PowerShell Scripts
 
-## Overview
-This directory contains all 110 PowerShell scripts from the NinjaOne Custom Field Framework v4.0.
+## Scripts Uploaded (Current Status)
 
-## Organization
-Scripts are organized into the following categories:
+### Core Infrastructure Monitoring ✅
+- ✅ **Script 1**: Health Score Calculator (`01_Health_Score_Calculator.ps1`)
+- ✅ **Script 3**: DNS Server Monitor (`03_DNS_Server_Monitor.ps1`)
+- ✅ **Script 4**: Event Log Monitor (`04_Event_Log_Monitor.ps1`)
+- ✅ **Script 5**: File Server Monitor (`05_File_Server_Monitor.ps1`)
+- ✅ **Script 6**: Print Server Monitor (`06_Print_Server_Monitor.ps1`)
+- ✅ **Script 7**: BitLocker Monitor (`07_BitLocker_Monitor.ps1`)
+- ✅ **Script 8**: Hyper-V Host Monitor (`08_HyperV_Host_Monitor.ps1`)
+- ✅ **Script 11**: MySQL Server Monitor (`11_MySQL_Server_Monitor.ps1`)
+- ✅ **Script 12**: FlexLM License Monitor (`12_FlexLM_License_Monitor.ps1`)
 
-### Core Monitoring Scripts (Scripts 1-13)
-- **Scripts_01-06_Core_Metrics/** - Health, Stability, Performance, Security, Capacity, Telemetry
-- **Scripts_09_Risk_Classification/** - Risk classification and assessment
-- **Scripts_10-13_Infrastructure/** - Update assessment, network tracking, baseline management
+### Service Restart Scripts ✅
+- ✅ **Script 41**: Restart Print Spooler (`41_Restart_Print_Spooler.ps1`)
+- ✅ **Script 42**: Restart Windows Update (`42_Restart_Windows_Update.ps1`)
 
-### Extended Automation Scripts (Scripts 14-27)
-- **Scripts_14-21_Drift_Security_UX/** - Drift detection, security posture, user experience
-- **Scripts_22-24_Capacity_Predictive/** - Capacity forecasting, predictive analytics
-- **Scripts_27_Telemetry/** - Telemetry freshness monitoring
+### Emergency Response ✅
+- ✅ **Script 50**: Emergency Disk Cleanup (`50_Emergency_Disk_Cleanup.ps1`)
 
-### Advanced Telemetry Scripts (Scripts 28-36)
-- **Scripts_28-31_Security_Network/** - Security surface, collaboration UX, connectivity
-- **Scripts_32-36_Hardware_Licensing/** - Thermal/firmware, licensing, baseline coverage
+### Advanced Telemetry ✅
+- ✅ **Script 28**: Security Surface Telemetry (`28_Security_Surface_Telemetry.ps1`)
 
-### Server Role Monitoring Scripts (Scripts 51-110)
-- **Scripts_51-60_IIS_SQL_Web/** - IIS, MS SQL, MySQL monitoring
-- **Scripts_61-70_Apache_Backup/** - Apache, Veeam backup monitoring
-- **Scripts_71-80_DHCP_DNS/** - DHCP, DNS infrastructure
-- **Scripts_81-90_Event_FileServer/** - Event logs, file server monitoring
-- **Scripts_91-100_Print_HyperV/** - Print server, Hyper-V monitoring
-- **Scripts_101-110_BitLocker_Features/** - BitLocker, Windows features, FlexLM
+---
 
-### Patching Automation Scripts (NEW)
-- **Scripts_P_Patching/** - PR1, PR2, P1-P4 validators
+## Quick Deploy Guide
 
-## Usage
+### Step 1: Download Scripts
+```powershell
+# Clone repository or download individual scripts
+$baseUrl = "https://raw.githubusercontent.com/Xore/waf/main/scripts"
+$scripts = @(
+    "01_Health_Score_Calculator.ps1",
+    "03_DNS_Server_Monitor.ps1",
+    "04_Event_Log_Monitor.ps1",
+    "05_File_Server_Monitor.ps1",
+    "06_Print_Server_Monitor.ps1",
+    "07_BitLocker_Monitor.ps1",
+    "08_HyperV_Host_Monitor.ps1",
+    "11_MySQL_Server_Monitor.ps1",
+    "12_FlexLM_License_Monitor.ps1",
+    "28_Security_Surface_Telemetry.ps1",
+    "41_Restart_Print_Spooler.ps1",
+    "42_Restart_Windows_Update.ps1",
+    "50_Emergency_Disk_Cleanup.ps1"
+)
 
-### Deployment in NinjaOne
-1. Navigate to **Configuration > Scripting**
-2. Click **Add a new script**
-3. Copy script content from desired .ps1 file
-4. Configure script parameters:
-   - **Language:** PowerShell
-   - **Operating System:** Windows
-   - **Architecture:** All
-   - **Run As:** SYSTEM (for most scripts)
-5. Set execution schedule based on script requirements
+foreach ($script in $scripts) {
+    $url = "$baseUrl/$script"
+    Invoke-WebRequest -Uri $url -OutFile "C:\NinjaScripts\$script"
+}
+```
 
-### Custom Field Prerequisites
-Before deploying scripts, ensure corresponding custom fields are created in NinjaOne:
-- See files 10-24 for field definitions
-- Use file 31 for patching fields
-- Reference file 51 for complete field-to-script mapping
+### Step 2: Upload to NinjaRMM
+1. Login to NinjaRMM → **Configuration** → **Scripting**
+2. Click **+ New Script**
+3. Copy-paste PowerShell code
+4. Set **Context**: SYSTEM
+5. Set **Timeout**: Per script documentation
+6. Save script
 
-### Execution Schedules
+### Step 3: Create Custom Fields
+Before deploying scripts, create the required custom fields:
 
-#### Every 4 Hours
-- Scripts 1-6 (Core metrics)
-- Script 9 (Risk classification)
-- Script 16 (Suspicious login detector)
-- Scripts 29, 31 (Collaboration UX, connectivity)
+**For Script 1 (Health Score):**
+- `OPSHealthScore` (Integer, 0-100)
+- `OPSLastScoreUpdate` (DateTime)
 
-#### Daily
-- Scripts 10-13 (Infrastructure)
-- Scripts 14-21 (Drift, security, UX)
-- Scripts 23, 28, 30, 32, 34-35 (Telemetry)
+**For Script 7 (BitLocker):**
+- `secBitLockerEnabled` (Checkbox)
+- `secBitLockerStatus` (Text)
+- `blComplianceStatus` (Dropdown: Compliant, Partial, Non-Compliant, Unknown)
+- `blVolumeCount` (Integer)
+- `blFullyEncryptedCount` (Integer)
+- `blEncryptionInProgress` (Checkbox)
+- `blRecoveryKeyEscrowed` (Checkbox)
+- `blVolumeSummary` (WYSIWYG)
 
-#### Weekly
-- Scripts 22, 24 (Capacity forecasting, predictive analytics)
-- Scripts PR1, PR2 (Patch ring deployment)
+**See full field definitions in:** [00_Custom_Fields.md](../00_Custom_Fields.md)
 
-#### On-Demand
-- Scripts P1-P4 (Patch validators)
+### Step 4: Schedule Scripts
+1. Go to **Configuration** → **Policies**
+2. Select target policy
+3. Go to **Automation** tab
+4. Add scripts with appropriate schedules:
+   - **Every 4 hours**: Scripts 1, 3-6, 8, 11, 28
+   - **Daily**: Scripts 7, 12
+   - **On-demand**: Scripts 41, 42, 50
 
-## Script Categories
+### Step 5: Create Alerts
+Set up condition-based alerts:
 
-### Core Monitoring (13 scripts)
-Provides foundational health, stability, performance, security, and capacity scoring.
+**Example: Low Disk Space Alert**
+```
+Condition: cleanupSpaceFreedGB < 5 AND diskFreeGB < 10
+Action: Run Script 50 (Emergency Disk Cleanup)
+Notify: IT Team
+```
 
-### Extended Automation (14 scripts)
-Detects configuration drift, monitors security posture, tracks user experience.
+**Example: BitLocker Non-Compliant**
+```
+Condition: blComplianceStatus = "Non-Compliant"
+Action: Create Ticket
+Notify: Security Team
+```
 
-### Advanced Telemetry (9 scripts)
-Capacity forecasting, predictive analytics, network quality monitoring.
+---
 
-### Server Roles (60 scripts)
-Monitors IIS, SQL, MySQL, Apache, Veeam, DHCP, DNS, file servers, print servers, Hyper-V, BitLocker, Windows features, FlexLM license servers.
+## Script Execution Times
 
-### Patching Automation (5 scripts)
-Ring-based deployment with priority validation for automated patch management.
+| Script | Runtime | Frequency | Priority |
+|--------|---------|-----------|----------|
+| 01 Health Score | 15s | 4 hours | High |
+| 03 DNS Monitor | 30s | 4 hours | Medium |
+| 04 Event Log | 25s | 4 hours | High |
+| 05 File Server | 30s | 4 hours | Medium |
+| 06 Print Server | 25s | 4 hours | Medium |
+| 07 BitLocker | 20s | Daily | High |
+| 08 Hyper-V | 40s | 4 hours | Medium |
+| 11 MySQL | 30s | 4 hours | Low |
+| 12 FlexLM | 30s | 4 hours | Low |
+| 28 Security Surface | 40s | Daily | High |
+| 41 Restart Spooler | 10s | On-demand | Critical |
+| 42 Restart WU | 10s | On-demand | Critical |
+| 50 Disk Cleanup | 90s | On-demand | Critical |
 
-## Dependencies
+---
 
-Most scripts require:
-- NinjaOne RMM Agent installed
-- PowerShell 5.1 or higher
-- SYSTEM-level permissions
-- Corresponding custom fields created
+## Troubleshooting
 
-Some server role scripts require:
-- Specific Windows roles/features installed (IIS, DHCP, DNS, etc.)
-- Database server access (SQL Server, MySQL)
-- Administrative credentials
+### Script Fails with "Ninja-Property-Set not found"
+**Solution**: Ensure script is executed via NinjaRMM agent, not manually.
 
-## Version Information
+### Custom fields not updating
+**Solution**: 
+1. Verify custom field names match exactly (case-sensitive)
+2. Check field type matches (Integer, Text, Checkbox, etc.)
+3. Review script output in Activity Log
 
-**Framework Version:** 4.0 (Native-Enhanced with ML/RCA & Patching Automation)
-**Script Count:** 110 scripts
-**Date:** February 1, 2026
-**Status:** Production Ready
+### Permission errors
+**Solution**: 
+1. Verify script runs as SYSTEM
+2. Check if Windows features/roles are installed
+3. Review UAC settings
+
+---
+
+## Next Steps
+
+### Still To Upload:
+- Scripts 14-27 (Extended Automation)
+- Scripts 29-36 (Advanced Telemetry)
+- Scripts PR1-P4 (Patching Automation)
+- Scripts 43-45 (Additional Service Restarts)
+
+### Documentation:
+- See [`00_Custom_Fields.md`](../00_Custom_Fields.md) for complete field definitions
+- See individual `.md` files for detailed script documentation
+- See [`SCRIPTS_DOWNLOAD_GUIDE.md`](../SCRIPTS_DOWNLOAD_GUIDE.md) for full deployment guide
+
+---
 
 ## Support
 
-For complete documentation, see:
-- **00_README.md** - Framework overview
-- **00_Master_Index.md** - Complete navigation
-- **01_Framework_Architecture.md** - System design
-- **51_Field_to_Script_Complete_Mapping.md** - Field traceability
-- **98_Framework_Complete_Summary_Master.md** - Comprehensive reference
+**Repository**: https://github.com/Xore/waf  
+**Framework Version**: 4.0  
+**Last Updated**: February 2, 2026
 
-## License
-
-These scripts are part of the NinjaOne Custom Field Framework v4.0.
-Use at your own risk. Test thoroughly before production deployment.
+**Questions?** Open an issue on GitHub.

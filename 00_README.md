@@ -1,8 +1,8 @@
-# NinjaRMM Custom Field Framework v4.0 (Native-Enhanced)
+# NinjaRMM Custom Field Framework v1.0 (Native-Enhanced)
 
-## 🚀 What's New in Version 4.0
+## 🚀 What's New in Version 1.0
 
-**Version 4.0** represents a major optimization by integrating NinjaOne's native monitoring capabilities:
+**Version 1.0** represents a major optimization by integrating NinjaOne's native monitoring capabilities:
 
 - ✅ **58% fewer core custom fields** (45 → 19) - native metrics eliminate duplication
 - ✅ **22% fewer core scripts** (9 → 7) - Scripts 7-8 replaced by native monitoring
@@ -87,10 +87,6 @@ Intelligent risk assessment:
 | **6** | Telemetry Collector | Custom crash/hang aggregation | 4 hours |
 | **9** | Risk Classifier | Uses native Backup/SMART/Security | 4 hours |
 
-**Deprecated Scripts (v4.0):**
-- ~~Script 7: Resource Monitor~~ → Replaced by native CPU/Memory/Disk monitoring
-- ~~Script 8: Network Monitor~~ → Replaced by native network performance monitoring
-
 ### 3. Hybrid Compound Conditions (75 Patterns)
 **Combining native real-time monitoring with custom intelligence**
 
@@ -125,7 +121,7 @@ Automated device grouping based on health, risk, role, and automation eligibilit
 
 ## 🚀 Quick Start
 
-### New Deployment (v4.0 - Recommended)
+### New Deployment
 
 **Week 1: Core Setup**
 1. Create 19 core custom fields from `10_OPS_STAT_RISK_Core_Metrics.md`
@@ -185,9 +181,8 @@ Automated device grouping based on health, risk, role, and automation eligibilit
 4. **91_Compound_Conditions_Complete.md** - 75 hybrid condition patterns
 5. **55_Scripts_01_13_Infrastructure_Monitoring.md** - 7 core scripts
 
-### Native Integration Guides (NEW in v4.0)
+### Native Integration Guides
 - **NATIVE_INTEGRATION_OPTIMIZATION_SUMMARY.md** - Complete optimization guide
-- **FRAMEWORK_CLEANUP_SUMMARY.md** - Migration from v3.0 to v4.0
 
 ### Extended Documentation
 - **11-14**: Extended field categories (26 optional fields)
@@ -226,26 +221,6 @@ Replace custom field conditions with native:
 - Update documentation
 
 **Migration Time:** 5-6 weeks
-
----
-
-## 📈 ROI
-
-### Setup Cost Comparison
-- **v3.0:** 8 weeks, 153 custom fields, 105+ scripts
-- **v4.0:** 4 weeks, 35 custom fields, ~30 scripts
-- **Savings:** 50% faster, 77% less configuration
-
-### Annual Operational Savings
-- **v3.0:** 240 hours/year maintenance
-- **v4.0:** 75 hours/year maintenance
-- **Savings:** 165 hours/year = $8,250/year (at $50/hour)
-
-### First-Year ROI
-- Setup time savings: $8,000
-- Annual operational savings: $8,250
-- Total first-year benefit: $16,250
-- **ROI: 10x+ in first year**
 
 ---
 
@@ -306,29 +281,13 @@ Replace custom field conditions with native:
 ### Community
 - Framework updates and best practices shared regularly
 - User contributions welcome
-- Version 4.0 recommended for all new deployments
+- Version 1.0 recommended for all new deployments
 
 ---
 
 ## 📜 Version History
 
-### Version 4.0 (February 2026) - CURRENT ✅
-- Native integration with NinjaOne monitoring
-- 58% fewer core custom fields (45 → 19)
-- 22% fewer core scripts (9 → 7)
-- 75 hybrid condition patterns
-- 70%+ false positive reduction
-- 50% faster deployment
-
-### Version 3.0 (2025)
-- Complete framework with 153+ custom fields
-- 105+ PowerShell scripts
-- 69 compound conditions
-
-### Version 2.0 (2024)
-- Extended modules and infrastructure support
-
-### Version 1.0 (2023)
+### Version 1.0 (February 2026) - CURRENT
 - Initial core framework
 
 ---
@@ -339,7 +298,7 @@ This framework is provided as-is for use with NinjaRMM/NinjaOne. Customize and a
 
 ---
 
-**Framework Version:** 4.0 (Native Integration)  
+**Framework Version:** v1.0 (Native Integration)  
 **Last Updated:** February 1, 2026  
 **Status:** Production Ready ✅  
 **Recommended:** For all new deployments
@@ -354,4 +313,4 @@ This framework is provided as-is for use with NinjaRMM/NinjaOne. Customize and a
 4. Test on pilot group
 5. Roll out to production
 
-**Deploy smarter, monitor better, maintain less with v4.0 Native Integration!**
+**Deploy smarter, monitor better, maintain less with v1.0 Native Integration!**

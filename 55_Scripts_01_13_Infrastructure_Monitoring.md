@@ -1,6 +1,6 @@
 # Scripts 01-13 Infrastructure Monitoring (Native-Enhanced)
 **File:** 55_Scripts_01_13_Infrastructure_Monitoring.md  
-**Version:** 4.0 (Native Integration)  
+**Version:** 1.0 (Native Integration)  
 **Script Count:** 11 active scripts (down from 13)  
 **Last Updated:** February 1, 2026
 
@@ -489,7 +489,7 @@ Detect configuration drift and unauthorized software installations.
 
 ---
 
-**Version:** 4.0 (Native Integration)  
+**Version:** 1.0 (Native Integration)  
 **Last Updated:** February 1, 2026, 5:04 PM CET  
 **Active Scripts:** 11 (down from 13)  
 **Deprecated Scripts:** 2 (Scripts 7-8)  

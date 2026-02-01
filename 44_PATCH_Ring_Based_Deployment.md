@@ -604,7 +604,7 @@ For critical zero-day vulnerabilities:
 
 ---
 
-## INTEGRATION WITH FRAMEWORK v4.0
+## INTEGRATION WITH FRAMEWORK v1.0
 
 Ring-based patching integrates with:
 - **OPS Fields:** OPSHealthScore, OPSSecurityScore (ring-aware scoring)

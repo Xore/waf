@@ -1,6 +1,6 @@
 # NinjaRMM Custom Field Framework - Core Operational Metrics (Native-Enhanced)
 **File:** 10_OPS_STAT_RISK_Core_Metrics.md  
-**Version:** 4.0 (Native Integration)  
+**Version:** 1.0 (Native Integration)  
 **Categories:** OPS (Operational Scores) + STAT (Raw Telemetry) + RISK (Classification)  
 **Field Count:** 19 core fields (down from 45)  
 **Last Updated:** February 1, 2026
@@ -645,7 +645,7 @@ Result: High-confidence critical alert combining native real-time
 
 ## Migration Guide
 
-### From Original Framework (v3.0) to Native-Enhanced (v4.0)
+### From Original Framework (v3.0) to Native-Enhanced (v1.0)
 
 **Step 1: Stop Deprecated Scripts**
 - Disable Script 7 (Resource Monitor)
@@ -710,5 +710,5 @@ Result: High-confidence critical alert combining native real-time
 
 **File:** 10_OPS_STAT_RISK_Core_Metrics.md  
 **Last Updated:** February 1, 2026, 4:59 PM CET  
-**Framework Version:** 4.0 (Native Integration)  
+**Framework Version:** 1.0 (Native Integration)  
 **Status:** Production Ready

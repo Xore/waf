@@ -1,5 +1,5 @@
 # NinjaOne Enhanced Compound Conditions - Complete Library
-**Version:** 4.0 (Native Integration)  
+**Version:** 1.0 (Native Integration)  
 **Last Updated:** February 1, 2026  
 **Total Patterns:** 75+ conditions  
 **Enhancement:** Combines NinjaOne native metrics with custom intelligence fields
@@ -2191,7 +2191,7 @@ Add P4 conditions (15 patterns) for reporting and positive tracking.
 
 ---
 
-**Version:** 4.0 (Native Integration)  
+**Version:** 1.0 (Native Integration)  
 **Last Updated:** February 1, 2026, 4:45 PM CET  
 **Total Conditions:** 75 patterns  
 **Custom Fields Required:** ~35 fields  

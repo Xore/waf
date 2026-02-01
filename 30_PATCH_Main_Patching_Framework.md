@@ -7,7 +7,7 @@
 
 ## EXECUTIVE SUMMARY
 
-This chapter extends the NinjaRMM Custom Field Framework v4.0 with a **server-focused patching strategy** that leverages NinjaOne's native Windows Update and software patching capabilities.
+This chapter extends the NinjaRMM Custom Field Framework v1.0 with a **server-focused patching strategy** that leverages NinjaOne's native Windows Update and software patching capabilities.
 
 ### Core Principles
 - ✅ **Servers Only:** Automated patching restricted to servers
@@ -801,5 +801,5 @@ This patching framework integrates with:
 **Version:** 1.0  
 **Last Updated:** February 1, 2026, 5:12 PM CET  
 **Status:** Production Ready  
-**Applies To:** NinjaRMM Framework v4.0+  
+**Applies To:** NinjaRMM Framework v1.0+  
 **Author:** Enterprise IT Architecture Team

@@ -264,5 +264,5 @@ The new patching scripts integrate with existing framework components:
 
 **File:** 51_Field_to_Script_Complete_Mapping.md  
 **Last Updated:** February 1, 2026, 6:00 PM CET  
-**Framework Version:** 4.0 with Patching Automation  
+**Framework Version:** 1.0 with Patching Automation  
 **Status:** Production Ready

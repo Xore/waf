@@ -76,5 +76,5 @@ try {
 
 **File:** `41_Service_Restart_Restart_Print_Spooler.md`  
 **Created:** February 1, 2026  
-**Framework Version:** 4.0  
+**Framework Version:** 1.0  
 **Author:** NinjaRMM Custom Field Framework

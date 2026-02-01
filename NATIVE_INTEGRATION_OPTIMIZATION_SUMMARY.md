@@ -1,6 +1,6 @@
 # NinjaOne Native Integration - Framework Optimization Summary
 **Date:** February 1, 2026, 4:45 PM CET  
-**Version:** 4.0 (Native Integration)  
+**Version:** 1.0 (Native Integration)  
 **Status:** Production Ready
 
 ---
@@ -584,7 +584,7 @@ The native-enhanced framework (v4.0) represents a **significant optimization** o
 
 ---
 
-**Version:** 4.0 (Native Integration)  
+**Version:** 1.0 (Native Integration)  
 **Date:** February 1, 2026, 4:45 PM CET  
 **Status:** Production Ready  
 **Recommended:** For all new deployments

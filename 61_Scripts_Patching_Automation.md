@@ -1556,5 +1556,5 @@ Review logs for detailed execution information and error messages.
 
 **File:** 61_Scripts_Patching_Automation.md  
 **Last Updated:** February 1, 2026, 6:00 PM CET  
-**Framework Version:** 4.0 Native Integration  
+**Framework Version:** 1.0 Native Integration  
 **Status:** Production Ready

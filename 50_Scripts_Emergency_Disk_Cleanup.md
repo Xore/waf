@@ -157,5 +157,5 @@ try {
 
 **File:** `50_Emergency_Disk_Cleanup.md`  
 **Created:** February 1, 2026  
-**Framework Version:** 4.0  
+**Framework Version:** 1.0  
 **Author:** NinjaRMM Custom Field Framework

@@ -154,5 +154,5 @@ Run this script when:
 
 **File:** `55_Memory_Optimization.md`  
 **Created:** February 1, 2026  
-**Framework Version:** 4.0  
+**Framework Version:** 1.0  
 **Author:** NinjaRMM Custom Field Framework

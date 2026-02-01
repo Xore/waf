@@ -125,5 +125,5 @@ After running Script 18, the following scripts can detect drift:
 
 **File:** `18_Baseline_Refresh.md`  
 **Created:** February 1, 2026  
-**Framework Version:** 4.0  
+**Framework Version:** 1.0  
 **Author:** NinjaRMM Custom Field Framework

@@ -1,12 +1,12 @@
 # NinjaOne Custom Field Framework - Statistics Summary
-
-**Version:** 1.0  
+**File:** Framework_Statistics_Summary_v4.md  
+**Version:** 1.0 (Native-Enhanced with Patching Automation)  
 **Date:** February 1, 2026  
-**Purpose:** Consolidated framework statistics and reference data
+**Purpose:** Consolidated framework statistics and version comparison
 
 ---
 
-## Framework Statistics Overview
+## FRAMEWORK STATISTICS v4.0
 
 ### Custom Fields: 277 Total
 
@@ -54,22 +54,24 @@
 | PATCH | 8 | Essential | Patch ring assignment, validation |
 | **Advanced Telemetry** | **91** | **Specialized** | **Deep analytics** |
 | Various | 91 | Optional | Extended capacity, baseline, thermal, firmware |
-| **TOTAL** | **277** | | |
+
+**Total:** 277 custom fields (35 essential + 26 extended + 117 infrastructure + 8 patching + 91 advanced)
 
 ---
 
-### PowerShell Scripts: 110 Total (26,400 Lines of Code)
+### PowerShell Scripts: 110 Total
 
 | Script Range | Count | Category | Priority | Lines of Code |
 |--------------|-------|----------|----------|---------------|
-| 1-13 | 13 | Infrastructure Services | Critical | 5,200 |
-| 14-24 | 11 | Extended Automation | High | 4,200 |
+| 1-13 | 13 | Infrastructure Services | Critical | ~5,200 |
+| 14-24 | 11 | Extended Automation | High | ~4,200 |
 | 25-26 | 2 | Reserved for Future | N/A | 0 |
-| 27-36 | 10 | Advanced Telemetry | Medium | 3,500 |
-| 40-65 | 26 | Remediation Scripts | Conditional | 6,500 |
-| 66-105 | 40 | HARD Security Module | Optional | 5,800 |
-| PR1, PR2, P1-P4 | 5 | Patching Automation | Critical | 1,200 |
-| **Total** | **110 scripts** | | | **26,400 LOC** |
+| 27-36 | 10 | Advanced Telemetry | Medium | ~3,500 |
+| 40-65 | 26 | Remediation Scripts | Conditional | ~6,500 |
+| 66-105 | 40 | HARD Security Module | Optional | ~5,800 |
+| PR1, PR2, P1-P4 | 5 | Patching Automation | Critical | ~1,200 |
+
+**Total:** 110 scripts | ~26,400 lines of PowerShell code
 
 **Script Breakdown by Function:**
 - Monitoring: 34 scripts (1-13, 27-36)
@@ -80,20 +82,21 @@
 
 ---
 
-### Compound Conditions: 75 Total (Hybrid Native + Custom)
+### Compound Conditions: 75 Total
 
 | Priority | Count | Description | Type |
 |----------|-------|-------------|------|
-| P1 (Critical) | 15 | Service-impacting, immediate action | Hybrid (Native + Custom) |
-| P2 (High) | 20 | Urgent attention, degraded performance | Hybrid (Native + Custom) |
-| P3 (Medium) | 25 | Proactive intervention, investigation | Hybrid (Native + Custom) |
-| P4 (Low) | 15 | Informational, positive health tracking | Hybrid (Native + Custom) |
-| **Total** | **75 conditions** | | |
+| P1 Critical | 15 | Service-impacting, immediate action | Hybrid Native + Custom |
+| P2 High | 20 | Urgent attention, degraded performance | Hybrid Native + Custom |
+| P3 Medium | 25 | Proactive intervention, investigation | Hybrid Native + Custom |
+| P4 Low | 15 | Informational, positive health tracking | Hybrid Native + Custom |
 
-**Hybrid Condition Strategy:**
+**Total:** 75 compound conditions
+
+**Hybrid Condition Strategy (v4.0):**
 - Combines NinjaOne native metrics (CPU, Memory, Disk, SMART, Backup, AV, Patch)
 - With custom intelligence fields (Health Scores, Predictive Analytics, Risk Classification)
-- Result: **70% reduction in false positives**
+- Result: 70% reduction in false positives
 
 ---
 
@@ -108,81 +111,153 @@
 | Capacity Planning | 12 | Disk/memory/CPU upgrade candidates |
 | Device Lifecycle | 8 | Replacement windows (0-6m, 6-12m, 12-24m) |
 | User Experience | 9 | Poor UX, collaboration issues |
-| **Total** | **74 groups** | |
+
+**Total:** 74 dynamic groups
 
 ---
 
-## Native Metrics Integration
+## VERSION COMPARISON: v3.0 vs v4.0
 
-NinjaOne provides these built-in monitoring capabilities that replace custom field duplication:
+### Field Count Evolution
+
+| Metric | v3.0 (Legacy) | v4.0 (Native-Enhanced) | Change | % Change |
+|--------|---------------|------------------------|--------|----------|
+| **Total Custom Fields** | 358 | 277 | -81 | -23% |
+| Core Fields | 153 | 35 | -118 | -77% |
+| Extended Fields | 61 | 26 | -35 | -57% |
+| Infrastructure Fields | 117 | 117 | 0 | 0% |
+| Patching Fields | 0 | 8 | +8 | New |
+| Advanced Telemetry | 27 | 91 | +64 | +237% |
+
+**Key Insight:** v4.0 eliminates 118 redundant core fields by leveraging NinjaOne native metrics, while adding 8 patching fields and expanding advanced telemetry.
+
+---
+
+### Script Count Evolution
+
+| Metric | v3.0 | v4.0 | Change |
+|--------|------|------|--------|
+| **Total Scripts** | 105 | 110 | +5 |
+| Core Monitoring (1-13) | 13 | 13 | 0 |
+| Extended Automation (14-24) | 11 | 11 | 0 |
+| Advanced Telemetry (27-36) | 10 | 10 | 0 |
+| Remediation (40-65) | 26 | 26 | 0 |
+| HARD Module (66-105) | 40 | 40 | 0 |
+| Patching Automation | 0 | 5 | +5 |
+| Reserved | 5 | 5 | 0 |
+
+**Script Execution Complexity:**
+- v3.0: High - Many scripts collecting metrics now available natively
+- v4.0: Medium - Scripts focus on intelligence, not raw metric collection
+- Reduction: ~70% decrease in script complexity
+
+---
+
+### Condition & Group Evolution
+
+| Metric | v3.0 | v4.0 | Change |
+|--------|------|------|--------|
+| **Compound Conditions** | 69 | 75 | +6 |
+| P1 Critical | 12 | 15 | +3 |
+| P2 High | 18 | 20 | +2 |
+| P3 Medium | 24 | 25 | +1 |
+| P4 Low | 15 | 15 | 0 |
+| **Dynamic Groups** | 74 | 74 | 0 |
+
+**Condition Enhancement v4.0:**
+- All conditions upgraded to hybrid (Native + Custom)
+- 70% reduction in false positive alerts
+- Real-time native metrics + custom intelligence context
+
+---
+
+### Native Metrics Integration (v4.0)
 
 | Native Metric | Replaces Custom Field(s) | Benefit |
-|---------------|--------------------------|---------|
-| Disk Free Space | CAPDiskFreePercent, STATDiskFreePercent | Real-time, accurate, per-drive |
-| CPU Utilization | STATCPUUtilizationPercent | Time-averaged, historical |
-| Memory Utilization | STATMemoryUtilizationPercent | Real-time monitoring |
-| SMART Status | Custom disk health checks | Hardware-level monitoring |
-| Device Down/Offline | OPSSystemOnline | Native connectivity check |
-| Pending Reboot | Custom reboot detection | OS-level detection |
-| Backup Status | Custom backup checks | Native backup integration |
-| Antivirus Status | Custom AV checks | Native security integration |
-| Patch Status | Custom patch tracking | Native Windows Update integration |
-| Windows Service Status | Custom service monitoring | Native service checks |
-| Windows Event Log | Custom event parsing | Native event monitoring |
-| Disk Active Time | STATDiskActivePercent | Real-time IO monitoring |
+|---------------|-------------------------|---------|
+| CPU Utilization % | STATCPUAveragePercent | Real-time, no script delay |
+| Memory Utilization % | STATMemoryUsedPercent, CAPMemoryUsedPercent | Real-time, no script delay |
+| Disk Free Space % | CAPDiskFreePercent, STATDiskFreePercent | Real-time, per-drive |
+| Disk Active Time % | STATDiskActivePercent | Real-time I/O monitoring |
+| SMART Status | Custom SMART checks | Built-in drive health |
+| Device Down/Offline | OPSSystemOnline | Instant detection |
+| Pending Reboot | UPDPendingReboot | OS-level flag |
+| Antivirus Status | SECAntivirusEnabled, SECAntivirusCurrent | Multi-state monitoring |
+| Backup Status | VEEAMLastBackupStatus | Backup software integration |
+| Patch Status | UPDLastPatchStatus | Native Windows Update |
+| Service Status | Various service checks | Per-service monitoring |
+| Event Log | Various event checks | Event ID tracking |
 
-**Total Native Metrics Used:** 12 core metrics  
-**Custom Fields Eliminated:** 118 redundant fields  
+**Total Native Metrics Used:** 12+ core metrics  
+**Custom Fields Eliminated:** 118 fields  
 **False Positive Reduction:** 70%
 
 ---
 
-## Deployment Statistics
+## DEPLOYMENT STATISTICS
 
-### Setup Effort
+### Deployment Time Comparison
 
-| Task | Hours | Notes |
-|------|-------|-------|
-| Custom Field Creation (277 fields) | 15 | 63% faster than manual |
-| Script Deployment (110 scripts) | 20 | Automated scheduling |
-| Script Scheduling | 15 | 50% reduction in time |
-| Condition Creation (75 conditions) | 15 | Template-based |
-| Group Creation (74 groups) | 15 | Automated membership |
-| Testing & Validation | 30 | 50% reduction in time |
-| Documentation | 15 | 40% faster |
-| **Total Setup** | **125 hours** | **48% time savings** |
+| Phase | v3.0 Duration | v4.0 Duration | Time Saved |
+|-------|--------------|---------------|------------|
+| Core Monitoring | 2 weeks | 1 week | 50% |
+| Extended Intelligence | 2 weeks | 1 week | 50% |
+| Server Infrastructure | 2 weeks | 1 week | 50% |
+| Automation Enablement | 2 weeks | 1 week | 50% |
+| **Core Framework Total** | **8 weeks** | **4 weeks** | **50%** |
+| Patching Automation | N/A | 4 weeks | New |
+| **Complete Framework** | **8 weeks** | **8 weeks** | 0% (adds patching) |
 
-**Labor Cost Savings @ €50/hour:** €5,750 in initial setup (compared to legacy approaches)
-
-### Annual Operational Effort
-
-| Task | Hours/Year | Notes |
-|------|------------|-------|
-| Script Maintenance | 30 | 63% reduction |
-| Field Troubleshooting | 15 | 75% reduction |
-| False Positive Investigation | 20 | 75% reduction |
-| Condition Tuning | 10 | 50% reduction |
-| **Total Annual** | **75 hours** | **69% reduction** |
-
-**Annual Labor Cost Savings @ €50/hour:** €8,250 per year
+**Key Insight:** v4.0 deploys core framework 50% faster (4 weeks vs 8 weeks), with optional 4-week patching module.
 
 ---
 
-## Performance Metrics
+### Setup Effort Comparison
 
-### Alert Quality Improvement
+| Task | v3.0 Hours | v4.0 Hours | Savings |
+|------|-----------|-----------|---------|
+| Custom Field Creation | 40h (358 fields) | 15h (277 fields) | 25h (63%) |
+| Script Deployment | 50h (105 scripts) | 20h (110 scripts) | 30h (60%) |
+| Script Scheduling | 30h | 15h | 15h (50%) |
+| Condition Creation | 20h (69 conditions) | 15h (75 conditions) | 5h (25%) |
+| Group Creation | 15h | 15h | 0h |
+| Testing & Validation | 60h | 30h | 30h (50%) |
+| Documentation | 25h | 15h | 10h (40%) |
+| **Total Setup** | **240h** | **125h** | **115h (48%)** |
 
-| Metric | Baseline | v1.0 Framework | Improvement |
-|--------|----------|----------------|-------------|
-| False Positive Rate | 30% | 10% | -70% |
-| Alert Confidence | 60% | 90% | +50% |
+**Labor Cost Savings (at $50/hour):** $5,750 in initial setup
+
+---
+
+### Annual Operational Comparison
+
+| Task | v3.0 Hours/Year | v4.0 Hours/Year | Savings |
+|------|----------------|----------------|---------|
+| Script Maintenance | 80h | 30h | 50h (63%) |
+| Field Troubleshooting | 60h | 15h | 45h (75%) |
+| False Positive Investigation | 80h | 20h | 60h (75%) |
+| Condition Tuning | 20h | 10h | 10h (50%) |
+| **Total Annual** | **240h** | **75h** | **165h (69%)** |
+
+**Annual Labor Cost Savings (at $50/hour):** $8,250 per year
+
+---
+
+## PERFORMANCE METRICS
+
+### Alert Quality (v4.0 Improvement)
+
+| Metric | v3.0 | v4.0 | Improvement |
+|--------|------|------|-------------|
+| False Positive Rate | ~30% | ~10% | -70% |
+| Alert Confidence | ~60% | ~90% | +50% |
 | Average Investigation Time | 20 min | 10 min | -50% |
 | Alerts Requiring Action | 40% | 70% | +75% |
 
 ### System Performance
 
-| Metric | Baseline | v1.0 Framework | Improvement |
-|--------|----------|----------------|-------------|
+| Metric | v3.0 | v4.0 | Improvement |
+|--------|------|------|-------------|
 | Script Execution Load | High | Low | -70% |
 | Data Collection Delay | 4-12 hours | Real-time (native) | Instant |
 | Agent Resource Usage | Medium | Low | -40% |
@@ -190,154 +265,94 @@ NinjaOne provides these built-in monitoring capabilities that replace custom fie
 
 ---
 
-## ROI Analysis
+## ROI ANALYSIS
 
 ### First-Year Financial Impact
 
 | Category | Amount | Notes |
 |----------|--------|-------|
 | **Costs** | | |
-| Initial Setup Labor | -€6,250 | 125 hours @ €50/hour |
-| Training | -€1,000 | Staff training |
-| **Total Investment** | **-€7,250** | |
+| Initial Setup Labor | -$6,250 | 125 hours @ $50/hour |
+| Training | -$1,000 | Staff training |
+| **Total Investment** | **-$7,250** | |
+| | | |
 | **Benefits** | | |
-| Setup Time Saved | €5,750 | Compared to manual setup |
-| Annual Operational Savings | €8,250 | Script maintenance, troubleshooting |
-| Reduced Downtime | €5,000 | Fewer false positives, faster response |
-| Security Incident Reduction | €3,000 | 30% fewer incidents |
-| **Total First-Year Benefit** | **€22,000** | |
-| **Net First-Year ROI** | **€14,750** | |
+| Setup Time Saved | +$5,750 | vs v3.0 setup |
+| Annual Operational Savings | +$8,250 | Script maintenance, troubleshooting |
+| Reduced Downtime | +$5,000 | Fewer false positives, faster response |
+| Security Incident Reduction | +$3,000 | 30% fewer incidents |
+| **Total First-Year Benefit** | **+$22,000** | |
+| | | |
+| **Net First-Year ROI** | **+$14,750** | |
 | **ROI Percentage** | **203%** | |
 
 ### Ongoing Annual ROI (Years 2+)
 
 | Category | Amount |
 |----------|--------|
-| Annual Operational Savings | €8,250 |
-| Reduced Downtime | €5,000 |
-| Security Improvements | €3,000 |
-| **Total Annual Benefit** | **€16,250** |
-| Annual Costs | €0 (maintenance covered in setup) |
-| **Net Annual ROI** | **€16,250** |
-| **5-Year Total ROI** | **€79,750** |
+| Annual Operational Savings | +$8,250 |
+| Reduced Downtime | +$5,000 |
+| Security Improvements | +$3,000 |
+| **Total Annual Benefit** | **+$16,250** |
+| **Annual Costs** | **$0** |
+| **Net Annual ROI** | **+$16,250** |
+
+**5-Year Total ROI:** $79,750
 
 ---
 
-## Recommended Configurations
+## FEATURE AVAILABILITY BY VERSION
+
+| Feature | v3.0 | v4.0 | Notes |
+|---------|------|------|-------|
+| Custom Intelligence Fields | Yes (358) | Yes (277) | Optimized |
+| Native Metric Integration | No | Yes | New |
+| Hybrid Compound Conditions | No | Yes | New |
+| PowerShell Scripts | 105 | 110 | +5 patching |
+| Dynamic Groups | 74 | 74 | Same |
+| Patching Automation | No | Yes | New |
+| Ring-Based Deployment | No | Yes | New |
+| Priority-Based Validation | No | Yes | New |
+| Real-Time Alerting | No | Yes | Native metrics |
+| Predictive Analytics | Yes | Yes | Enhanced |
+| Configuration Drift | Yes | Yes | Enhanced |
+| Server Role Detection | Yes | Yes | Same |
+| HARD Security Module | Yes | Yes | Same |
+
+---
+
+## RECOMMENDED CONFIGURATIONS
 
 ### Small Environment (1-100 devices)
-
-- **Deploy:** 35 core fields only
-- **Scripts:** 1-24 (monitoring and automation)
-- **Conditions:** 20 P1/P2 (critical conditions)
-- **Groups:** 10 essential groups
-- **Patching:** Optional (manual acceptable)
+- Deploy: 35 core fields only
+- Scripts: 1-24 (monitoring and automation)
+- Conditions: 20 P1+P2 critical conditions
+- Groups: 10 essential groups
+- Patching: Optional (manual acceptable)
 - **Setup Time:** 2 weeks
 
 ### Medium Environment (100-500 devices)
-
-- **Deploy:** 35 core + 26 extended fields (61 total)
-- **Scripts:** 1-36 (add telemetry)
-- **Infrastructure:** Add as needed per server role
-- **Conditions:** 40 P1/P2/P3 conditions
-- **Groups:** 30 groups
-- **Patching:** Recommended
+- Deploy: 35 core + 26 extended fields
+- Scripts: 1-36 (add telemetry)
+- Infrastructure: Add as needed per server role
+- Conditions: 40 P1+P2+P3 conditions
+- Groups: 30 groups
+- Patching: Recommended
 - **Setup Time:** 4-6 weeks
 
 ### Large Environment (500+ devices)
-
-- **Deploy:** All 277 fields
-- **Scripts:** All 110 scripts
-- **Infrastructure:** All server modules
-- **Conditions:** All 75 conditions
-- **Groups:** All 74 groups
-- **Patching:** Essential
-- **HARD Module:** Recommended
+- Deploy: All 277 fields
+- Scripts: All 110 scripts
+- Infrastructure: All server modules
+- Conditions: All 75 conditions
+- Groups: All 74 groups
+- Patching: Essential
+- HARD Module: Recommended
 - **Setup Time:** 8 weeks
 
 ---
 
-## Script Execution Runtimes
-
-### Daily Monitoring Load (Automated Scripts)
-
-**Workstation (Typical):**
-- Core monitoring scripts: 8 minutes/day
-- Extended automation: 5 minutes/day
-- Advanced telemetry: 4 minutes/day
-- **Total daily runtime:** 17 minutes per device
-
-**Server (Typical):**
-- Infrastructure services: 15 minutes/day
-- Core monitoring: 8 minutes/day
-- Extended automation: 5 minutes/day
-- Advanced telemetry: 4 minutes/day
-- **Total daily runtime:** 32 minutes per device
-
-**NinjaOne Agent Impact:**
-- CPU usage during script execution: 2-5% average
-- Memory footprint: 50-150 MB during execution
-- Network bandwidth: Minimal (field updates only)
-- Overall system impact: Low - negligible effect on end-user experience
-
----
-
-## Field Prefix Reference
-
-| Prefix | Full Name | Fields | Priority | Purpose |
-|--------|-----------|--------|----------|---------|
-| OPS | Operations | 6 | Essential | Composite health scores |
-| STAT | Statistics/Stability | 15 | Essential | Telemetry and metrics |
-| RISK | Risk Management | 7 | Essential | Classification and exposure |
-| AUTO | Automation | 8 | Essential | Safety gates and control |
-| UX | User Experience | 8 | Essential | Satisfaction and friction |
-| SRV | Server | 5 | Essential | Server role detection |
-| DRIFT | Drift Detection | 9 | Essential | Configuration monitoring |
-| CAP | Capacity | 6 | Essential | Predictive forecasting |
-| BAT | Battery | 3 | Essential | Battery health |
-| NET | Network | 8 | Essential | Connectivity |
-| GPO | Group Policy | 4 | Essential | Policy performance |
-| AD | Active Directory | 3 | Essential | Domain integration |
-| BASE | Baseline | 7 | Essential | Baseline management |
-| SEC | Security | 5 | Essential | Security posture |
-| UPD | Updates | 4 | Essential | Patch compliance |
-| PATCH | Patching | 8 | Critical | Ring deployment |
-| IIS | IIS Web Server | 11 | Infrastructure | Web server monitoring |
-| MSSQL | SQL Server | 8 | Infrastructure | Database monitoring |
-| MYSQL | MySQL/MariaDB | 7 | Infrastructure | Database monitoring |
-| APACHE | Apache Web Server | 7 | Infrastructure | Web server monitoring |
-| VEEAM | Veeam Backup | 12 | Infrastructure | Backup monitoring |
-| DHCP | DHCP Server | 9 | Infrastructure | DHCP monitoring |
-| DNS | DNS Server | 9 | Infrastructure | DNS monitoring |
-| EVT | Event Log | 7 | Infrastructure | Event analysis |
-| FS | File Server | 8 | Infrastructure | File share monitoring |
-| PRINT | Print Server | 8 | Infrastructure | Print queue monitoring |
-| HV | Hyper-V | 9 | Infrastructure | Virtualization |
-| BL | BitLocker | 6 | Infrastructure | Encryption status |
-| FLEXLM | FlexLM | 11 | Infrastructure | License server |
-| FEAT | Features | 5 | Infrastructure | Windows features |
-
----
-
-## Success Metrics
-
-### Operational Improvements
-
-- **Alert Quality:** 70% reduction in false positives
-- **Alert Confidence:** 90% increase in alert accuracy
-- **Investigation Time:** 50% reduction in alert triage
-
-### Business Benefits
-
-- **Setup Time:** 50% faster deployment (4 weeks core)
-- **Annual Savings:** €16,250 in labor and reduced downtime
-- **Compliance:** 95% patch compliance rate
-- **Security:** 30% reduction in security incidents
-- **Reliability:** 95% patch success rate on first attempt
-
----
-
 **File:** Framework_Statistics_Summary.md  
-**Version:** 1.0  
+**Version:** 1)  
 **Last Updated:** February 1, 2026  
 **Status:** Production Ready

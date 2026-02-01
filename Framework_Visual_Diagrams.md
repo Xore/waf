@@ -148,7 +148,7 @@
 ## 15. CAPACITY FORECASTING PROCESS
 
 ### CAPDaysUntilDiskFull Calculation
-<img width="4733" height="8192" alt="Drift to Automation Flow-2026-02-01-231536" src="https://github.com/user-attachments/assets/aee7ee73-cee8-4663-8c8b-cf171a50fe44" />
+<img width="4733" height="8192" alt="Drift to Automation Flow-2026-02-01-232136" src="https://github.com/user-attachments/assets/8ed833d6-3709-4888-b713-309bd6633aeb" />
 
 
 ---

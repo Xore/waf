@@ -80,26 +80,26 @@ Essential Groups:
 
 ### Most Important Scripts
 
-| Script | Name | Frequency | Runtime | Priority |
-|--------|------|-----------|---------|----------|
-| 4 | Security Analyzer | 4h / Daily | 30s | Critical |
-| 7 | Resource Monitor | 4h | 20s | Critical |
-| 8 | Network Monitor | 4h | 20s | High |
-| 10 | MSSQL Server Monitor | 4h | 45s | Critical |
-| 13 | Veeam Backup Monitor | Daily | 35s | Critical |
-| 15 | Security Posture Consolidator | Daily | 35s | Critical |
-| 18 | Baseline Establishment | Once | 2min | High |
-| 23 | Update Compliance Monitor | Daily | 45s | Critical |
+| Script | Name                          | Frequency  | Runtime | Priority |
+| ------ | ----------------------------- | ---------- | ------- | -------- |
+| 4      | Security Analyzer             | 4h / Daily | 30s     | Critical |
+| 7      | Resource Monitor              | 4h         | 20s     | Critical |
+| 8      | Network Monitor               | 4h         | 20s     | High     |
+| 10     | MSSQL Server Monitor          | 4h         | 45s     | Critical |
+| 13     | Veeam Backup Monitor          | Daily      | 35s     | Critical |
+| 15     | Security Posture Consolidator | Daily      | 35s     | Critical |
+| 18     | Baseline Establishment        | Once       | 2min    | High     |
+| 23     | Update Compliance Monitor     | Daily      | 45s     | Critical |
 
 ### Troubleshooting Scripts
 
-| Issue | Run Script | Expected Result |
-|-------|------------|-----------------|
-| Disk full | Script 50: Emergency Cleanup | Free 2-5GB |
-| Service down | Script 41-45: Service Restart | Service running |
-| Poor performance | Script 55: Memory Optimization | Improved RAM |
-| Drift detected | Script 18: Baseline Refresh | Updated baseline |
-| Security issue | Script 61-65: Security Hardening | Improved posture |
+| Issue            | Run Script                       | Expected Result  |     |
+| ---------------- | -------------------------------- | ---------------- | --- |
+| Disk full        | Script 50: Emergency Cleanup     | Free 2-5GB       |     |
+| Service down     | Script 41-45: Service Restart    | Service running  |     |
+| Poor performance | Script 55: Memory Optimization   | Improved RAM     |     |
+| Drift detected   | Script 18: Baseline Refresh      | Updated baseline |     |
+| Security issue   | Script 61-65: Security Hardening | Improved posture |     |
 
 ---
 

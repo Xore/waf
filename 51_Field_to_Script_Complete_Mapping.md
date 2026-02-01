@@ -86,23 +86,23 @@
 
 ### Extended UX/APP Fields (File 17)
 
-| Field Name | Type | Populated By | Update Frequency |
-|------------|------|--------------|------------------|
-| UXExperienceScore | Integer | Script 17 - Application Experience Profiler | Daily |
-| UXApplicationHangCount24h | Integer | Script 17 - Application Experience Profiler | Daily |
-| UXBootDegradationFlag | Checkbox | Script 19 - Chronic Slow-Boot Detector | Daily |
-| UXBootTrend | Dropdown | Script 19 - Chronic Slow-Boot Detector | Daily |
-| UXCollabFailures24h | Integer | Script 29 - Collaboration and Outlook UX Telemetry | Every 4 hours |
-| UXCollabPoorQuality24h | Integer | Script 29 - Collaboration and Outlook UX Telemetry | Every 4 hours |
-| UXLoginRetryCount24h | Integer | Script 30 - User Environment Friction Tracker | Daily |
-| UXUserExperienceDetailHtml | WYSIWYG | Scripts 17, 29, 30 - Multiple UX scripts | Daily |
-| UXProfileOptimizationNeeded | Checkbox | Script 18 - Profile Hygiene and Cleanup Advisor | Daily |
-| UXLastUserActivityDate | DateTime | Script 17 - Application Experience Profiler | Daily |
-| APPTopCrashingApp | Text | Script 17 - Application Experience Profiler | Daily |
-| APPTopProblemApps | WYSIWYG | Script 17 - Application Experience Profiler | Daily |
-| APPOfficeVersion | Text | Script 34 - Licensing and Feature Utilization Telemetry | Daily |
-| APPOfficeActivation | Dropdown | Script 34 - Licensing and Feature Utilization Telemetry | Daily |
-| APPOutlookFailures24h | Integer | Script 29 - Collaboration and Outlook UX Telemetry | Every 4 hours |
+| Field Name                  | Type     | Populated By                                            | Update Frequency |
+| --------------------------- | -------- | ------------------------------------------------------- | ---------------- |
+| UXExperienceScore           | Integer  | Script 17 - Application Experience Profiler             | Daily            |
+| UXApplicationHangCount24h   | Integer  | Script 17 - Application Experience Profiler             | Daily            |
+| UXBootDegradationFlag       | Checkbox | Script 19 - Chronic Slow-Boot Detector                  | Daily            |
+| UXBootTrend                 | Dropdown | Script 19 - Chronic Slow-Boot Detector                  | Daily            |
+| UXCollabFailures24h         | Integer  | Script 29 - Collaboration and Outlook UX Telemetry      | Every 4 hours    |
+| UXCollabPoorQuality24h      | Integer  | Script 29 - Collaboration and Outlook UX Telemetry      | Every 4 hours    |
+| UXLoginRetryCount24h        | Integer  | Script 30 - User Environment Friction Tracker           | Daily            |
+| UXUserExperienceDetailHtml  | WYSIWYG  | Scripts 17, 29, 30 - Multiple UX scripts                | Daily            |
+| UXProfileOptimizationNeeded | Checkbox | Script 18 - Profile Hygiene and Cleanup Advisor         | Daily            |
+| UXLastUserActivityDate      | DateTime | Script 17 - Application Experience Profiler             | Daily            |
+| APPTopCrashingApp           | Text     | Script 17 - Application Experience Profiler             | Daily            |
+| APPTopProblemApps           | WYSIWYG  | Script 17 - Application Experience Profiler             | Daily            |
+| APPOfficeVersion            | Text     | Script 34 - Licensing and Feature Utilization Telemetry | Daily            |
+| APPOfficeActivation         | Dropdown | Script 34 - Licensing and Feature Utilization Telemetry | Daily            |
+| APPOutlookFailures24h       | Integer  | Script 29 - Collaboration and Outlook UX Telemetry      | Every 4 hours    |
 
 ### Extended CAP/UPD/NET Fields (File 19)
 

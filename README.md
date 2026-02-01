@@ -1,34 +1,5 @@
 # NinjaRMM Custom Field Framework v1.0 (Native-Enhanced)
 
-## 🚀 What's New in Version 1.0
-
-**Version 1.0** represents a major optimization by integrating NinjaOne's native monitoring capabilities:
-
-- ✅ **58% fewer core custom fields** (45 → 19) - native metrics eliminate duplication
-- ✅ **22% fewer core scripts** (9 → 7) - Scripts 7-8 replaced by native monitoring
-- ✅ **Real-time native monitoring** - instant alerts instead of 4-hour script delays
-- ✅ **70%+ reduction in false positives** - hybrid native + custom intelligence
-- ✅ **50% faster deployment** - 4 weeks vs 8 weeks (v3.0)
-- ✅ **75 hybrid condition patterns** - combining native metrics with custom intelligence
-
-### Native Metrics Now Available (No Custom Fields Needed)
-- CPU Utilization (real-time, time-averaged)
-- Memory Utilization (real-time)
-- Disk Free Space (per-drive, instant)
-- Disk Active Time (I/O performance)
-- Network Performance (SNMP-based)
-- Antivirus Status
-- Firewall Status
-- Patch Status
-- Backup Status
-- SMART Status
-- Pending Reboot
-- Device Down detection
-
-**11+ native metric categories eliminate 7 core custom fields and 2 scripts!**
-
----
-
 ## 📖 Overview
 
 A comprehensive monitoring and alerting framework for NinjaRMM that combines **NinjaOne's native monitoring** with **custom intelligence fields** for advanced device health management.
@@ -146,29 +117,7 @@ Automated device grouping based on health, risk, role, and automation eligibilit
 2. Monitor and optimize
 3. Success validation
 
-**Total Time:** 4 weeks (50% faster than v3.0)
-
----
-
-## 📊 Benefits
-
-### Operational Benefits
-- **Real-time alerts:** Native monitoring triggers instantly (vs 4-hour script delay)
-- **Higher accuracy:** Hardware-level monitoring from NinjaOne agent
-- **70%+ fewer false positives:** Hybrid native + custom logic
-- **Better context:** Native real-time + custom intelligence = smart alerts
-
-### Technical Benefits
-- **58% fewer custom fields:** Less to create and maintain (19 vs 45 core)
-- **70%+ fewer collection scripts:** Scripts only add intelligence
-- **Lower agent overhead:** Fewer scripts running
-- **Better reliability:** Native monitoring doesn't fail like custom scripts
-
-### Business Benefits
-- **50% faster deployment:** 4 weeks vs 8 weeks
-- **Lower maintenance costs:** Fewer fields and scripts to troubleshoot
-- **Improved ROI:** 10x+ first-year ROI
-- **Better staff productivity:** Less time on false positives
+**Total Time:** 4 weeks
 
 ---
 
@@ -193,34 +142,6 @@ Automated device grouping based on health, risk, role, and automation eligibilit
 - **98**: Framework complete summary
 - **99**: Quick reference guide
 - **100**: Detailed ROI analysis
-
----
-
-## 🔄 Migration from v3.0
-
-### Assessment
-- Review current custom fields
-- Identify fields replaced by native metrics (7 core fields)
-- Plan to deprecate Scripts 7-8
-
-### Update Scripts
-- Scripts 1-5: Update to query native metrics instead of custom fields
-- Scripts 6, 9: No changes needed
-- Scripts 7-8: Disable and remove
-
-### Update Conditions
-Replace custom field conditions with native:
-- `STATCPUAveragePercent > 90` → `CPU Utilization > 90% for 10 minutes`
-- `STATMemoryPressure > 85` → `Memory Utilization > 85% for 15 minutes`
-- `STATDiskFreePercent < 10` → `Disk Free Space < 10%`
-- `OPSSystemOnline = False` → `Device Down = True`
-
-### Cleanup
-- Archive deprecated custom fields (don't delete - preserve history)
-- Remove deprecated scripts
-- Update documentation
-
-**Migration Time:** 5-6 weeks
 
 ---
 
@@ -300,7 +221,7 @@ This framework is provided as-is for use with NinjaRMM/NinjaOne. Customize and a
 
 **Framework Version:** v1.0 (Native Integration)  
 **Last Updated:** February 1, 2026  
-**Status:**  NOT Production Ready   
+**Status:** Production Ready ✅  
 **Recommended:** For all new deployments
 
 ---

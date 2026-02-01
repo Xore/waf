@@ -1,399 +1,657 @@
-# Windows OS Patching Tutorial - Complete Guide
+# Windows OS Patching - Dashboard Operations Guide
 **File:** 46_PATCH_Windows_OS_Tutorial.md  
-**Version:** 1.0  
-**Last Updated:** February 1, 2026  
+**Version:** 2.0 (Dashboard Operations Focus)  
+**Last Updated:** February 1, 2026, 5:37 PM CET  
 **Applies To:** Windows Server 2016+, Windows 10/11
 
 ---
 
 ## OVERVIEW
 
-This tutorial provides step-by-step instructions for configuring automated Windows operating system patching using NinjaOne's native patch management combined with the ring-based deployment framework [web:338][web:339].
+This guide shows you how to use NinjaOne's patch management dashboard to approve and apply Windows OS patches manually and monitor automated deployments [web:338][web:339].
 
 ### What You'll Learn
-- Configure Windows Update policies in NinjaOne
-- Set up ring-based OS patch deployment
-- Apply patches to Windows Server and Windows Workstation
-- Configure reboot policies
-- Monitor patch deployment status
+- Navigate the NinjaOne patching dashboard
+- Review available Windows Updates
+- Approve patches manually (for workstations and manual-approval servers)
+- Apply patches to individual devices or groups
+- Monitor patch deployment status in real-time
 - Troubleshoot common OS patching issues
+
+### Prerequisites
+- Patch policies already configured (see 48_PATCH_Policy_Configuration_Guide.md)
+- Ring-based groups created (see 44_PATCH_Ring_Based_Deployment.md)
+- Devices assigned to appropriate rings
 
 ---
 
-## PART 1: NINJONE WINDOWS UPDATE CONFIGURATION
+## PART 1: NAVIGATING THE PATCHING DASHBOARD
 
-### Step 1: Access Patch Management Dashboard
+### Step 1: Access Patch Management
 
 **Navigate to:** NinjaOne Dashboard > Patching > Patch Management
 
-**What You'll See:**
-- Patch compliance overview
-- Devices needing attention
-- Failed patches
-- Pending approvals [web:339]
+**Dashboard Overview - What You See:**
 
----
-
-### Step 2: Configure Windows Update Settings
-
-**Navigate to:** Administration > Patching > Settings
-
-**Configure Global Settings:**
-
-#### Update Detection
+#### Top Metrics Bar
 ```
-Scan Frequency: Every 4 hours
-Scan Method: Windows Update Agent (WUA)
-Include Optional Updates: No (unchecked)
-Include Driver Updates: Yes (for servers), No (for workstations)
-Include Feature Updates: Require Approval (manual)
+Total Devices: 500
+Patches Available: 1,245
+Devices Need Attention: 23
+Failed Patches: 8
+Pending Reboots: 15
 ```
 
-**Rationale:**
-- 4-hour scan ensures patches detected quickly [web:338]
-- Optional updates excluded (bloatware risk)
-- Drivers included for servers (stability), excluded for workstations (compatibility)
-- Feature updates require approval (major changes need validation)
-
----
-
-#### Patch Approval Defaults
+#### Device Status Summary
 ```
-Critical Updates: Auto-approve after 2 days (Ring 0 validation period)
-Security Updates: Auto-approve after 2 days
-Important Updates: Auto-approve after 7 days (Ring 1 validation period)
-Recommended Updates: Require Approval (manual)
-Optional Updates: Auto-reject
-Definition Updates: Auto-approve immediately (antivirus definitions)
+Compliant: 450 (90%)
+Warning: 30 (6%)
+Non-Compliant: 15 (3%)
+Critical: 5 (1%)
 ```
 
-**Rationale:**
-- Critical/Security patches auto-approved after Ring 0 testing (2 days) [web:330]
-- Important patches wait for Ring 1 validation (7 days)
-- Recommended/Optional require manual review (avoid bloat)
+#### Recent Activity Feed
+- Shows last 50 patch activities (installed, failed, approved, etc.)
+- Real-time updates during active deployments
+- Click any activity for detailed logs
 
 ---
 
-#### Reboot Behavior Defaults
+### Step 2: Filter and Search
+
+**Dashboard Filters (Top Right):**
+
 ```
-Reboot if Required: Yes (enabled)
-Maximum Reboot Delay: 4 hours
-Force Reboot After Delay: Yes (enabled)
-Suppress Reboot Notifications: No (users should know)
-Allow User to Defer Reboot: Yes, up to 3 times (workstations only)
+Device Type: [All Devices] [Servers] [Workstations]
+Ring: [All Rings] [Ring 0] [Ring 1] [Ring 2] [Ring 3]
+Status: [All] [Needs Patches] [Failed] [Pending Reboot]
+Organization: [Select Organization]
+Date Range: [Last 7 Days] [Last 30 Days] [Custom]
 ```
 
-**Rationale:**
-- Servers: Force reboot to complete patching
-- Workstations: Allow user deferral (business hour protection)
-- 4-hour delay gives users time to save work [web:342]
+**Search Box:**
+- Search by device name, KB number, or patch title
+- Example searches:
+  - "KB5034441" (specific patch)
+  - "SQL-PROD" (device name pattern)
+  - "Security Update for Windows" (patch title)
 
 ---
 
-### Step 3: Create Windows Update Policy Templates
+### Step 3: Understanding Status Icons
 
-NinjaOne allows policy templates per device type. Create 2 templates:
+**Device Status Icons:**
+- ✅ **Green:** Fully patched, compliant
+- ⚠️ **Yellow:** Patches available (warning)
+- 🔴 **Red:** Critical patches missing or failed patches
+- 🔄 **Blue:** Patch installation in progress
+- ⏸️ **Gray:** Pending reboot or manual approval needed
 
-#### Template 1: Windows Server OS Patching
-**Name:** Windows Server - OS Patches - Ring-Based
-
-**Patch Types:**
-- ☑ Critical Updates
-- ☑ Security Updates
-- ☑ Important Updates
-- ☑ Drivers (server hardware only)
-- ☐ Feature Updates (manual approval)
-- ☐ Optional Updates
-
-**Approval Settings:**
-- Auto-approve Critical/Security: After 2 days
-- Auto-approve Important: After 7 days
-- Require approval for: Feature Updates, Drivers (optional)
-
-**Reboot Settings:**
-- Reboot if required: Yes
-- Reboot delay: 15 minutes
-- Force reboot: Yes, after 30 minutes
-- Notify users: Yes (if logged in)
-
-**Maintenance Window:**
-- Use device-specific window (from PATCHMaintenanceWindow field)
-- Fallback: Saturday 22:00-02:00
+**Patch Status Icons:**
+- ✅ **Installed:** Patch successfully installed
+- ⏳ **Pending:** Waiting for approval or maintenance window
+- 🔄 **Installing:** Currently being installed
+- ❌ **Failed:** Installation failed (click for error details)
+- 🚫 **Excluded:** Patch excluded from deployment
+- 📥 **Downloaded:** Downloaded but not yet installed
 
 ---
 
-#### Template 2: Windows Workstation OS Patching
-**Name:** Windows Workstation - OS Patches - Ring-Based
+## PART 2: REVIEWING AVAILABLE PATCHES
 
-**Patch Types:**
-- ☑ Critical Updates
-- ☑ Security Updates
-- ☑ Important Updates
-- ☐ Drivers (too risky for workstations)
-- ☐ Feature Updates (manual approval)
-- ☐ Optional Updates
+### Step 1: View All Available Patches
 
-**Approval Settings:**
-- Auto-approve Critical/Security: After 2 days
-- Auto-approve Important: After 7 days
-- Require approval for: Feature Updates
+**Navigate to:** Patching > Patches > Available
 
-**Reboot Settings:**
-- Reboot if required: Yes
-- Reboot delay: 2 hours (users need time)
-- Force reboot: Yes, after 4 hours
-- Allow user to defer: Yes, up to 3 times
-- Defer duration: 4 hours per deferral
+**Patch List View:**
 
-**Maintenance Window:**
-- Use device-specific window (from PATCHMaintenanceWindow field)
-- Fallback: Outside business hours (18:00-08:00)
+| Patch Title | KB Number | Severity | Release Date | Devices | Status |
+|-------------|-----------|----------|--------------|---------|--------|
+| 2026-02 Security Update for Windows Server | KB5034441 | Critical | 2026-02-11 | 45 | Pending |
+| 2026-02 Cumulative Update for Windows 10 | KB5034467 | Important | 2026-02-11 | 120 | Pending |
+| Update for Windows Defender | KB2267602 | Definition | 2026-02-01 | 200 | Auto-Approve |
 
-**Save Templates** for use in ring-based policies
+**Sort Options:**
+- By Severity (Critical → Optional)
+- By Release Date (Newest → Oldest)
+- By Affected Devices (Most → Least)
 
 ---
 
-## PART 2: RING-BASED OS PATCH DEPLOYMENT
+### Step 2: Review Patch Details
 
-### Step 1: Apply Templates to Ring Groups
+**Click any patch to view details:**
 
-**Navigate to:** Administration > Patching > Policies > Add Policy
+#### Basic Information
+```
+Title: 2026-02 Security Update for Windows Server 2022
+KB Number: KB5034441
+Release Date: February 11, 2026
+Severity: Critical
+Category: Security Update
+Reboot Required: Yes
+Microsoft Support URL: https://support.microsoft.com/kb/5034441
+```
 
-#### Policy 1: Ring 0 - OS Patches (Lab/Test)
-**Name:** Ring 0 - Windows OS Patches - Lab/Test
+#### Affected Devices
+```
+Total Devices: 45 servers
+  Ring 0 (Lab/Test): 2 devices
+  Ring 1 (Pilot): 5 devices
+  Ring 2 (Broad): 18 devices
+  Ring 3 (Critical): 20 devices
 
-**Apply Policy To:** Dynamic Group "Ring 0 - Lab/Test Devices"
+Status Breakdown:
+  Pending Approval: 45 devices
+  Scheduled: 0 devices
+  Installed: 0 devices
+  Failed: 0 devices
+```
 
-**Template:** 
-- Servers: Windows Server - OS Patches - Ring-Based
-- Workstations: Windows Workstation - OS Patches - Ring-Based
+#### Known Issues (from Microsoft)
+```
+Known Issue 1: May cause startup delays on systems with Bitlocker
+Workaround: Ensure Bitlocker recovery key is accessible
 
-**Schedule:**
-- Day: Tuesday (Patch Tuesday)
-- Time: 20:00 (8:00 PM)
-- Window: 3 hours
+Known Issue 2: Incompatibility with legacy antivirus software
+Workaround: Update antivirus before installing patch
+```
 
-**Override Settings (Ring 0 specific):**
-- Auto-approve all patches: Immediately (no delay)
-- Force reboot: Immediately (no user deferral)
-
-**Validation Period:** 48 hours (Wednesday-Thursday)
-
-**Save Policy**
-
----
-
-#### Policy 2: Ring 1 - OS Patches (Pilot Production)
-**Name:** Ring 1 - Windows OS Patches - Pilot
-
-**Apply Policy To:** Dynamic Group "Ring 1 - Pilot Production"
-
-**Template:** 
-- Servers: Windows Server - OS Patches - Ring-Based
-- Workstations: Windows Workstation - OS Patches - Ring-Based
-
-**Schedule:**
-- Day: Friday
-- Time: 21:00 (9:00 PM)
-- Window: 4 hours
-
-**Prerequisites (Advanced Settings):**
-- PATCHRingStatus (Ring 0) = "Passed"
-- PATCHConfidenceScore (Ring 0) ≥ 90
-
-**Override Settings (Ring 1 specific):**
-- Auto-approve: Use template defaults (2/7 day delays)
-- Notify IT staff: Yes (email notification)
-
-**Validation Period:** 5 days (Saturday-Wednesday)
-
-**Save Policy**
+#### Superseded Patches
+```
+This patch supersedes:
+  - KB5033118 (January 2026 Update)
+  - KB5032190 (December 2025 Update)
+```
 
 ---
 
-#### Policy 3: Ring 2 - OS Patches (Broad Production)
-**Name:** Ring 2 - Windows OS Patches - Broad
+### Step 3: Check Ring Readiness
 
-**Apply Policy To:** Dynamic Group "Ring 2 - Broad Production"
+**Before approving a patch, verify ring readiness:**
 
-**Template:** 
-- Servers: Windows Server - OS Patches - Ring-Based
-- Workstations: Windows Workstation - OS Patches - Ring-Based
+**Navigate to:** Dashboard > Widgets > Add "Ring Readiness Status"
 
-**Schedule:**
-- Day: 2nd Saturday of deployment cycle
-- Time: 22:00 (10:00 PM)
-- Window: 4 hours
+```
+Ring 0 (Lab/Test):
+  Status: Ready for Deployment
+  Devices: 5 devices
+  Last Validation: Passed (2 days ago)
+  Confidence Score: N/A (first in ring)
 
-**Prerequisites:**
-- PATCHRingStatus (Ring 1) = "Passed"
-- PATCHConfidenceScore (Ring 1) ≥ 85
-- Failure Rate (Ring 1) < 2%
+Ring 1 (Pilot):
+  Status: Awaiting Ring 0 Validation
+  Prerequisite: Ring 0 confidence score ≥ 90
+  Current Ring 0 Score: N/A (not deployed yet)
+  Estimated Ready: February 13, 2026 (if Ring 0 passes)
 
-**Override Settings:**
-- Use template defaults (no overrides)
-- Notify all users: 24 hours before deployment
+Ring 2 (Broad):
+  Status: Awaiting Ring 1 Validation
+  Prerequisite: Ring 1 confidence score ≥ 85
+  Estimated Ready: February 20, 2026
 
-**Validation Period:** 7 days (Sunday-Saturday)
+Ring 3 (Critical):
+  Status: Awaiting Ring 2 Validation
+  Prerequisite: Ring 2 confidence score ≥ 90
+  Estimated Ready: February 27, 2026
+```
 
-**Save Policy**
-
----
-
-#### Policy 4: Ring 3 - OS Patches (Critical Production)
-**Name:** Ring 3 - Windows OS Patches - Critical
-
-**Apply Policy To:** Dynamic Group "Ring 3 - Critical Production"
-
-**Template:** 
-- Servers: Windows Server - OS Patches - Ring-Based
-- Workstations: Windows Workstation - OS Patches - Ring-Based
-
-**Schedule:**
-- Day: 3rd Saturday of deployment cycle
-- Time: 23:00 (11:00 PM)
-- Window: 4 hours
-
-**Prerequisites:**
-- PATCHRingStatus (Ring 2) = "Passed"
-- PATCHConfidenceScore (Ring 2) ≥ 90
-- Failure Rate (Ring 2) < 1%
-- Manual approval gate: Yes (extra validation step)
-
-**Override Settings (Ring 3 specific):**
-- Critical patches only: Exclude Important unless critical
-- Extended reboot delay: 60 minutes (critical systems need time)
-- Backup verification: Mandatory (must be < 24 hours old)
-
-**Validation Period:** Continuous monitoring (indefinite)
-
-**Save Policy**
+**Interpretation:**
+- Only Ring 0 is ready for immediate deployment
+- Other rings will auto-deploy after validation (if policies configured)
+- Manual approval can override prerequisites (use caution)
 
 ---
 
-## PART 3: MONITORING OS PATCH DEPLOYMENT
+## PART 3: APPROVING PATCHES MANUALLY
 
-### Step 1: Real-Time Monitoring Dashboard
+### Scenario 1: Approve Patch for Ring 0 (Lab/Test)
 
-**Navigate to:** Patching > Patch Management Dashboard
+**Purpose:** Initial validation before production deployment
 
-**Key Widgets to Add:**
+**Steps:**
+1. **Navigate to:** Patching > Patches > Available
+2. **Select patch:** Click KB5034441 (checkbox on left)
+3. **Click "Approve" button** (top right)
+4. **Approval Dialog appears:**
+   ```
+   Approve Patch: KB5034441
 
-#### Widget 1: Patch Deployment Status
-- Shows: Devices currently installing patches
-- Filter by: Ring (0, 1, 2, 3)
-- Refresh: Every 5 minutes
+   Apply to:
+     [•] Specific Groups (recommended)
+         [✓] Ring 0 - Lab/Test Devices (5 devices)
+         [ ] Ring 1 - Pilot Production (10 devices)
+         [ ] Ring 2 - Broad Production (50 devices)
+         [ ] Ring 3 - Critical Production (50 devices)
 
-#### Widget 2: Patch Success Rate by Ring
-- Shows: Success rate per ring (target: >95%)
-- Chart type: Bar chart
-- Time period: Last 7 days
+     [ ] All Devices (not recommended for first deployment)
 
-#### Widget 3: Devices Needing Reboot
-- Shows: Devices with pending reboot after patch
-- Alert if: Pending > 4 hours (patch not complete)
-- Action: Force reboot or investigate
+   Deployment Timing:
+     [•] Deploy immediately
+     [ ] Schedule for later: [Date/Time picker]
+     [ ] Wait for next maintenance window
+
+   Reboot Behavior:
+     [✓] Reboot if required
+     Reboot delay: [15] minutes
+     [✓] Force reboot after delay
+
+   Notification:
+     [✓] Notify administrators on completion
+     [ ] Notify end users before deployment
+   ```
+
+5. **Configure settings:**
+   - Select "Ring 0 - Lab/Test Devices" only
+   - Choose "Deploy immediately" (Ring 0 doesn't wait)
+   - Keep reboot settings (15 min delay, force reboot)
+   - Enable admin notification
+
+6. **Click "Approve and Deploy"**
+
+7. **Confirmation:**
+   ```
+   Patch Approved Successfully
+
+   KB5034441 has been approved for:
+     - Ring 0 - Lab/Test Devices (5 devices)
+
+   Deployment will begin immediately.
+   Estimated completion: 30-45 minutes
+
+   You will receive notification when complete.
+   ```
+
+8. **Monitor deployment:**
+   - Dashboard > Activity Feed shows "Installing KB5034441 on LAB-TEST-01..."
+   - Click device name for real-time installation log
+   - Wait for all Ring 0 devices to complete
+
+---
+
+### Scenario 2: Approve Patch for Workstations (Manual Approval Required)
+
+**Purpose:** Deploy patches to workstations with user coordination
+
+**Steps:**
+1. **Navigate to:** Patching > Patches > Available
+2. **Filter:** Device Type = "Workstations", Status = "Pending Approval"
+3. **Select patch:** KB5034467 (Windows 10 Cumulative Update)
+4. **Click "Approve" button**
+5. **Approval Dialog:**
+   ```
+   Approve Patch: KB5034467
+
+   Apply to:
+     [•] Specific Groups
+         [✓] All Workstations (200 devices)
+
+   Deployment Timing:
+     [ ] Deploy immediately (not recommended for workstations)
+     [•] Schedule for later: [Friday, Feb 14, 2026] [18:00]
+     [ ] Wait for next maintenance window
+
+   Reboot Behavior:
+     [✓] Reboot if required
+     Reboot delay: [2] hours (gives users time to save work)
+     [ ] Force reboot after delay (allow user to defer)
+     [✓] Allow user to defer reboot (up to [3] times)
+
+   Notification:
+     [✓] Notify end users 24 hours before deployment
+     [✓] Notify end users 1 hour before deployment
+     [✓] Send reminder if reboot deferred
+   ```
+
+6. **Configure settings:**
+   - Schedule for Friday evening (end of work week)
+   - 2-hour reboot delay (users can finish work)
+   - Allow 3 deferrals (users control timing)
+   - Enable all user notifications
+
+7. **Click "Approve and Deploy"**
+
+8. **User Notification Example (sent 24 hours before):**
+   ```
+   Subject: Windows Update Scheduled for Friday, Feb 14 at 6:00 PM
+
+   A Windows security update will be installed on Friday, February 14 at 6:00 PM.
+
+   What to expect:
+   - Update will install automatically
+   - You'll be prompted to restart your computer 2 hours after installation
+   - You can defer the restart up to 3 times (4 hours each)
+   - Please save your work before restarting
+
+   Patch Details: KB5034467 (Windows 10 Security Update)
+   Reboot Required: Yes
+
+   Questions? Contact IT Helpdesk: helpdesk@company.com
+   ```
+
+---
+
+### Scenario 3: Emergency Patch (Critical Zero-Day)
+
+**Purpose:** Deploy critical security patch to all devices immediately
+
+**Steps:**
+1. **Navigate to:** Patching > Patches > Available
+2. **Identify emergency patch:** KB5035001 (zero-day exploit fix)
+3. **Click patch > Click "Approve" > Emergency Deployment Mode**
+4. **Emergency Approval Dialog:**
+   ```
+   EMERGENCY PATCH DEPLOYMENT
+
+   WARNING: This will bypass ring validation and deploy immediately to all devices.
+   Use only for critical security patches.
+
+   Patch: KB5035001 (Zero-Day Security Fix)
+   Severity: Critical
+   Reason: Active exploitation detected (CVE-2026-12345)
+
+   Apply to:
+     [•] All Servers (100 devices)
+     [•] All Workstations (200 devices)
+
+   Deployment:
+     [•] Deploy immediately (no delay)
+     [✓] Bypass ring prerequisites
+     [✓] Bypass maintenance windows
+
+   Reboot:
+     [✓] Force reboot after installation (no user deferral)
+     Reboot delay: [30] minutes maximum
+
+   Notification:
+     [✓] Alert all administrators
+     [✓] Notify all users (critical patch)
+     [✓] Create incident ticket
+
+   Confirmation:
+     [ ] I understand this bypasses normal validation
+     [ ] I have management approval for emergency deployment
+     [ ] I have reviewed Microsoft security advisory
+   ```
+
+5. **Check all confirmation boxes**
+6. **Click "Deploy Emergency Patch"**
+7. **Immediate Actions:**
+   - All devices begin installing immediately
+   - Helpdesk notified to expect calls
+   - War room staffed (all hands on deck)
+   - Monitor dashboard every 5 minutes
+
+**Use Sparingly:** Emergency deployment should be rare (< 2 times/year)
+
+---
+
+## PART 4: APPLYING PATCHES TO SPECIFIC DEVICES
+
+### Scenario 1: Single Device Manual Patch
+
+**Purpose:** Patch a specific server or workstation immediately
+
+**Steps:**
+1. **Navigate to:** Devices > All Devices
+2. **Search for device:** Type "SQL-PROD-01" in search box
+3. **Click device name** to open device details
+4. **Click "Patching" tab** (left sidebar)
+5. **View device patch status:**
+   ```
+   Patch Status: Warning (3 patches available)
+
+   Available Patches:
+   ✅ KB5034441 (Critical) - 2026-02 Security Update
+   ✅ KB5034467 (Important) - Windows Cumulative Update
+   ✅ KB2267602 (Definition) - Windows Defender Update
+
+   Installed Patches (Last 30 Days):
+   ✅ KB5033118 - Installed Jan 15, 2026
+   ✅ KB5032190 - Installed Dec 10, 2025
+   ```
+
+6. **Select patches to install:**
+   - Check boxes next to KB5034441 and KB2267602
+   - (Skip KB5034467 if not urgent)
+
+7. **Click "Install Selected Patches" button**
+
+8. **Installation Dialog:**
+   ```
+   Install Patches on SQL-PROD-01
+
+   Patches Selected: 2
+     - KB5034441 (Critical)
+     - KB2267602 (Definition)
+
+   Installation Options:
+     [•] Install now (recommended for off-hours)
+     [ ] Schedule for later
+
+   Reboot:
+     [✓] Reboot if required (KB5034441 requires reboot)
+     Reboot delay: [15] minutes
+     [✓] Force reboot after delay
+
+   Backup Verification:
+     [✓] Verify backup < 24 hours old (recommended for servers)
+     Last Backup: Success (6 hours ago) ✅
+   ```
+
+9. **Click "Install Patches"**
+
+10. **Real-Time Monitoring:**
+    ```
+    Installation Progress: KB5034441
+
+    [██████████████████░░░░░░] 75% Complete
+
+    Steps:
+    ✅ Backup verified (6 hours old)
+    ✅ Pre-installation checks passed
+    ✅ Download completed (125 MB)
+    🔄 Installing patch...
+    ⏳ Reboot required after installation
+
+    Estimated Time Remaining: 3 minutes
+    ```
+
+11. **After reboot:**
+    ```
+    Patch Installation Complete
+
+    SQL-PROD-01:
+    ✅ KB5034441 - Installed successfully
+    ✅ KB2267602 - Installed successfully
+    ✅ System rebooted at 22:15
+    ✅ All services started successfully
+    ✅ Post-installation checks passed
+
+    Device Status: Compliant (0 patches pending)
+    Next Scan: February 2, 2026 at 06:00 AM
+    ```
+
+---
+
+### Scenario 2: Bulk Device Patching
+
+**Purpose:** Apply patches to multiple devices at once (e.g., all web servers)
+
+**Steps:**
+1. **Navigate to:** Devices > Dynamic Groups
+2. **Select group:** "Web Servers - Ring 2" (10 devices)
+3. **Click "Actions" dropdown** (top right)
+4. **Select "Patch Management"**
+5. **Bulk Patching Dialog:**
+   ```
+   Bulk Patch Installation
+
+   Devices Selected: 10 web servers
+
+   Available Patches:
+   [✓] KB5034441 (Critical) - Applies to 10/10 devices
+   [✓] KB5034467 (Important) - Applies to 10/10 devices
+   [ ] KB2267602 (Definition) - Applies to 10/10 devices (exclude)
+
+   Deployment Strategy:
+     [•] Staggered deployment (recommended)
+         Install on: [2] devices every [30] minutes
+         Total time: ~2.5 hours
+
+     [ ] Simultaneous deployment
+         Install on all 10 devices at once
+         Total time: ~30 minutes (higher risk)
+
+   Reboot Timing:
+     [•] Stagger reboots (5 min apart)
+     [ ] Reboot all at once (may overload infrastructure)
+
+   Failure Handling:
+     [✓] Pause deployment if 20% fail
+     [✓] Send alert on each failure
+     [ ] Continue deployment regardless of failures
+   ```
+
+6. **Configure:**
+   - Use staggered deployment (2 devices every 30 min)
+   - Stagger reboots (don't overload load balancer)
+   - Pause if failures occur
+
+7. **Click "Start Bulk Deployment"**
+
+8. **Monitor in real-time:**
+   ```
+   Bulk Patch Deployment: Web Servers - Ring 2
+
+   Batch 1 (Devices 1-2):
+   ✅ WEB-PROD-01 - Installing KB5034441... 50%
+   ✅ WEB-PROD-02 - Installing KB5034441... 50%
+
+   Batch 2 (Devices 3-4):
+   ⏳ Waiting for Batch 1 to complete (15 min remaining)
+
+   Batch 3 (Devices 5-6):
+   ⏳ Waiting...
+
+   Overall Progress: 20% (2/10 devices completed)
+   Estimated Completion: 22:45 (2 hours 15 min)
+   ```
+
+9. **Handle failures gracefully:**
+   - If WEB-PROD-03 fails, deployment pauses
+   - Alert sent: "Batch 2 failed on WEB-PROD-03 (error: 0x80070643)"
+   - Options: Skip device and continue, or abort all
+
+---
+
+## PART 5: MONITORING PATCH DEPLOYMENT
+
+### Real-Time Monitoring Dashboard
+
+**Navigate to:** Patching > Monitoring > Real-Time
+
+**Key Widgets:**
+
+#### Widget 1: Active Deployments
+```
+Currently Installing Patches: 15 devices
+
+Ring 0 (Lab/Test): 0 devices
+Ring 1 (Pilot): 5 devices (installing KB5034441)
+Ring 2 (Broad): 10 devices (installing KB5034441)
+Ring 3 (Critical): 0 devices (awaiting Ring 2 validation)
+
+Average Installation Time: 12 minutes per device
+Estimated Completion: 22:30 (45 minutes remaining)
+```
+
+#### Widget 2: Installation Progress
+```
+Device Status:
+✅ Completed: 8 devices (53%)
+🔄 In Progress: 5 devices (33%)
+⏳ Queued: 2 devices (13%)
+❌ Failed: 0 devices (0%)
+
+Success Rate: 100% (8/8 completed successfully)
+```
+
+#### Widget 3: Devices Pending Reboot
+```
+Pending Reboot: 8 devices
+
+Will reboot automatically in:
+  SQL-PROD-01: 12 minutes
+  APP-PROD-02: 8 minutes
+  WEB-PROD-05: 15 minutes
+  ...
+
+Manual Reboot Required: 0 devices
+```
 
 #### Widget 4: Failed Patches
-- Shows: Devices with failed patch installations
-- Filter by: Ring, OS version, patch KB number
-- Action: Review logs, retry, or exclude patch [web:339]
-
----
-
-### Step 2: Automated Monitoring (Script PR2)
-
-**Script PR2 monitors OS patching automatically:**
-
-**Every 4 Hours During Validation:**
-1. Query patch status for devices in current ring
-2. Calculate success rate:
-   ```
-   Success Rate = (Successful Patches / Total Patches) × 100
-   ```
-3. Check for critical failures:
-   - OS boot failure after patch
-   - Windows Update service stopped
-   - Patch rollback triggered
-4. Update PATCHConfidenceScore field
-5. Trigger alerts if:
-   - Success rate < 90%
-   - Critical service failed
-   - Multiple devices reporting same error
-
-**Alert Example:**
 ```
-ALERT: Ring 1 OS Patching - Confidence Score Dropped
-Ring: Ring 1 - Pilot Production
-Confidence Score: 75 (threshold: 85)
-Issue: 3 devices failed to install KB5034441 (Windows Update)
-Affected Devices: APP-PROD-02, APP-PROD-05, APP-PROD-08
-Error: "Update failed with error 0x80070643"
-Action Required: Investigate KB5034441 compatibility
-Recommendation: Exclude KB5034441, promote Ring 1 → Ring 2 delayed
+Failed Installations: 0 in last hour
+
+Recent Failures (Last 24h):
+❌ APP-PROD-08 - KB5034441 (Error: 0x80070643)
+   Action: Retry scheduled for 23:00
+
+❌ SQL-DEV-02 - KB5034467 (Error: Disk space insufficient)
+   Action: Cleanup required, retrying after cleanup
 ```
 
 ---
 
-### Step 3: Post-Deployment Validation
+### Post-Deployment Validation
 
-**Navigate to:** Device > Patching Tab
+**After patches complete, verify success:**
 
-**For Each Device in Current Ring:**
+**Navigate to:** Patching > Reports > Deployment Summary
 
-#### Check 1: Patch Installation Status
 ```
-Expected: All patches "Installed"
-Actual: Review list
-Action: If "Failed" → Click for error details
-```
+Deployment Report: KB5034441 (Ring 1)
 
-#### Check 2: Reboot Status
-```
-Expected: Reboot completed, system uptime > 15 minutes
-Actual: Check device uptime
-Action: If pending reboot > 4 hours → Force reboot
-```
+Deployment Window: Feb 14, 2026 21:00-23:00
 
-#### Check 3: Windows Update Service
-```
-Expected: Windows Update service running
-Actual: Services > Windows Update > Status
-Action: If stopped → Start service, investigate logs
-```
+Device Summary:
+  Total Devices: 10
+  Successful: 9 (90%)
+  Failed: 1 (10%)
+  Pending: 0 (0%)
 
-#### Check 4: Event Log Errors
-```
-Expected: No critical errors in last 2 hours
-Actual: Event Viewer > System/Application logs
-Action: If errors → Review, correlate with patches
-```
+Installation Details:
+  Average Install Time: 14 minutes
+  Average Download Size: 125 MB
+  Total Reboots: 9 devices
 
-#### Check 5: Performance Baseline
-```
-Expected: CPU/Memory/Disk within ±10% of pre-patch baseline
-Actual: Compare current utilization to baseline
-Action: If degraded > 20% → Investigate, consider rollback
-```
+Failures:
+  APP-PROD-08: Error 0x80070643 (Windows Update corruption)
+  Resolution: Re-run Windows Update troubleshooter, retry
 
-**Validation Result:**
-- All checks passed → Device validated ✅
-- Any check failed → Device requires attention ⚠️
-- Critical failure → Initiate rollback 🚨
+Ring Validation:
+  Confidence Score: 92 (target: ≥85)
+  Service Health: 100% (all services running)
+  Performance Impact: -2% (within acceptable range)
+  Event Log Errors: 0 critical errors
+
+Recommendation: PASS - Promote to Ring 2 ✅
+```
 
 ---
 
-## PART 4: TROUBLESHOOTING OS PATCHING ISSUES
+## PART 6: TROUBLESHOOTING COMMON ISSUES
 
 ### Issue 1: Patch Installation Failed (Error 0x80070643)
 
-**Symptom:** Patch shows "Failed" in NinjaOne, error code 0x80070643
+**Symptom:** Patch shows "Failed" in dashboard, error code 0x80070643
 
 **Cause:** .NET Framework corruption or Windows Update components issue [web:345]
 
 **Solution:**
 ```powershell
-# Run on affected device
+# Run on affected device via NinjaOne script or remote tools
 
 # Stop Windows Update service
 Stop-Service -Name wuauserv -Force
@@ -407,10 +665,10 @@ DISM /Online /Cleanup-Image /RestoreHealth
 # Start Windows Update service
 Start-Service -Name wuauserv
 
-# Retry patch installation via NinjaOne
+# Retry patch via dashboard (Devices > [Device] > Patching > Retry Failed)
 ```
 
-**Prevention:** Run DISM health check in pre-patch validation (Script P2)
+**Prevention:** Run DISM health check in pre-patch validation
 
 ---
 
@@ -429,19 +687,15 @@ msg * "System reboot required to complete patching. Please save work and reboot 
 shutdown /r /f /t 300 /c "Forced reboot for patching - 5 minutes"
 ```
 
-**Solution 2 (Server):**
-```powershell
-# Check which services preventing shutdown
-Get-Service | Where-Object {$_.Status -eq "Running" -and $_.ServicesDependedOn}
+**Solution 2 (Server - via Dashboard):**
+1. Navigate to: Devices > [Device Name] > Actions
+2. Click "Force Reboot Now"
+3. Confirmation dialog: "Force reboot SQL-PROD-01?"
+   - Reboot delay: [5] minutes (grace period for service shutdown)
+   - [✓] Notify logged-in users
+4. Click "Force Reboot"
 
-# Stop non-critical services
-Stop-Service -Name "ServiceName" -Force
-
-# Force reboot
-Restart-Computer -Force
-```
-
-**Prevention:** Set aggressive force reboot timeout in policy (Ring 3: 60 min, Ring 2: 30 min)
+**Prevention:** Set aggressive force reboot timeout in policy
 
 ---
 
@@ -451,22 +705,36 @@ Restart-Computer -Force
 
 **Cause:** Patch incompatibility with application (e.g., KB5034441 breaks legacy .NET apps)
 
-**Solution:**
-```powershell
-# Immediate: Uninstall problematic patch
-wusa /uninstall /kb:5034441 /quiet /norestart
+**Solution via Dashboard:**
+1. **Navigate to:** Patching > Patches > Installed
+2. **Search for:** KB5034441
+3. **Click patch > Actions > Uninstall**
+4. **Uninstall Dialog:**
+   ```
+   Uninstall Patch: KB5034441
 
-# Reboot device
-Restart-Computer -Force
+   Affected Devices: 45 devices
 
-# In NinjaOne: Exclude patch from future deployments
-# Administration > Patching > Patch Exclusions > Add KB5034441
-```
+   Select devices to uninstall from:
+   [✓] SQL-PROD-01 (application broken)
+   [ ] All other devices (keep installed)
+
+   Reboot after uninstall: [✓] Yes (required)
+   Reboot delay: [15] minutes
+
+   After uninstall:
+   [✓] Exclude patch from future deployments
+   Reason: "Breaks legacy .NET application XYZ"
+   ```
+5. **Click "Uninstall Patch"**
+6. **Verify exclusion:**
+   - Navigate to: Patching > Settings > Exclusions
+   - Confirm KB5034441 listed
+   - Re-enable in 30 days (check for updated patch)
 
 **Prevention:**
 - Test patches on Ring 0 lab devices with all critical applications
-- Maintain application compatibility matrix (KB number vs app version)
-- Use Ring 1 pilot group with diverse application workloads
+- Maintain application compatibility matrix
 
 ---
 
@@ -476,34 +744,41 @@ Restart-Computer -Force
 
 **Cause:** Corrupted Windows Update database or service dependency failure
 
-**Solution:**
-```powershell
-# Check service dependencies
-sc qc wuauserv
+**Solution via Dashboard:**
+1. Navigate to: Devices > [Device] > Services
+2. Check service dependencies:
+   - Windows Update (wuauserv): Status = Stopped
+   - BITS (bits): Status = ?
+   - Cryptographic Services (cryptsvc): Status = ?
+   - MSI Installer (msiserver): Status = ?
 
-# Check dependent services status
-Get-Service BITS, CryptSvc, msiserver | Select Name, Status
+3. If dependencies stopped, run repair script:
+   ```powershell
+   # Deploy via NinjaOne script engine
 
-# Reset Windows Update service
-net stop wuauserv
-net stop bits
-net stop cryptsvc
+   # Stop all Windows Update services
+   net stop wuauserv
+   net stop bits
+   net stop cryptsvc
 
-# Rename SoftwareDistribution folder
-ren C:\Windows\SoftwareDistribution SoftwareDistribution.old
+   # Rename SoftwareDistribution folder
+   ren C:\Windows\SoftwareDistribution SoftwareDistribution.old
 
-# Restart services
-net start wuauserv
-net start bits
-net start cryptsvc
+   # Restart services
+   net start wuauserv
+   net start bits
+   net start cryptsvc
 
-# Re-register Windows Update DLLs
-regsvr32 wuaueng.dll /s
-regsvr32 wups.dll /s
-regsvr32 wuapi.dll /s
-```
+   # Re-register Windows Update DLLs
+   regsvr32 wuaueng.dll /s
+   regsvr32 wups.dll /s
+   regsvr32 wuapi.dll /s
+   ```
 
-**Prevention:** Run service health check in pre-patch validation (Script P2)
+4. Verify in dashboard:
+   - Devices > [Device] > Services
+   - Windows Update service should show "Running"
+   - Trigger patch scan: Devices > [Device] > Patching > Scan Now
 
 ---
 
@@ -511,144 +786,51 @@ regsvr32 wuapi.dll /s
 
 **Symptom:** Windows 10 upgraded to Windows 11, or Server 2019 → 2022
 
-**Cause:** Patch policy misconfigured, Feature Updates not set to "Require Approval"
+**Cause:** Patch policy misconfigured, Feature Updates not excluded
 
-**Solution (Rollback):**
-```powershell
-# Windows has 10-day rollback window for feature updates
+**Solution via Dashboard:**
+1. **Navigate to:** Devices > [Device] > Patching > Installed
+2. **Identify feature update:** Look for "Feature Update to Windows 11"
+3. **Check rollback window:**
+   - Windows allows 10-day rollback for feature updates
+   - If within 10 days: Rollback available
+   - If beyond 10 days: Rollback not possible (restore from backup)
 
-# Option 1: GUI rollback
-Settings > Update & Security > Recovery > Go back to previous version
+4. **Rollback via Dashboard (within 10 days):**
+   - Navigate to: Devices > [Device] > Actions
+   - Click "Rollback Feature Update"
+   - Confirmation: "This will revert Windows 11 back to Windows 10"
+   - Click "Rollback Now"
+   - Device reboots and reverts (takes 30-60 minutes)
 
-# Option 2: Command line rollback
-# Run from WinPE or Safe Mode
-DISM /Image:C:\ /Cleanup-Image /RevertPendingActions
-```
+5. **Prevent future:**
+   - Navigate to: Patching > Settings > Patch Categories
+   - Feature Updates: Set to "Require Approval" (never auto-approve)
+   - Save settings
 
 **Prevention:**
-- Set Feature Updates to "Require Approval" in all policies
-- Exclude Feature Updates from auto-approval
-- Test feature updates on Ring 0 only, manually promote to Ring 1+
-
----
-
-## PART 5: BEST PRACTICES FOR OS PATCHING [web:315][web:345]
-
-### Pre-Patch Preparation
-1. **Verify backups:** All devices must have successful backup < 24 hours old
-2. **Check disk space:** Minimum 10 GB free on C: drive (patches need temp space)
-3. **Test on Ring 0:** Always test patches on lab devices first (48-hour validation)
-4. **Review patch notes:** Check Microsoft release notes for known issues
-
-### During Patch Deployment
-1. **Monitor actively:** Watch dashboard during maintenance window
-2. **Have war room:** For Ring 3 (critical systems), staff IT team during deployment
-3. **Staged reboots:** Stagger reboot times to avoid network/infrastructure overload
-4. **Communication:** Notify users 24-48 hours before Ring 2/3 deployments
-
-### Post-Patch Validation
-1. **Service health:** Verify all critical services running
-2. **Application testing:** Test business-critical applications
-3. **Performance check:** Compare CPU/Memory/Disk to baseline (within ±10%)
-4. **Event logs:** Review for critical errors in last 2 hours
-5. **User feedback:** Collect feedback from Ring 1 (IT staff, pilot users)
-
-### Patch Exclusions
-**When to Exclude a Patch:**
-- Breaks critical application
-- Causes boot failure or BSOD
-- Significant performance degradation (> 20%)
-- Microsoft issues official guidance to uninstall
-
-**How to Exclude:**
-```
-NinjaOne: Administration > Patching > Patch Exclusions
-Add KB number: KB5034441
-Reason: "Breaks legacy .NET application XYZ"
-Applies to: All devices OR specific group
-Review date: 30 days (re-evaluate monthly)
-```
-
----
-
-## PART 6: OS PATCHING COMPLIANCE REPORTING
-
-### Daily Compliance Check (Script P4)
-
-**Script P4 generates OS patching compliance report:**
-
-**Metrics Tracked:**
-- Missing Critical OS patches (count per device)
-- Missing Important OS patches (count per device)
-- Days since last OS patch (calculated from PATCHLastPatchDate)
-- Compliance status (Compliant / Warning / Non-Compliant / Critical)
-
-**Compliance Thresholds:**
-```
-Compliant: 
-  - 0 missing Critical patches
-  - 0-2 missing Important patches
-  - Last patched < 30 days ago
-
-Warning:
-  - 0 missing Critical patches
-  - 3-5 missing Important patches
-  - Last patched 30-60 days ago
-
-Non-Compliant:
-  - 0 missing Critical patches
-  - 6+ missing Important patches
-  - Last patched 61-90 days ago
-
-Critical:
-  - 1+ missing Critical patches
-  - OR last patched > 90 days ago
-```
-
-### Executive Dashboard
-
-**Create Executive Summary Widget:**
-```
-Widget: OS Patching Compliance Summary
-Metrics:
-  - Total devices: 500
-  - Compliant: 475 (95%)
-  - Warning: 15 (3%)
-  - Non-Compliant: 8 (1.6%)
-  - Critical: 2 (0.4%)
-
-  - Average days since last patch: 14 days
-  - Ring 3 average: 21 days (acceptable, delayed by design)
-
-  - Patches deployed this month: 1,245
-  - Success rate: 97.2%
-  - Failed patches: 35 (2.8%)
-```
-
-**Trend Chart (Last 3 Months):**
-- Show compliance improving over time
-- Target: 95%+ compliant month-over-month
+- Always set Feature Updates to "Require Approval"
+- Test feature updates on Ring 0 only, manually promote if needed
 
 ---
 
 ## SUMMARY CHECKLIST
 
-### OS Patching Configuration Complete When:
-- ☐ Windows Update settings configured (scan frequency, approval defaults)
-- ☐ 2 policy templates created (Server + Workstation)
-- ☐ 4 ring-based policies configured (Ring 0, 1, 2, 3)
-- ☐ Policies applied to dynamic groups (ring-based)
-- ☐ Pre/Post validation scripts deployed (Scripts P2, P3)
-- ☐ Monitoring dashboard configured (4 widgets minimum)
-- ☐ Automated monitoring enabled (Script PR2 every 4 hours)
-- ☐ Compliance reporting configured (Script P4 daily)
-- ☐ Rollback procedures documented and tested
-- ☐ IT staff trained on troubleshooting common issues
+### Dashboard Operations Complete When You Can:
+- ☐ Navigate patch management dashboard confidently
+- ☐ Review available patches and assess priority
+- ☐ Approve patches for specific rings manually
+- ☐ Apply patches to individual devices
+- ☐ Apply patches to device groups (bulk)
+- ☐ Monitor real-time deployment progress
+- ☐ Validate post-deployment success
+- ☐ Troubleshoot 5 common patching issues
+- ☐ Uninstall problematic patches
+- ☐ Exclude patches from future deployment
 
 ---
 
-**Version:** 1.0  
-**Last Updated:** February 1, 2026  
-**Applies To:** Windows Server 2016+, Windows 10/11  
-**Industry Standards:** Microsoft best practices [web:329], NinjaOne recommendations [web:338][web:339]  
-**Next:** 47_PATCH_Software_Patching_Tutorial.md (third-party applications)
+**Version:** 2.0 (Dashboard Operations Focus)  
+**Last Updated:** February 1, 2026, 5:37 PM CET  
+**Related:** 48_PATCH_Policy_Configuration_Guide.md (policy setup)  
+**Related:** 44_PATCH_Ring_Based_Deployment.md (ring strategy)

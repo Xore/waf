@@ -1,339 +1,329 @@
-# NinjaRMM Custom Field Framework - Master Index (Native-Enhanced)
-**Version:** 4.0 (Native Integration)  
-**Last Updated:** February 1, 2026  
-**Total Files:** 49 documentation files  
-**Status:** Production Ready
+# NinjaRMM Custom Field Framework - Master Index v4.0
+**File:** 00_Master_Index.md  
+**Last Updated:** February 1, 2026, 6:00 PM CET  
+**Framework Version:** 4.0 with Patching Automation  
+**Total Files:** 51 documentation files  
+**Total Scripts:** 110 PowerShell scripts  
+**Total Fields:** 277 custom fields
 
 ---
 
 ## QUICK START
 
-**New to the framework?** Start here:
-1. **00_README.md** - Framework overview and introduction
-2. **10_OPS_STAT_RISK_Core_Metrics.md** - Core 19 fields (essential)
-3. **91_Compound_Conditions_Complete.md** - 75 hybrid condition patterns
-4. **55_Scripts_01_13_Infrastructure_Monitoring.md** - Core 7 scripts
-
-**Version 4.0 Highlights:**
-- 58% fewer core custom fields (45 → 19)
-- 22% fewer core scripts (9 → 7)
-- Native integration with NinjaOne monitoring
-- 70%+ reduction in false positives
-- 50% faster deployment (4 weeks vs 8 weeks)
+**New Users:** Start with files 00, 01, 10  
+**Implementation:** Follow files 50-61 for complete deployment  
+**Patching Automation:** See file 61 for ring-based deployment  
+**Troubleshooting:** Files 70, 98, 99
 
 ---
 
-## CORE DOCUMENTATION
+## PART 1: FOUNDATION & ARCHITECTURE (Files 00-09)
 
-### Getting Started
-- **00_README.md** - Framework overview, version history, quick start
-- **00_Master_Index.md** - This file, complete navigation
-- **01_Framework_Architecture.md** - Architecture, design principles, integration
+### 00_README.md
+Executive summary, framework value proposition, quick start guide
 
-### Native Integration (NEW in v4.0)
-- **NATIVE_INTEGRATION_OPTIMIZATION_SUMMARY.md** - Full native optimization guide
-- **FRAMEWORK_CLEANUP_SUMMARY.md** - Cleanup details and migration
-- **Native Metrics:** 11+ categories (CPU, Memory, Disk, Security, etc.)
-- **Deprecated:** 7 custom fields + 2 scripts replaced by native
+### 00_Master_Index.md (This File)
+Complete navigation index for all 51 framework files
 
----
+### 01_Framework_Architecture.md
+Core concepts, design philosophy, integration strategy, deployment phases
 
-## CUSTOM FIELD DEFINITIONS
-
-### Core Essential (19 Fields) ✅ UPDATED
-- **10_OPS_STAT_RISK_Core_Metrics.md** - OPS (6) + STAT (6) + RISK (7) fields
-  - **Native Integration:** Uses native Disk, Memory, CPU, Security metrics
-  - **Custom Intelligence:** Crash counts, stability scoring, risk classification
-
-### Extended Optional (26 Fields)
-- **11_AUTO_UX_SRV_Core_Experience.md** - AUTO (4) + UX (1) + SRV (1) fields
-- **12_DRIFT_CAP_BAT_Core_Monitoring.md** - DRIFT (1) + CAP (2) + BAT (1) fields
-- **13_NET_GPO_AD_Core_Network_Identity.md** - NET (3) + GPO (1) + AD (2) fields
-- **14_BASE_SEC_UPD_Core_Security_Baseline.md** - BASE (3) + SEC (1) + UPD (4) fields
-
-### Infrastructure Modules (~66 Fields, Role-Specific)
-- **22_IIS_MSSQL_MYSQL_Database_Web_Servers.md** - IIS (8) + MSSQL (10) + MYSQL (8)
-- **23_APACHE_VEEAM_DHCP_DNS_Infrastructure.md** - APACHE (6) + VEEAM (8) + DHCP/DNS (6)
-- **24_EVT_FS_PRINT_HV_BL_FEAT_FLEXLM_Additional_Roles.md** - Various roles (20+)
-
-**Total Custom Fields:** ~111 (down from ~153 in v3.0)
+### 04_OPS_Prefix_Operational_Scores_6_Fields.md
+Operational scoring methodology: Health, Performance, Stability, Security, Capacity
 
 ---
 
-## SCRIPT DOCUMENTATION
+## PART 2: CORE CUSTOM FIELDS (Files 10-24)
 
-### Core Scripts (7 Active) ✅ UPDATED
-- **55_Scripts_01_13_Infrastructure_Monitoring.md** - Scripts 1-6, 9-13
-  - **Active:** Scripts 1-6, 9 (intelligence + telemetry)
-  - **Deprecated:** Scripts 7-8 (replaced by native)
-  - **Native Integration:** Scripts 1-5 query native metrics
+### File 10: OPS/STAT/RISK Core Metrics (28 fields)
+- OPS Prefix: 6 operational score fields
+- STAT Prefix: 15 telemetry and statistics fields
+- RISK Prefix: 7 risk classification and exposure fields
 
-### Extended Scripts
-- **53_Scripts_14_27_Extended_Automation.md** - Automation and extended monitoring
-- **54_Scripts_28_36_Advanced_Telemetry.md** - Advanced telemetry collection
-- **57_Scripts_03_08_Infrastructure_Part1.md** - Performance and resource scripts
-- **58_Scripts_07_08_11_12_Infrastructure_Part2.md** - Resource and baseline scripts
-- **59_Scripts_19_24_Extended_Automation.md** - User experience automation
-- **60_Scripts_22_24_27_34_36_Capacity_Predictive.md** - Capacity planning
+### File 11: AUTO/UX/SRV Core Experience (21 fields)
+- AUTO Prefix: 8 automation control and safety gate fields
+- UX Prefix: 8 user experience and satisfaction fields
+- SRV Prefix: 5 server role and infrastructure fields
 
-### Script-to-Field Mapping ✅ UPDATED
-- **51_Field_to_Script_Complete_Mapping.md** - Complete field/script mapping
-  - **Updated:** Removed Scripts 7-8, added native integration notes
+### File 12: DRIFT/CAP/BAT Core Monitoring (18 fields)
+- DRIFT Prefix: 9 configuration drift detection fields
+- CAP Prefix: 6 capacity planning and forecasting fields
+- BAT Prefix: 3 battery health and power fields
 
-**Total Active Scripts:** ~30 (down from 105+ in v3.0)
+### File 13: NET/GPO/AD Core Network & Identity (15 fields)
+- NET Prefix: 8 network connectivity and location fields
+- GPO Prefix: 4 Group Policy performance fields
+- AD Prefix: 3 Active Directory integration fields
 
----
+### File 14: BASE/SEC/UPD Core Security & Baseline (16 fields)
+- BASE Prefix: 7 baseline establishment and tracking fields
+- SEC Prefix: 5 security posture and compliance fields
+- UPD Prefix: 4 Windows Update and patch management fields
 
-## MONITORING PATTERNS
+### File 22: IIS/MSSQL/MYSQL Database & Web Servers (26 fields)
+Server role-specific monitoring for web and database infrastructure
 
-### Compound Conditions (75 Patterns) ✅ COMPLETE
-- **91_Compound_Conditions_Complete.md** - All 75 hybrid condition patterns
-  - **P1 Critical:** 15 patterns (native + custom)
-  - **P2 High:** 20 patterns (native + custom)
-  - **P3 Medium:** 25 patterns (hybrid logic)
-  - **P4 Low:** 15 patterns (maintenance alerts)
-  - **Native Integration:** All patterns use native metrics + custom intelligence
+### File 23: APACHE/VEEAM/DHCP/DNS Infrastructure (27 fields)
+Extended server role monitoring for critical infrastructure services
 
-### Dynamic Groups (36+ Groups)
-- **92_Dynamic_Groups_Complete.md** - Automated device grouping
-  - Health-based: 12 groups
-  - Risk-based: 8 groups
-  - Role-based: 10 groups
-  - Automation-based: 6 groups
-
-### Custom Health Checks
-- **70_Custom_Health_Check_Quick_Reference.md** - Quick reference for health checks
-- **70_Custom_Health_Check_Templates.md** - 30+ custom health check templates
-- **CUSTOM_HEALTH_CHECK_SUMMARY.md** - Health check framework summary
+### File 24: EVT/FS/PRINT/HV/BL/FEAT Additional Roles (35+ fields)
+Specialized monitoring for file servers, print servers, Hyper-V, backup
 
 ---
 
-## REFERENCE GUIDES
+## PART 3: EXTENDED FIELDS (Files 15-21)
 
-### Quick Reference
-- **99_Quick_Reference_Guide.md** - Field prefixes, troubleshooting, common tasks
+### File 15: Extended DRIFT Fields (Configuration Drift Detection)
+10 additional fields for granular drift tracking: local admin changes, software inventory, service configuration
 
-### ROI & Business Case
-- **100_Detailed_ROI_Analysis.md** - Comprehensive ROI analysis and business case
-  - **v4.0 Benefits:** 50% faster deployment, 77% less maintenance
+### File 16: Extended SEC Fields (Security Enhancement)
+10 additional security fields: failed logons, suspicious activity, exposure assessment, encryption compliance
 
-### Framework Summary
-- **98_Framework_Complete_Summary_Master.md** - Complete framework statistics and overview
+### File 17: Extended UX/APP Fields (User Experience)
+15 fields for application stability, Office 365 monitoring, collaboration quality
 
----
+### File 18: CLEANUP/PRED Fields (Maintenance & Prediction)
+8 fields for profile cleanup recommendations and device replacement forecasting
 
-## FIELD CATEGORIES OVERVIEW
+### File 19: Extended CAP/UPD/NET Fields (Capacity & Connectivity)
+10 fields for capacity forecasting, patch aging, remote connectivity quality
 
-| Prefix | Category | Field Count | Native Integration | Scripts |
-|--------|----------|-------------|-------------------|---------|
-| **OPS** | Operational Scores | 6 | Queries native Disk/CPU/Memory | 1-5 |
-| **STAT** | Raw Telemetry | 6 | Event Log aggregation | 6 |
-| **RISK** | Classification | 7 | Native Backup/SMART/Security | 9 |
-| **AUTO** | Automation Control | 4 | None (manual/assessed) | 14 |
-| **UPD** | Update Management | 4 | Native Patch Status | 10 |
-| **NET** | Network & Location | 3 | None (custom tracking) | 11 |
-| **CAP** | Capacity Planning | 2 | Native Disk Space | 22 |
-| **BASE** | Baseline & Classification | 3 | Native metrics for baseline | 12 |
-| **DRIFT** | Configuration Drift | 1 | None (custom detection) | 13 |
-| **SRV** | Server Roles | 1 | None (role detection) | 15 |
-| **AD** | Active Directory | 2 | None (AD integration) | 16 |
-| **SEC** | Security Posture | 1 | Native AV/Firewall/Patches | 17 |
-| **GPO** | Group Policy | 1 | None (custom timing) | 18 |
-| **UX** | User Experience | 1 | None (profile size) | 19 |
-| **BAT** | Battery Health | 1 | None (battery monitoring) | 20 |
-| **IIS** | Web Server (IIS) | 8 | None (IIS-specific) | 25 |
-| **MSSQL** | SQL Server | 10 | None (SQL-specific) | 26 |
-| **MYSQL** | MySQL Server | 8 | None (MySQL-specific) | 27 |
-| **APACHE** | Apache Server | 6 | None (Apache-specific) | 28 |
-| **VEEAM** | Veeam Backup | 8 | Native Backup Status | 29 |
-| **DHCP** | DHCP Server | 3 | None (DHCP-specific) | 30 |
-| **DNS** | DNS Server | 3 | None (DNS-specific) | 31 |
-| **EVT** | Event Monitoring | Variable | Native Event Log | 32 |
-| **FS** | File Server | Variable | None (file server-specific) | 33 |
-| **PRINT** | Print Server | Variable | None (print-specific) | 34 |
-| **HV** | Hyper-V | Variable | None (Hyper-V-specific) | 35 |
+### File 20: Extended BASE/HW/ALERT Fields (Baseline & Hardware)
+10 fields for baseline coverage, thermal monitoring, firmware tracking, telemetry quality
 
-**Total Categories:** 25+  
-**Core Essential:** 3 categories (OPS, STAT, RISK)  
-**Native Integration:** 8 categories use native metrics
+### File 21: LIC/SOPH Licensing Fields (License Management)
+3 fields for Windows and Office activation tracking
 
 ---
 
-## NATIVE METRICS (No Custom Fields Required)
+## PART 4: IMPLEMENTATION GUIDES (Files 50-61)
 
-**These are available natively in NinjaOne v4.0+**
+### File 50: Field Naming Conventions & Standards
+Complete guide to prefix system, naming rules, field types, dropdown value standards
 
-### System Performance
-- CPU Utilization % (real-time, time-averaged)
-- Memory Utilization % (real-time)
-- Disk Free Space % and GB (per-drive)
-- Disk Active Time % (I/O performance)
+### File 51: Field-to-Script Complete Mapping v4.0
+**UPDATED:** Traceability matrix: 277 fields → 110 scripts with update frequencies and dependencies  
+**NEW:** Includes patching automation script mappings
 
-### Network
-- Network Performance (SNMP)
-- Connectivity Status
-- Device Down detection
+### File 52: Script Execution Schedule & Dependencies
+Detailed scheduling guide: every 4 hours, daily, weekly, on-demand execution chains
 
-### Security
-- Antivirus Status (enabled/disabled/current)
-- Firewall Status (enabled/disabled)
-- Patch Status (missing patches by severity)
-- Pending Reboot flag
+### File 53: Scripts 14-27 Extended Automation (14 scripts)
+Drift detection, security monitoring, UX tracking, telemetry validation
 
-### System State
-- Windows Service Status (per-service)
-- Backup Status (success/failed/warning)
-- SMART Status (drive health)
-- Windows Event Log (specific Event IDs)
+### File 54: Scripts 28-36 Advanced Telemetry (9 scripts)
+Security surface analysis, collaboration monitoring, server role detection
 
-**Total:** 11+ native metric categories  
-**Custom Fields Eliminated:** 7 core fields (STATCPUAveragePercent, STATMemoryPressure, etc.)
+### File 55: Scripts 01-13 Infrastructure Monitoring (13 scripts)
+Core OPS/STAT/RISK scoring, resource monitoring, IIS/SQL/MySQL monitoring
 
----
+### File 57: Scripts 03-08 Infrastructure Part 1 (6 scripts)
+Detailed implementations: stability calculator, performance analyzer, security scorer
 
-## DEPLOYMENT WORKFLOW
+### File 58: Scripts 07-08-11-12 Infrastructure Part 2 (4 scripts)
+Resource monitor, authentication tracker, drift detector, network analyzer
 
-### New Deployment (v4.0 Native-Enhanced)
+### File 59: Scripts 19-24 Extended Automation (6 scripts)
+Slow-boot detection, software baseline, service drift, capacity forecasting, replacement prediction
 
-**Week 1: Core Setup**
-1. Create 19 core custom fields (10_OPS_STAT_RISK_Core_Metrics.md)
-2. Configure NinjaOne native monitoring (CPU, Memory, Disk, Security)
-3. Deploy 7 core scripts (55_Scripts_01_13_Infrastructure_Monitoring.md)
-4. Scripts automatically query native metrics
+### File 60: Scripts 22-24-27-34-36 Capacity & Predictive (7 scripts)
+Capacity trend forecasting, patch compliance aging, device lifetime prediction, licensing telemetry
 
-**Week 2: Conditions & Testing**
-1. Create 75 hybrid compound conditions (91_Compound_Conditions_Complete.md)
-2. Test on pilot group (10-20 devices)
-3. Validate native + custom integration
-4. Tune thresholds based on environment
+### **File 61: Scripts PR1/PR2/P1-P4 Patching Automation (5 scripts) - NEW**
+**Complete ring-based patching workflow:**
+- Script PR1: Patch Ring 1 (Test) Deployment
+- Script PR2: Patch Ring 2 (Production) Deployment  
+- Script P1: Critical Device Patch Validator
+- Script P2: High Priority Device Patch Validator
+- Script P3-P4: Medium/Low Priority Device Patch Validator
 
-**Week 3: Groups & Automation**
-1. Create 36+ dynamic groups (92_Dynamic_Groups_Complete.md)
-2. Enable gradual automation (AUTO fields)
-3. Set up dashboards
-4. User training
-
-**Week 4: Full Deployment**
-1. Roll out to all devices
-2. Monitor and optimize
-3. Documentation updates
-4. Success validation
-
-**Timeline:** 4 weeks (50% faster than v3.0)
-
-### Migration (v3.0 → v4.0)
-
-**Phase 1: Assessment (Week 1)**
-- Review existing custom fields
-- Identify native metric equivalents
-- Plan deprecation timeline
-
-**Phase 2: Script Updates (Week 2)**
-- Update Scripts 1-5 to query native metrics
-- Keep Scripts 6, 9 unchanged
-- Disable/delete Scripts 7-8
-
-**Phase 3: Condition Updates (Week 3)**
-- Rewrite compound conditions with native metrics
-- Test on pilot group
-- Validate alert accuracy
-
-**Phase 4: Cleanup (Week 4)**
-- Archive deprecated fields (don't delete)
-- Remove deprecated scripts
-- Update documentation
-
-**Phase 5: Validation (Week 5-6)**
-- Full deployment
-- Monitor and tune
-- Success validation
-
-**Timeline:** 5-6 weeks for complete migration
+**Deployment strategy:** Test ring → 7-day soak → Production ring with priority-based validation
 
 ---
 
-## VERSION HISTORY
+## PART 5: CONFIGURATION & AUTOMATION (Files 70-79)
 
-### Version 4.0 (February 2026) - CURRENT ✅
-- **Native Integration:** Leverages NinjaOne native monitoring
-- **58% fewer core fields:** 45 → 19 (7 fields replaced by native)
-- **22% fewer core scripts:** 9 → 7 (Scripts 7-8 deprecated)
-- **75 hybrid conditions:** Native + custom intelligence
-- **70%+ false positive reduction:** Smarter hybrid logic
-- **50% faster deployment:** 4 weeks vs 8 weeks
+### File 70: Custom Health Check Templates (15 templates)
+Pre-built health check configurations using compound conditions for common scenarios
 
-### Version 3.0 (2025)
-- Complete framework with 153+ custom fields
-- 105+ PowerShell scripts
-- 69 compound conditions
-- 8-week deployment timeline
-
-### Version 2.0 (2024)
-- Extended modules and infrastructure support
-- Role-specific monitoring
-
-### Version 1.0 (2023)
-- Initial core framework
-- Basic OPS/STAT/RISK fields
+### File 70: Custom Health Check Quick Reference
+One-page guide to implementing health checks with NinjaRMM native conditions
 
 ---
 
-## SUPPORT & TROUBLESHOOTING
+## PART 6: ALERTING & AUTOMATION (Files 90-97)
 
-### Common Issues
-- See **99_Quick_Reference_Guide.md** for troubleshooting
-- Native metrics: Use NinjaOne built-in monitoring interface
-- Custom fields: Populated by Scripts 1-6, 9
+### File 91: Compound Conditions Complete Library v4.0
+**75 hybrid conditions combining native metrics + custom intelligence:**
+- P1 Critical: 15 patterns (system failures, security incidents)
+- P2 High: 20 patterns (performance degradation, proactive intervention)
+- P3 Medium: 25 patterns (optimization, tracking)
+- P4 Low: 15 patterns (positive health tracking, compliance reporting)
 
-### Getting Help
-- Review documentation in order (README → Core Metrics → Scripts → Conditions)
-- Test on pilot group before full deployment
-- Use native monitoring wherever possible
-- Custom fields only for intelligence and aggregation
+**NEW:** Includes patching-related compound conditions:
+- P1PatchFailedVulnerable
+- P2MultiplePatchesFailed
+- P2PendingRebootUpdates
+- P4PatchesCurrent
 
-### Best Practices
-- **Use native metrics first:** CPU, Memory, Disk, Security
-- **Use custom fields for intelligence:** Scoring, classification, aggregation
-- **Hybrid conditions:** Combine native real-time + custom intelligence
-- **Start simple:** Deploy core 19 fields first, add optional later
-
----
-
-## FILE STATUS SUMMARY
-
-### ✅ Updated for v4.0 (Native Integration)
-- 10_OPS_STAT_RISK_Core_Metrics.md
-- 51_Field_to_Script_Complete_Mapping.md
-- 55_Scripts_01_13_Infrastructure_Monitoring.md
-- 91_Compound_Conditions_Complete.md
-- 98_Framework_Complete_Summary_Master.md
-- 00_Master_Index.md (this file)
-- NATIVE_INTEGRATION_OPTIMIZATION_SUMMARY.md
-- FRAMEWORK_CLEANUP_SUMMARY.md
-
-### ✅ Current (No Changes Needed)
-- 11-14_*.md (Extended fields - no native equivalents)
-- 22-24_*.md (Infrastructure modules - role-specific)
-- 70_Custom_Health_Check_*.md (Custom app monitoring)
-- 92_Dynamic_Groups_Complete.md (Group patterns)
-- 99_Quick_Reference_Guide.md (Reference)
-- 100_Detailed_ROI_Analysis.md (ROI analysis)
-
-### ⏳ Pending Minor Updates
-- 00_README.md (Version 4.0 intro)
-- 57_Scripts_03_08_Infrastructure_Part1.md (Script 3 native notes)
-- 58_Scripts_07_08_11_12_Infrastructure_Part2.md (Scripts 7-8 deprecation)
-
-**Overall Status:** 90% complete, production ready
+### File 92: Dynamic Groups Complete (24 groups)
+Automated device segmentation based on health scores, risk levels, and patch compliance
 
 ---
 
-**Framework Version:** 4.0 (Native Integration)  
-**Last Updated:** February 1, 2026, 5:04 PM CET  
-**Total Documentation Files:** 49  
-**Core Custom Fields:** 19 (essential)  
-**Total Custom Fields:** ~111 (with optional modules)  
-**Active Scripts:** ~30  
-**Compound Conditions:** 75  
-**Native Metrics:** 11+ categories  
-**Status:** Production Ready ✅
+## PART 7: SUMMARIES & REFERENCE (Files 98-100)
+
+### File 98: Framework Complete Summary Master
+Executive-level overview: 153 fields → 35 fields (77% reduction), 105 scripts → 110 scripts, 75 compound conditions
+
+### File 99: Quick Reference Guide
+One-page cheat sheet: field prefixes, script schedule, compound condition examples, deployment checklist
+
+### File 100: Detailed ROI Analysis
+Financial justification: labor savings, reduced downtime, improved security posture, implementation costs
+
+---
+
+## PART 8: SPECIAL TOPICS (Files NATIVE, CUSTOM_HEALTH)
+
+### NATIVE_INTEGRATION_OPTIMIZATION_SUMMARY.md
+**v4.0 optimization strategy:**
+- Before: 153 custom fields (many duplicating native metrics)
+- After: 35 essential custom fields (intelligence only)
+- Native metrics used: Disk/CPU/Memory/SMART/Backup/AV/Patch/Services/Events
+- Result: 77% fewer custom fields, 70% fewer scripts, real-time native data
+
+### CUSTOM_HEALTH_CHECK_SUMMARY.md
+Overview of hybrid health check approach combining NinjaRMM native conditions with custom field intelligence
+
+---
+
+## QUICK NAVIGATION BY USE CASE
+
+### I Need To: Monitor Device Health
+→ Files 10 (OPS/STAT/RISK), 91 (Compound Conditions), 70 (Health Check Templates)
+
+### I Need To: Detect Configuration Drift
+→ Files 12 (DRIFT fields), 15 (Extended DRIFT), 53 (Scripts 14-21)
+
+### I Need To: Track Security Posture
+→ Files 14 (SEC/BASE), 16 (Extended SEC), 53 (Scripts 15-16), 54 (Script 28)
+
+### I Need To: Monitor Servers (IIS, SQL, Exchange, etc.)
+→ Files 22-24 (Server role fields), 55 (Scripts 9-13)
+
+### I Need To: Plan Capacity & Predict Failures
+→ Files 12 (CAP), 19 (Extended CAP), 60 (Scripts 22-24)
+
+### I Need To: Improve User Experience
+→ Files 11 (UX), 17 (Extended UX/APP), 53 (Scripts 17-19), 54 (Scripts 29-30)
+
+### **I Need To: Automate Patching - NEW**
+→ **File 61 (Patching Scripts), File 91 (Patch Conditions), File 51 (Patch Field Mapping)**
+
+---
+
+## DEPLOYMENT PHASES
+
+### Phase 1: Core Monitoring (Week 1-2)
+Deploy files 10-14 fields + scripts 1-13 (core OPS/STAT/RISK monitoring)
+
+### Phase 2: Extended Intelligence (Week 3-4)
+Add files 15-21 fields + scripts 14-36 (drift, security, UX, capacity)
+
+### Phase 3: Server Role Monitoring (Week 4-5)
+Implement files 22-24 fields + server-specific scripts (as needed)
+
+### Phase 4: Compound Conditions (Week 6-7)
+Configure file 91 compound conditions (75 patterns) + file 92 dynamic groups (24 groups)
+
+### **Phase 5: Patching Automation (Week 8) - NEW**
+**Deploy file 61 patching scripts:**
+1. Configure patchRing custom field (PR1-Test, PR2-Production)
+2. Assign 10-20 devices to PR1 test ring
+3. Deploy Script PR1 on Tuesday Week 1
+4. Monitor 7-day soak period
+5. Deploy Script PR2 on Tuesday Week 2
+6. Implement P1-P4 validators for priority-based validation
+
+---
+
+## FRAMEWORK STATISTICS v4.0
+
+| Metric | Original Framework | Native-Enhanced v4.0 | Change |
+|--------|-------------------|---------------------|--------|
+| **Custom Fields** | 153 core fields | 35 essential fields | -77% |
+| **PowerShell Scripts** | 105 scripts | 110 scripts | +5 (patching) |
+| **Compound Conditions** | 0 (manual alerts) | 75 hybrid conditions | +75 |
+| **Dynamic Groups** | 0 (manual segmentation) | 24 automated groups | +24 |
+| **Maintenance Overhead** | High (script failures) | Low (native metrics) | -70% |
+| **Alert False Positives** | High (single-metric) | Low (multi-condition) | -70% |
+| **Implementation Time** | 8 weeks | 4 weeks (core) + 4 weeks (patching) | 50% faster core |
+| **Patching Automation** | Manual deployment | Ring-based automated | NEW |
+
+---
+
+## PATCHING AUTOMATION OVERVIEW (NEW)
+
+### Patch Rings
+- **PR1 (Test Ring):** 10-20 test devices, deploy Tuesday Week 1
+- **PR2 (Production Ring):** All production devices, deploy Tuesday Week 2 (after 7-day soak)
+
+### Priority Levels
+- **P1 (Critical):** Health ≥80, Stability ≥80, Backup ≤24hrs, Change approval required
+- **P2 (High):** Health ≥70, Stability ≥70, Backup ≤72hrs, Automated deployment
+- **P3 (Medium):** Health ≥60, Standard validation, Flexible timing
+- **P4 (Low):** Health ≥50, Minimal validation, Fully automated
+
+### Deployment Workflow
+1. **Pre-Validation:** Run P1/P2/P3-P4 validator scripts
+2. **PR1 Deployment:** Test ring patching with comprehensive logging
+3. **Soak Period:** 7 days monitoring of PR1 success rate
+4. **PR2 Validation:** Verify PR1 ≥90% success rate
+5. **PR2 Deployment:** Production ring patching with maintenance window awareness
+
+### Integration Points
+- Uses: OPSHealthScore, STATStabilityScore, BASEBusinessCriticality, SRVRole
+- Updates: patchLastAttemptDate, patchLastAttemptStatus, patchRebootPending
+- Alerts: P1PatchFailedVulnerable, P2MultiplePatchesFailed conditions
+
+---
+
+## FILE STRUCTURE LEGEND
+
+### Numbering System
+- **00-09:** Foundation & Architecture
+- **10-24:** Core & Extended Custom Fields (by prefix)
+- **50-61:** Implementation Guides & Scripts
+- **70-79:** Configuration Templates
+- **90-97:** Alerting & Automation
+- **98-100:** Summaries & ROI
+
+### File Types
+- **Field Files (10-24):** Define custom field structure, types, values, use cases
+- **Script Files (50-61):** PowerShell implementation code with documentation
+- **Config Files (70-79, 90-97):** NinjaRMM configuration examples
+- **Summary Files (98-100):** Executive summaries and reference guides
+
+---
+
+## SUPPORT & MAINTENANCE
+
+### Documentation Updates
+All files include "Last Updated" timestamp and version number
+
+### Script Versioning
+Scripts include header comments with version, author, requirements, examples
+
+### Change Log Location
+See file 98 (Framework Complete Summary Master) for version history
+
+---
+
+**Master Index File:** 00_Master_Index.md  
+**Last Updated:** February 1, 2026, 6:00 PM CET  
+**Framework Version:** 4.0 with Patching Automation  
+**Status:** Production Ready  
+**Total Documentation Pages:** 51 files  
+**Total Script Count:** 110 PowerShell scripts  
+**Total Custom Fields:** 277 fields

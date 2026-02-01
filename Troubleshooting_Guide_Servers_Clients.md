@@ -747,7 +747,7 @@ Investigation:
 □ Check ADDomainJoined = True (for domain devices)
 □ Verify Native Service: "Workstation" = Running
 □ Verify Native Service: "Netlogon" = Running
-□ Check NETLastIPAddress (not APIPA 169.254.x.x)
+□ Check Private IP Address (Guest Network / 169.254)
 □ Review STATServiceFailures24h for network services
 □ Test external connectivity (NETInternetAccessible)
 ```

@@ -1,7 +1,7 @@
 # NinjaOne Framework v4.0 - Complete Documentation
 
 **Version:** 4.0 (Native-Enhanced with ML/RCA & Patching Automation)  
-**Date:** February 1, 2026, 11:24 PM CET  
+**Date:** February 2, 2026, 2:00 AM CET  
 **Status:** Production Ready
 
 ---
@@ -164,7 +164,7 @@ The NinjaOne Custom Field Framework v4.0 transforms your RMM platform from basic
 **Investment:** €4,500 (90 hours deployment)  
 **Timeline:** 2-4 weeks  
 **Ideal For:** 50-200 device environments, first-time adopters  
-**ROI:** 98% Year 1, 4.5 month payback (see 100_Detailed_ROI_Analysis_No_ML.md)
+**ROI:** 98% Year 1, 4.5 month payback (see docs/roi/185_ROI_Analysis_No_ML.md)
 
 ### Option 2: Full Framework with ML/RCA - Maximum Value
 
@@ -179,7 +179,7 @@ The NinjaOne Custom Field Framework v4.0 transforms your RMM platform from basic
 **Investment:** €7,250 (138 hours deployment)  
 **Timeline:** 4-8 weeks  
 **Ideal For:** 100+ device environments, advanced operations teams  
-**ROI:** 66-203% Year 1 depending on scope (see 100_Detailed_ROI_Analysis_ML_with_Platform_Costs.md)
+**ROI:** 66-203% Year 1 depending on scope (see docs/roi/186_ROI_Analysis_With_ML.md)
 
 ### Option 3: Extended Framework (All 277 Fields) - Enterprise
 
@@ -221,7 +221,7 @@ The NinjaOne Custom Field Framework v4.0 transforms your RMM platform from basic
 
 **Step 1: Create Essential Custom Fields (3 hours)**
 ```
-File: 10_OPS_STAT_RISK_Core_Metrics.md
+File: docs/core/10_OPS_STAT_RISK_Core_Metrics.md
 Fields to create: 35 essential fields
   - OPSHealthScore (Integer 0-100)
   - OPSPerformanceScore (Integer 0-100)
@@ -233,7 +233,7 @@ Fields to create: 35 essential fields
 
 **Step 2: Deploy Infrastructure Scripts (4 hours)**
 ```
-File: 55_Scripts_01_13_Infrastructure_Monitoring.md
+File: docs/scripts/80_Scripts_Monitoring_01_to_13.md
 Scripts to deploy: Scripts 1-13
   - Script 1: IIS Monitoring
   - Script 2: MSSQL Monitoring
@@ -256,7 +256,7 @@ NinjaOne Dashboard → Monitoring → Enable:
 
 **Step 4: Create P1 Critical Conditions (3 hours)**
 ```
-File: 91_Compound_Conditions_Complete.md
+File: docs/automation/150_Compound_Conditions.md
 Conditions to create: 15 P1 critical
   - P1_Critical_System_Failure
   - P1_Critical_Disk_Full
@@ -278,15 +278,15 @@ Conditions to create: 15 P1 critical
 
 **Step 6: Add Extended Fields (3 hours)**
 ```
-File: 11_AUTO_UX_SRV_Core_Experience.md
-File: 12_DRIFT_CAP_BAT_Core_Monitoring.md
-File: 13_NET_GPO_AD_Core_Network_Identity.md
+File: docs/core/11_AUTO_UX_SRV_Core_Experience.md
+File: docs/core/12_DRIFT_CAP_BAT_Core_Monitoring.md
+File: docs/core/13_NET_GPO_AD_Core_Network_Identity.md
 Fields to add: 26 extended fields
 ```
 
 **Step 7: Deploy Automation Scripts (5 hours)**
 ```
-File: 53_Scripts_14_27_Extended_Automation.md
+File: docs/scripts/83_Scripts_Automation_14_to_27.md
 Scripts to deploy: Scripts 14-24
   - Script 15: Security Posture Monitor
   - Script 18: Baseline Refresh
@@ -296,7 +296,7 @@ Scripts to deploy: Scripts 14-24
 
 **Step 8: Create Remediation Workflows (8 hours)**
 ```
-File: 91_Compound_Conditions_Complete.md
+File: docs/automation/150_Compound_Conditions.md
 Conditions to create: 25 P2 + 20 P3
   - P2_DiskCapacityUrgent → Run Script 50 (Disk Cleanup)
   - P2_ServiceFailure → Run Script 41-45 (Service Restart)
@@ -305,7 +305,7 @@ Conditions to create: 25 P2 + 20 P3
 
 **Step 9: Configure Dynamic Groups (6 hours)**
 ```
-File: 92_Dynamic_Groups_Complete.md
+File: docs/automation/151_Dynamic_Groups.md
 Groups to create: 30 core groups
   - AUTO_Safe_Aggressive
   - CAP_Disk_Upgrade_0_7d
@@ -319,7 +319,7 @@ Groups to create: 30 core groups
 
 **Step 10: Deploy Time-Series Database (3 hours)**
 ```
-File: ML_RCA_Integration.md (Infrastructure Setup section)
+File: docs/advanced/293_ML_RCA_Integration.md (Infrastructure Setup section)
   - Install InfluxDB (Docker)
   - Create bucket (90-day retention)
   - Configure API token
@@ -356,7 +356,7 @@ Fields to create:
 
 **Step 14: Configure Patch Rings (2 hours)**
 ```
-File: 44_PATCH_Ring_Based_Deployment.md
+File: docs/patching/48_Patching_Ring_Deployment.md
   - Define PR1-Test (10-20 devices)
   - Define PR2-Production (all other devices)
   - Assign priority levels (P1-P4)
@@ -364,7 +364,7 @@ File: 44_PATCH_Ring_Based_Deployment.md
 
 **Step 15: Deploy Patching Scripts (5 hours)**
 ```
-File: 61_Scripts_Patching_Automation.md
+File: docs/patching/52_Patching_Scripts.md
 Scripts to deploy:
   - Script PR1: Test Ring Deployment
   - Script PR2: Production Ring Deployment
@@ -382,80 +382,80 @@ Scripts to deploy:
 | File | Purpose | Audience |
 |------|---------|----------|
 | **00_README.md** | This file - Framework overview | Everyone |
-| **00_Master_Index.md** | Complete file index | Administrators |
+| **02_Master_Index.md** | Complete file index | Administrators |
 | **01_Framework_Architecture.md** | Technical architecture | Engineers, Architects |
-| **99_Quick_Reference_Guide.md** | Field/script/condition quick ref | Technicians |
+| **docs/reference/255_Quick_Reference.md** | Field/script/condition quick ref | Technicians |
 
 ### Business Case & ROI
 
 | File | Purpose | Audience |
 |------|---------|----------|
-| **Executive_Report_v4_Framework_ML.md** | Strategic overview with ML | C-Level, IT Directors |
-| **100_Detailed_ROI_Analysis_No_ML.md** | ROI without ML (Core framework) | Finance, Budget Approvers |
-| **100_Detailed_ROI_Analysis_ML_with_Platform_Costs.md** | ROI with ML + NinjaRMM costs | Finance, CFO |
-| **Framework_Statistics_Summary.md** | Metrics and statistics | Analysts |
+| **docs/reference/257_Executive_Summary_ML.md** | Strategic overview with ML | C-Level, IT Directors |
+| **docs/roi/185_ROI_Analysis_No_ML.md** | ROI without ML (Core framework) | Finance, Budget Approvers |
+| **docs/roi/186_ROI_Analysis_With_ML.md** | ROI with ML + NinjaRMM costs | Finance, CFO |
+| **docs/reference/258_Framework_Statistics.md** | Metrics and statistics | Analysts |
 
 ### Custom Fields Documentation
 
 | File | Fields | Purpose |
 |------|--------|---------|
-| **10_OPS_STAT_RISK_Core_Metrics.md** | 35 | Essential health, stability, risk |
-| **11_AUTO_UX_SRV_Core_Experience.md** | 26 | Automation, UX, service monitoring |
-| **12_DRIFT_CAP_BAT_Core_Monitoring.md** | 21 | Drift, capacity, battery |
-| **13_NET_GPO_AD_Core_Network_Identity.md** | 15 | Network, GPO, Active Directory |
-| **14_BASE_SEC_UPD_Core_Security_Baseline.md** | 18 | Baseline, security, updates |
-| **22_IIS_MSSQL_MYSQL_Database_Web_Servers.md** | 64 | IIS, SQL Server, MySQL |
-| **23_APACHE_VEEAM_DHCP_DNS_Infrastructure.md** | 53 | Apache, VEEAM, DHCP, DNS |
-| **24_EVT_FS_PRINT_HV_BL_FEAT_FLEXLM_Additional_Roles.md** | 91 | Event logs, file server, print, Hyper-V |
-| **31_PATCH_Custom_Fields.md** | 8 | Patching automation fields |
+| **docs/core/10_OPS_STAT_RISK_Core_Metrics.md** | 35 | Essential health, stability, risk |
+| **docs/core/11_AUTO_UX_SRV_Core_Experience.md** | 26 | Automation, UX, service monitoring |
+| **docs/core/12_DRIFT_CAP_BAT_Core_Monitoring.md** | 21 | Drift, capacity, battery |
+| **docs/core/13_NET_GPO_AD_Core_Network_Identity.md** | 15 | Network, GPO, Active Directory |
+| **docs/core/14_BASE_SEC_UPD_Core_Security_Baseline.md** | 18 | Baseline, security, updates |
+| **docs/core/15_Server_Roles_Database_Web.md** | 64 | IIS, SQL Server, MySQL |
+| **docs/core/16_Server_Roles_Infrastructure.md** | 53 | Apache, VEEAM, DHCP, DNS |
+| **docs/core/17_Server_Roles_Additional.md** | 91 | Event logs, file server, print, Hyper-V |
+| **docs/patching/46_Patching_Custom_Fields.md** | 8 | Patching automation fields |
 
 ### PowerShell Scripts Documentation
 
 | File | Scripts | Purpose |
 |------|---------|---------|
-| **51_Field_to_Script_Complete_Mapping.md** | All | Field-to-script mapping reference |
-| **55_Scripts_01_13_Infrastructure_Monitoring.md** | 1-13 | Infrastructure monitoring scripts |
-| **53_Scripts_14_27_Extended_Automation.md** | 14-27 | Extended automation scripts |
-| **54_Scripts_28_36_Advanced_Telemetry.md** | 28-36 | Advanced telemetry scripts |
-| **41-45_Scripts_Service_Restart_*.md** | 41-45 | Service restart remediation |
-| **50_Scripts_Emergency_Disk_Cleanup.md** | 50 | Emergency disk cleanup |
-| **56_Scripts_Memory_Optimization.md** | 55 | Memory optimization |
-| **61_Scripts_Patching_Automation.md** | PR1-P4 | Patching automation scripts |
+| **docs/scripts/93_Scripts_Field_Mapping.md** | All | Field-to-script mapping reference |
+| **docs/scripts/80_Scripts_Monitoring_01_to_13.md** | 1-13 | Infrastructure monitoring scripts |
+| **docs/scripts/83_Scripts_Automation_14_to_27.md** | 14-27 | Extended automation scripts |
+| **docs/scripts/85_Scripts_Telemetry_28_to_36.md** | 28-36 | Advanced telemetry scripts |
+| **docs/scripts/95-99_Scripts_Service_*.md** | 41-45 | Service restart remediation |
+| **docs/scripts/91_Scripts_Emergency_Cleanup.md** | 50 | Emergency disk cleanup |
+| **docs/scripts/92_Scripts_Memory_Optimization.md** | 55 | Memory optimization |
+| **docs/patching/52_Patching_Scripts.md** | PR1-P4 | Patching automation scripts |
 
 ### Automation & Conditions
 
 | File | Purpose | Audience |
 |------|---------|----------|
-| **91_Compound_Conditions_Complete.md** | All 75 hybrid conditions | Administrators |
-| **92_Dynamic_Groups_Complete.md** | All 74 dynamic groups | Administrators |
+| **docs/automation/150_Compound_Conditions.md** | All 75 hybrid conditions | Administrators |
+| **docs/automation/151_Dynamic_Groups.md** | All 74 dynamic groups | Administrators |
 
 ### Patching Automation
 
 | File | Purpose | Audience |
 |------|---------|----------|
-| **30_PATCH_Main_Patching_Framework.md** | Patching framework overview | Patch Managers |
-| **44_PATCH_Ring_Based_Deployment.md** | Ring-based deployment guide | Administrators |
-| **46_PATCH_Windows_OS_Tutorial.md** | Windows OS patching tutorial | Technicians |
-| **47_PATCH_Software_Patching_Tutorial.md** | Software patching tutorial | Technicians |
-| **48_PATCH_Policy_Configuration_Guide.md** | Policy configuration guide | Administrators |
-| **36_PATCH_Quick_Start_Guide.md** | Quick start guide | Everyone |
+| **docs/patching/45_Patching_Framework_Main.md** | Patching framework overview | Patch Managers |
+| **docs/patching/48_Patching_Ring_Deployment.md** | Ring-based deployment guide | Administrators |
+| **docs/patching/49_Patching_Windows_Tutorial.md** | Windows OS patching tutorial | Technicians |
+| **docs/patching/50_Patching_Software_Tutorial.md** | Software patching tutorial | Technicians |
+| **docs/patching/51_Patching_Policy_Guide.md** | Policy configuration guide | Administrators |
+| **docs/patching/47_Patching_Quick_Start.md** | Quick start guide | Everyone |
 
 ### Advanced Topics
 
 | File | Purpose | Audience |
 |------|---------|----------|
-| **ML_RCA_Integration.md** | Machine learning & RCA | Engineers, Data Scientists |
-| **Troubleshooting_Guide_Servers_Clients.md** | Framework-powered troubleshooting | Technicians, Engineers |
-| **Framework_Training_Material_Part1.md** | Training modules 1-4 | All IT Staff |
-| **Framework_Training_Material_Part2.md** | Training modules 5-8 | Advanced Staff |
+| **docs/advanced/293_ML_RCA_Integration.md** | Machine learning & RCA | Engineers, Data Scientists |
+| **docs/training/223_Troubleshooting_Guide.md** | Framework-powered troubleshooting | Technicians, Engineers |
+| **docs/training/220_Training_Part1_Fundamentals.md** | Training modules 1-4 | All IT Staff |
+| **docs/training/221_Training_Part2_Advanced.md** | Training modules 5-8 | Advanced Staff |
 
 ### Optimization & Reference
 
 | File | Purpose | Audience |
 |------|---------|----------|
-| **NATIVE_INTEGRATION_OPTIMIZATION_SUMMARY.md** | v3.0 → v4.0 upgrade guide | Existing users |
-| **98_Framework_Complete_Summary_Master.md** | Complete framework summary | Reference |
-| **70_Custom_Health_Check_Templates.md** | Health check templates | Customizers |
+| **docs/reference/260_Native_Integration_Summary.md** | v3.0 → v4.0 upgrade guide | Existing users |
+| **docs/automation/152_Framework_Master_Summary.md** | Complete framework summary | Reference |
+| **docs/health-checks/116_Health_Checks_Templates.md** | Health check templates | Customizers |
 
 ---
 
@@ -607,9 +607,9 @@ Scripts to deploy:
 **Certification:** Framework Architect Certificate
 
 **Training Materials:**
-- Framework_Training_Material_Part1.md (Modules 1-4)
-- Framework_Training_Material_Part2.md (Modules 5-8)
-- ML_RCA_Integration.md (Module 9-10)
+- docs/training/220_Training_Part1_Fundamentals.md (Modules 1-4)
+- docs/training/221_Training_Part2_Advanced.md (Modules 5-8)
+- docs/advanced/293_ML_RCA_Integration.md (Module 9-10)
 
 ---
 
@@ -674,7 +674,7 @@ Track these KPIs to measure framework value:
 - No ML capabilities
 - No patching automation
 
-**Upgrade Path:** See NATIVE_INTEGRATION_OPTIMIZATION_SUMMARY.md
+**Upgrade Path:** See docs/reference/260_Native_Integration_Summary.md
 
 ---
 
@@ -687,7 +687,7 @@ A: Start with Core Framework (Option 1). Add ML/RCA later when you have 90 days 
 A: v4.0 uses NinjaOne native metrics (CPU, Memory, Disk, SMART) instead of custom scripts, reducing fields from 358 to 277 and cutting false positives by 70%. v4.0 also adds ML/RCA and patching automation.
 
 **Q: Can I customize the framework for my environment?**  
-A: Yes! Framework is fully customizable. Add your own custom fields, modify scripts, adjust thresholds, create custom conditions. See Module 8 in Framework_Training_Material_Part2.md.
+A: Yes! Framework is fully customizable. Add your own custom fields, modify scripts, adjust thresholds, create custom conditions. See Module 8 in docs/training/221_Training_Part2_Advanced.md.
 
 **Q: How long until I see ROI?**  
 A: 4.5-7.2 months payback depending on deployment option. First benefits (faster troubleshooting, fewer false positives) appear within 2 weeks.
@@ -742,5 +742,5 @@ Review documentation in Space: NinjaRMM or contact for professional deployment a
 
 **File:** 00_README.md  
 **Version:** 4.0  
-**Last Updated:** February 1, 2026, 11:24 PM CET  
+**Last Updated:** February 2, 2026, 2:00 AM CET  
 **Next Review:** May 2026

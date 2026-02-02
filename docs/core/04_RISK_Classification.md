@@ -1,10 +1,10 @@
 # NinjaRMM Custom Field Framework - RISK Core Classification
 
-**File:** 12_RISK_Core_Classification.md  
+**File:** 04_RISK_Classification.md  
 **Version:** v1.0 (Initial Release)  
 **Category:** RISK (Classification Fields)  
 **Field Count:** 7 RISK fields  
-**Last Updated:** February 1, 2026
+**Last Updated:** February 2, 2026
 
 ---
 
@@ -105,6 +105,6 @@ Script 9: Risk Classifier
 
 ---
 
-File: 12_RISK_Core_Classification.md  
+File: 04_RISK_Classification.md  
 Framework Version: v1.0  
 Status: Production Ready

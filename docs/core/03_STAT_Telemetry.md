@@ -1,10 +1,10 @@
 # NinjaRMM Custom Field Framework - STAT Core Telemetry
 
-**File:** 11_STAT_Core_Telemetry.md  
+**File:** 03_STAT_Telemetry.md  
 **Version:** v1.0 (Initial Release)  
 **Category:** STAT (Raw Telemetry)  
 **Field Count:** 6 STAT fields  
-**Last Updated:** February 1, 2026
+**Last Updated:** February 2, 2026
 
 ---
 
@@ -94,6 +94,6 @@ Script 6: Telemetry Collector
 
 ---
 
-File: 11_STAT_Core_Telemetry.md  
+File: 03_STAT_Telemetry.md  
 Framework Version: v1.0  
 Status: Production Ready

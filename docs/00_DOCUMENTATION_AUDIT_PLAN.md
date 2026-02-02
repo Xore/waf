@@ -1,5 +1,6 @@
 # Documentation Audit and README Creation Plan
 **Created:** February 2, 2026  
+**Updated:** February 2, 2026 (Added Phase 6.3: Script-Field Reference Matrix)  
 **Repository:** NinjaRMM WAF (Windows Automation Framework)  
 **Status:** Planning Phase
 
@@ -13,6 +14,7 @@ Create a comprehensive audit of all markdown documentation in the repository to 
 3. All cross-references between documents are valid
 4. Every folder has a structured README.md with complete information
 5. All files follow the naming schema consistently
+6. **Script-to-Field relationships are fully documented with use cases**
 
 ---
 
@@ -60,6 +62,7 @@ Scan each file for:
 - **Custom Field References:** Field names like `OPSHealthScore`, `BASEBaselineEstablished`
 - **File Cross-References:** Links to other docs, markdown links
 - **Section Headers:** All ## and ### headers for index creation
+- **Use Cases:** Descriptions of how scripts use fields and vice versa
 
 #### 2.3 Build Reference Database
 Create master lists:
@@ -67,6 +70,8 @@ Create master lists:
 - All custom field names mentioned across all docs
 - All internal document links
 - All external references
+- **Script-to-Field relationships with use cases**
+- **Field-to-Script relationships with use cases**
 
 ### Tasks:
 - [ ] Read all files in docs/core/
@@ -81,6 +86,7 @@ Create master lists:
 - [ ] Extract all script references
 - [ ] Extract all custom field references
 - [ ] Extract all cross-references
+- [ ] **Extract script-field relationships and use cases**
 - [ ] Build reference database
 
 ---
@@ -126,6 +132,8 @@ IF file mentions "Script NN"
    - Field type
    - Defined in which file
    - Populated by which script(s)
+   - **Required by which scripts (consumers)**
+   - **Use case for each relationship**
 3. Scan all other docs for field references
 4. Validate each reference against master database
 
@@ -136,6 +144,9 @@ IF file mentions field "OPSHealthScore"
   AND verify prefix "OPS" matches category
   AND verify field type is correct
   AND verify script reference is correct
+  AND document which scripts populate it
+  AND document which scripts consume it
+  AND document use case for each relationship
 ```
 
 #### Output:
@@ -145,6 +156,8 @@ IF file mentions field "OPSHealthScore"
 - List of misspelled field names
 - List of fields defined but never used
 - List of fields used but not defined
+- **Script-to-Field relationship matrix**
+- **Field-to-Script dependency map**
 
 ### 3.3 Cross-Reference Validation
 
@@ -173,6 +186,7 @@ IF file contains link [Text](../other/file.md)
 - [ ] Validate all script references
 - [ ] Validate all custom field references
 - [ ] Validate all cross-references
+- [ ] **Build script-field relationship matrix**
 - [ ] Generate validation report
 - [ ] Create issue list for broken references
 
@@ -368,13 +382,181 @@ For each folder:
 - Links to automation docs
 ```
 
+### 6.3 Script-Field Reference Matrix
+
+**NEW SECTION - Added per user request**
+
+**File:** `docs/00_SCRIPT_FIELD_REFERENCE.md`
+
+#### Objective:
+Create comprehensive reference showing bidirectional relationships between scripts and custom fields with use cases.
+
+#### Matrix Structure:
+
+##### View 1: By Script (Which fields does each script use?)
+
+```markdown
+# Script-to-Field Reference Matrix
+
+## Script 1: [Script Name]
+**Purpose:** [What the script does]
+
+### Fields POPULATED by this script:
+| Field Name | Type | Use Case | Documentation |
+|------------|------|----------|---------------|
+| FieldName1 | Text | Stores X for purpose Y | [Link to field doc](path) |
+| FieldName2 | Number | Calculates Z based on... | [Link to field doc](path) |
+
+### Fields REQUIRED by this script (Dependencies):
+| Field Name | Type | Why Required | Populated By |
+|------------|------|--------------|-------------|
+| FieldName3 | Bool | Used to determine if... | Script 5 |
+| FieldName4 | Date | Used to calculate age... | Script 12 |
+
+### Use Cases:
+1. **Primary Use Case:** [Description]
+2. **Secondary Use Case:** [Description]
+
+---
+
+## Script 2: [Script Name]
+[Same structure repeats]
+```
+
+##### View 2: By Field (Which scripts use each field?)
+
+```markdown
+# Field-to-Script Reference Matrix
+
+## OPSHealthScore
+**Type:** Number (0-100)  
+**Category:** Operational Scores  
+**Defined In:** [01_OPS_Operational_Scores.md](core/01_OPS_Operational_Scores.md)
+
+### POPULATED BY:
+| Script | Purpose | How It's Calculated |
+|--------|---------|--------------------|
+| Script 4 | Calculate health score | Weighted average of CPU, Memory, Disk |
+
+### CONSUMED BY (Dependencies):
+| Script | Purpose | How It's Used |
+|--------|---------|---------------|
+| Script 18 | Generate alerts | Triggers alert if < 70 |
+| Script 23 | Create reports | Includes in weekly health report |
+| Script 45 | Automation trigger | Auto-remediation if < 50 |
+
+### Use Cases:
+1. **Health Monitoring:** Provides single metric for system health
+2. **Alerting:** Triggers notifications when health degrades
+3. **Reporting:** Used in executive dashboards
+4. **Automation:** Triggers automated remediation workflows
+
+### Related Fields:
+- STATCPUAverage (feeds into calculation)
+- STATMemoryAverage (feeds into calculation)
+- STATDiskUsage (feeds into calculation)
+
+---
+
+## BASEBaselineEstablished
+[Same structure repeats]
+```
+
+##### View 3: Relationship Map (Visual overview)
+
+```markdown
+# Script-Field Relationship Map
+
+## Legend:
+- [P] = Populates/Writes to field
+- [R] = Requires/Reads from field
+- [P+R] = Both populates and reads
+
+## Visual Map:
+
+### Operational Scores (OPS)
+```
+Script 4 [P] → OPSHealthScore → [R] Script 18, 23, 45
+Script 4 [P] → OPSPerformanceScore → [R] Script 19, 24
+Script 4 [P] → OPSRiskScore → [R] Script 20, 25
+```
+
+### Baseline Management (BASE)
+```
+Script 8 [P] → BASEBaselineEstablished → [R] Script 12, 15, 22
+Script 12 [R] BASEBaselineEstablished
+      [P] → BASEDriftDetected → [R] Script 26
+```
+
+### Security (SEC)
+```
+Script 15 [P] → SECLastScanDate → [R] Script 30
+Script 15 [P] → SECVulnerabilityCount → [R] Script 31, 32
+```
+```
+
+#### Database Schema:
+
+**Table: script_field_relationships**
+```sql
+CREATE TABLE script_field_relationships (
+    id INT PRIMARY KEY,
+    script_number INT NOT NULL,
+    script_name VARCHAR(255),
+    field_name VARCHAR(255) NOT NULL,
+    relationship_type ENUM('populates', 'consumes', 'both'),
+    use_case TEXT,
+    calculation_method TEXT,
+    dependency_level ENUM('required', 'optional'),
+    documented_in VARCHAR(255),
+    last_verified DATE
+);
+```
+
+#### Generation Process:
+
+1. **Extract from docs/core/**: Each field definition should specify:
+   - Which script(s) populate it
+   - Data type and format
+   - Purpose/use case
+
+2. **Extract from docs/scripts/**: Each script doc should specify:
+   - Which fields it populates (writes)
+   - Which fields it requires (reads)
+   - Use case for each field interaction
+
+3. **Cross-validate**: Ensure bidirectional consistency:
+   - If Script 4 claims to populate OPSHealthScore
+   - Then OPSHealthScore doc must list Script 4 as populator
+
+4. **Build matrices**: Generate all three views automatically
+
+5. **Validate relationships**: Check for:
+   - Circular dependencies
+   - Missing dependencies
+   - Orphaned fields (populated but never consumed)
+   - Required fields with no populator
+
+#### Output Files:
+
+1. **00_SCRIPT_FIELD_REFERENCE.md** - Main reference document
+2. **00_SCRIPT_TO_FIELD_MATRIX.md** - Script-centric view
+3. **00_FIELD_TO_SCRIPT_MATRIX.md** - Field-centric view
+4. **00_DEPENDENCY_MAP.md** - Visual dependency chains
+5. **script_field_relationships.json** - Machine-readable database
+
 ### Tasks:
 - [ ] Create master index structure
 - [ ] Generate category-based index
 - [ ] Generate script-based index
 - [ ] Generate field-based index
 - [ ] Generate topic-based index
+- [ ] **Create script-to-field matrix**
+- [ ] **Create field-to-script matrix**
+- [ ] **Create relationship map with use cases**
+- [ ] **Generate JSON database of relationships**
 - [ ] Validate all index links
+- [ ] **Validate bidirectional consistency**
 
 ---
 
@@ -399,6 +581,8 @@ For each folder:
 - Valid references: [count]
 - Broken references: [count]
 - Misspelled fields: [count]
+- **Fields without populators: [count]**
+- **Fields never consumed: [count]**
 - Details of all issues
 
 #### Report 3: Cross-Reference Report
@@ -418,11 +602,24 @@ For each folder:
 - Topics covered: [list]
 - Gaps identified: [list]
 
+#### Report 5: Script-Field Relationship Report (NEW)
+**File:** `docs/reports/script_field_relationship_report.md`
+
+- Total script-field relationships: [count]
+- Scripts with no field interactions: [count]
+- Fields with no scripts: [count]
+- Circular dependencies found: [count]
+- Missing dependencies: [count]
+- Orphaned fields: [count]
+- Required fields without populators: [count]
+- Relationship health score: [percent]
+
 ### Tasks:
 - [ ] Generate script reference report
 - [ ] Generate custom field report
 - [ ] Generate cross-reference report
 - [ ] Generate documentation coverage report
+- [ ] **Generate script-field relationship report**
 - [ ] Create executive summary
 
 ---
@@ -439,6 +636,7 @@ For each folder:
 - Validate script references
 - Validate field references
 - Validate links
+- **Validate script-field relationships**
 - Generate reports
 - Exit with error if issues found
 
@@ -460,6 +658,19 @@ For each folder:
 - Update cross-references
 - Validate all links
 
+#### Script: build_relationship_matrix.ps1 (NEW)
+**Purpose:** Build and maintain script-field relationship matrices
+
+**Features:**
+- Extract script-field relationships from docs
+- Build relationship database
+- Generate all matrix views
+- Validate bidirectional consistency
+- Generate dependency maps
+- Export to JSON/CSV
+- Detect circular dependencies
+- Identify orphaned fields
+
 ### 8.2 CI/CD Integration
 
 **GitHub Actions Workflow:**
@@ -473,6 +684,8 @@ jobs:
       - Checkout code
       - Run validation script
       - Generate reports
+      - Build relationship matrix
+      - Validate relationships
       - Fail if errors found
 ```
 
@@ -480,6 +693,7 @@ jobs:
 - [ ] Create validation script
 - [ ] Create README generation script
 - [ ] Create index update script
+- [ ] **Create relationship matrix builder**
 - [ ] Create GitHub Actions workflow
 - [ ] Test automation
 
@@ -491,9 +705,11 @@ jobs:
 - Phase 1: Repository structure analysis
 - Phase 2: Read all markdown files
 - Build reference database
+- **Extract script-field relationships**
 
 ### Week 2: Validation
 - Phase 3: Validate all references
+- **Build script-field relationship matrix**
 - Generate issue lists
 - Begin fixing broken references
 
@@ -501,10 +717,12 @@ jobs:
 - Phase 4: Document naming schemas
 - Phase 5: Create all READMEs
 - Phase 6: Create master index
+- **Phase 6.3: Create relationship matrices**
 
 ### Week 4: Reporting and Automation
 - Phase 7: Generate validation reports
 - Phase 8: Create automation tools
+- **Build relationship matrix automation**
 - Final review and testing
 
 ---
@@ -518,6 +736,10 @@ jobs:
 ✅ Naming schema documented for every folder  
 ✅ README.md created for every folder  
 ✅ Master index created  
+✅ **Script-to-Field reference matrix created**  
+✅ **Field-to-Script reference matrix created**  
+✅ **Use cases documented for all relationships**  
+✅ **Bidirectional consistency validated**  
 ✅ Validation reports generated  
 ✅ Automation tools created  
 ✅ CI/CD integration complete  
@@ -530,11 +752,17 @@ jobs:
 2. **Validation Reports** - Detailed reports on all broken references
 3. **README Files** - One per folder with complete information
 4. **Master Index** - Comprehensive index of all documentation
-5. **Automation Tools** - Scripts to maintain documentation quality
-6. **CI/CD Pipeline** - Automated validation on every commit
+5. **Script-Field Reference Matrices** (NEW):
+   - Script-to-Field matrix with use cases
+   - Field-to-Script matrix with dependencies
+   - Visual relationship map
+   - Machine-readable JSON database
+6. **Automation Tools** - Scripts to maintain documentation quality
+7. **CI/CD Pipeline** - Automated validation on every commit
 
 ---
 
 **Plan Created:** February 2, 2026  
+**Last Updated:** February 2, 2026 (Added Script-Field Reference Matrix)  
 **Status:** Ready for Execution  
 **Next Step:** Begin Phase 1 - Repository Structure Analysis

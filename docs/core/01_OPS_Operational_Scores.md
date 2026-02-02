@@ -1,10 +1,10 @@
 # NinjaRMM Custom Field Framework - OPS Core Operational Scores (Native-Enhanced)
 
-**File:** 10_OPS_Core_Operational_Scores.md  
+**File:** 01_OPS_Operational_Scores.md  
 **Version:** v1.0 (Initial Native Integration Release)  
 **Category:** OPS (Operational Composite Scores)  
 **Field Count:** 6 OPS fields  
-**Last Updated:** February 1, 2026
+**Last Updated:** February 2, 2026
 
 ---
 
@@ -169,6 +169,6 @@ Minimum Score: 0
 
 ---
 
-File: 10_OPS_Core_Operational_Scores.md  
+File: 01_OPS_Operational_Scores.md  
 Framework Version: v1.0  
 Status: Production Ready

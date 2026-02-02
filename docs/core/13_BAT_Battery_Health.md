@@ -1,5 +1,5 @@
 # NinjaRMM Custom Field Framework - BAT Fields
-**File:** 16_BAT_Battery_Health.md
+**File:** 13_BAT_Battery_Health.md
 **Category:** BAT (Battery Health)
 **Description:** Battery health monitoring for mobile devices
 
@@ -9,6 +9,8 @@
 
 Battery health fields monitor battery capacity, degradation, charge cycles, and recommend replacement for laptops and mobile devices in the Windows Automation Framework.
 
+**Note:** Script 12 referenced below is actually BASE Baseline Manager. Battery Health Monitor needs to be implemented as a separate script.
+
 ---
 
 ## BAT - Battery Health Fields
@@ -17,7 +19,7 @@ Battery health fields monitor battery capacity, degradation, charge cycles, and 
 - **Type:** Checkbox
 - **Default:** False
 - **Purpose:** Device has a battery (laptop/tablet)
-- **Populated By:** **Script 12** - Battery Health Monitor
+- **Populated By:** **TBD: Battery Health Monitor** (Script 12 conflict - currently BASE Baseline)
 - **Update Frequency:** Daily
 
 **Detection:**
@@ -32,7 +34,7 @@ return ($null -ne $battery)
 - **Type:** Integer
 - **Default:** 0
 - **Purpose:** Battery design capacity in milliwatt-hours
-- **Populated By:** **Script 12** - Battery Health Monitor
+- **Populated By:** **TBD: Battery Health Monitor**
 - **Update Frequency:** Daily
 - **Range:** 0 to 999999 mWh
 - **Unit:** Milliwatt-hours
@@ -43,7 +45,7 @@ return ($null -ne $battery)
 - **Type:** Integer
 - **Default:** 0
 - **Purpose:** Current full charge capacity in milliwatt-hours
-- **Populated By:** **Script 12** - Battery Health Monitor
+- **Populated By:** **TBD: Battery Health Monitor**
 - **Update Frequency:** Daily
 - **Range:** 0 to 999999 mWh
 - **Unit:** Milliwatt-hours
@@ -54,7 +56,7 @@ return ($null -ne $battery)
 - **Type:** Integer (0-100)
 - **Default:** 100
 - **Purpose:** Battery health percentage (full charge / design capacity)
-- **Populated By:** **Script 12** - Battery Health Monitor
+- **Populated By:** **TBD: Battery Health Monitor**
 - **Update Frequency:** Daily
 - **Range:** 0 to 100 percent
 
@@ -83,7 +85,7 @@ Example:
 - **Type:** Integer
 - **Default:** 0
 - **Purpose:** Number of battery charge cycles
-- **Populated By:** **Script 12** - Battery Health Monitor
+- **Populated By:** **TBD: Battery Health Monitor**
 - **Update Frequency:** Daily
 - **Range:** 0 to 9999
 
@@ -105,7 +107,7 @@ Typical Battery Lifespan:
 - **Max Length:** 50 characters
 - **Default:** Unknown
 - **Purpose:** Battery chemistry type
-- **Populated By:** **Script 12** - Battery Health Monitor
+- **Populated By:** **TBD: Battery Health Monitor**
 - **Update Frequency:** Daily
 
 **Common Values:**
@@ -121,7 +123,7 @@ Nickel-Metal Hydride (NiMH)
 - **Type:** Integer
 - **Default:** 0
 - **Purpose:** Estimated runtime in minutes at current usage
-- **Populated By:** **Script 12** - Battery Health Monitor
+- **Populated By:** **TBD: Battery Health Monitor**
 - **Update Frequency:** Every 4 hours
 - **Range:** 0 to 9999 minutes
 - **Unit:** Minutes
@@ -133,7 +135,7 @@ Nickel-Metal Hydride (NiMH)
 - **Valid Values:** Charging, Discharging, Full, Unknown
 - **Default:** Unknown
 - **Purpose:** Current battery charge status
-- **Populated By:** **Script 12** - Battery Health Monitor
+- **Populated By:** **TBD: Battery Health Monitor**
 - **Update Frequency:** Every 4 hours
 
 ---
@@ -142,7 +144,7 @@ Nickel-Metal Hydride (NiMH)
 - **Type:** DateTime
 - **Default:** Empty
 - **Purpose:** Timestamp of last full charge (100%)
-- **Populated By:** **Script 12** - Battery Health Monitor
+- **Populated By:** **TBD: Battery Health Monitor**
 - **Update Frequency:** Real-time
 - **Format:** yyyy-MM-dd HH:mm:ss
 
@@ -152,7 +154,7 @@ Nickel-Metal Hydride (NiMH)
 - **Type:** Checkbox
 - **Default:** False
 - **Purpose:** Battery replacement recommended
-- **Populated By:** **Script 12** - Battery Health Monitor
+- **Populated By:** **TBD: Battery Health Monitor**
 - **Update Frequency:** Daily
 
 **Triggers:**
@@ -168,10 +170,11 @@ Set to True if:
 
 ## Script Integration
 
-### Script 12: Battery Health Monitor
-**Execution:** Daily (or Every 4 hours for runtime/status)
-**Runtime:** ~15 seconds
-**Fields Updated:**
+### TBD: Battery Health Monitor
+**Status:** Not yet implemented (Script 12 is BASE Baseline Manager)
+**Planned Execution:** Daily (or Every 4 hours for runtime/status)
+**Planned Runtime:** ~15 seconds
+**Fields to Update:**
 - BATBatteryPresent
 - BATDesignCapacityMWh
 - BATFullChargeCapacityMWh
@@ -188,6 +191,8 @@ Set to True if:
 - Tablets
 - 2-in-1 devices
 - Skipped on desktops/servers
+
+**Critical Issue:** All 10 BAT fields have NO script support. Script 12 is BASE Baseline Manager, not Battery Monitor.
 
 ---
 

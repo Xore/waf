@@ -1,5 +1,5 @@
 # NinjaRMM Custom Field Framework - Security Monitoring
-**File:** 08_SEC_Security_Monitoring.md  
+**File:** 09_SEC_Security_Monitoring.md  
 **Category:** SEC (Security Monitoring)  
 **Field Count:** 10 fields  
 **Extracted From:** 14_BASE_SEC_UPD_Core_Security_Baseline.md
@@ -266,6 +266,6 @@ Action:
 
 ---
 
-**File:** 08_SEC_Security_Monitoring.md  
+**File:** 09_SEC_Security_Monitoring.md  
 **Last Updated:** February 2, 2026  
 **Framework Version:** 3.0

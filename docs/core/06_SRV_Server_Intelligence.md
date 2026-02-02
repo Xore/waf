@@ -1,5 +1,5 @@
 # NinjaRMM Custom Field Framework - SRV Fields
-**File:** 13_SRV_Server_Intelligence.md
+**File:** 06_SRV_Server_Intelligence.md
 **Category:** SRV (Server Intelligence)
 **Description:** Server role detection, backup monitoring, and service criticality
 
@@ -123,7 +123,7 @@ Manual approval required
 - **Valid Values:** Current, Warning, Overdue, None, Unknown
 - **Default:** Unknown
 - **Purpose:** Backup status for server
-- **Populated By:** **Script 13** - Veeam Backup Monitor or backup integration
+- **Populated By:** **TBD: Veeam Backup Monitor** (not yet implemented - Script 13 is DRIFT Detector)
 - **Update Frequency:** Daily
 
 **Status Definitions:**
@@ -146,6 +146,8 @@ None:
 Unknown:
   - Cannot determine backup status
 ```
+
+**Note:** Script 13 is actually DRIFT Detector, not Veeam Monitor. Veeam monitoring script needs to be implemented.
 
 ---
 
@@ -194,10 +196,12 @@ Critical:
 - SRVCriticalService
 - SRVMonitoringProfile
 
-### Script 13: Veeam Backup Monitor
-**Execution:** Daily
-**Runtime:** ~20 seconds
-**Fields Updated:**
+### TBD: Veeam Backup Monitor
+**Status:** Not yet implemented
+**Note:** Script 13 is DRIFT Detector, not Veeam Monitor
+**Planned Execution:** Daily
+**Planned Runtime:** ~20 seconds
+**Fields to Update:**
 - SRVBackupStatus
 
 ---

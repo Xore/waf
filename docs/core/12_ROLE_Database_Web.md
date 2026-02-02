@@ -1,5 +1,5 @@
 # NinjaRMM Custom Field Framework - Database and Web Server Infrastructure
-**File:** 22_IIS_MSSQL_MYSQL_Database_Web_Servers.md  
+**File:** 12_ROLE_Database_Web.md  
 **Categories:** IIS (Web Server) + MSSQL (SQL Server) + MYSQL (MySQL/MariaDB)  
 **Field Count:** 26 fields  
 **Target:** Servers running IIS, SQL Server, or MySQL
@@ -10,6 +10,8 @@
 
 Comprehensive monitoring for web and database server infrastructure including IIS websites, SQL Server instances, and MySQL databases with health status tracking.
 
+**Note:** Scripts 9-11 referenced below are incorrectly assigned. Script 9 is Risk Classifier, Script 10 is Update Compliance Monitor, Script 11 is NET Location Tracker. IIS, MSSQL, and MySQL monitoring scripts need to be implemented.
+
 ---
 
 ## IIS - Web Server Fields (11 fields)
@@ -17,69 +19,69 @@ Comprehensive monitoring for web and database server infrastructure including II
 ### IISInstalled
 - **Type:** Checkbox
 - **Default:** False
-- **Populated By:** **Script 9** - IIS Web Server Monitor
+- **Populated By:** **TBD: IIS Web Server Monitor** (Script 9 conflict - currently Risk Classifier)
 - **Update Frequency:** Every 4 hours
 
 ### IISSiteCount
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 9** - IIS Web Server Monitor
+- **Populated By:** **TBD: IIS Web Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### IISSiteStatusSummary
 - **Type:** WYSIWYG
 - **Default:** Empty
-- **Populated By:** **Script 9** - IIS Web Server Monitor
+- **Populated By:** **TBD: IIS Web Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### IISAppPoolCount
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 9** - IIS Web Server Monitor
+- **Populated By:** **TBD: IIS Web Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### IISAppPoolsStopped
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 9** - IIS Web Server Monitor
+- **Populated By:** **TBD: IIS Web Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### IISWorkerProcessCount
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 9** - IIS Web Server Monitor
+- **Populated By:** **TBD: IIS Web Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### IISRequestQueueLength
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 9** - IIS Web Server Monitor
+- **Populated By:** **TBD: IIS Web Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### IISFailedRequestCount24h
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 9** - IIS Web Server Monitor
+- **Populated By:** **TBD: IIS Web Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### IISLastError
 - **Type:** Text
 - **Max Length:** 1000 characters
-- **Populated By:** **Script 9** - IIS Web Server Monitor
+- **Populated By:** **TBD: IIS Web Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### IISVersion
 - **Type:** Text
 - **Max Length:** 50 characters
 - **Default:** Not Installed
-- **Populated By:** **Script 9** - IIS Web Server Monitor
+- **Populated By:** **TBD: IIS Web Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### IISHealthStatus
 - **Type:** Dropdown
 - **Valid Values:** Healthy, Warning, Critical, Unknown
 - **Default:** Unknown
-- **Populated By:** **Script 9** - IIS Web Server Monitor
+- **Populated By:** **TBD: IIS Web Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ---
@@ -89,50 +91,50 @@ Comprehensive monitoring for web and database server infrastructure including II
 ### MSSQLInstalled
 - **Type:** Checkbox
 - **Default:** False
-- **Populated By:** **Script 10** - MSSQL Server Monitor
+- **Populated By:** **TBD: MSSQL Server Monitor** (Script 10 conflict - currently Update Compliance)
 - **Update Frequency:** Every 4 hours
 
 ### MSSQLInstanceCount
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 10** - MSSQL Server Monitor
+- **Populated By:** **TBD: MSSQL Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### MSSQLInstanceSummary
 - **Type:** WYSIWYG
 - **Default:** Empty
-- **Populated By:** **Script 10** - MSSQL Server Monitor
+- **Populated By:** **TBD: MSSQL Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### MSSQLDatabaseCount
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 10** - MSSQL Server Monitor
+- **Populated By:** **TBD: MSSQL Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### MSSQLFailedJobsCount
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 10** - MSSQL Server Monitor
+- **Populated By:** **TBD: MSSQL Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### MSSQLLastBackup
 - **Type:** DateTime
 - **Default:** Empty
-- **Populated By:** **Script 10** - MSSQL Server Monitor
+- **Populated By:** **TBD: MSSQL Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### MSSQLTransactionLogSizeMB
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 10** - MSSQL Server Monitor
+- **Populated By:** **TBD: MSSQL Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### MSSQLHealthStatus
 - **Type:** Dropdown
 - **Valid Values:** Healthy, Warning, Critical, Unknown
 - **Default:** Unknown
-- **Populated By:** **Script 10** - MSSQL Server Monitor
+- **Populated By:** **TBD: MSSQL Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ---
@@ -142,47 +144,47 @@ Comprehensive monitoring for web and database server infrastructure including II
 ### MYSQLInstalled
 - **Type:** Checkbox
 - **Default:** False
-- **Populated By:** **Script 11** - MySQL Server Monitor
+- **Populated By:** **TBD: MySQL Server Monitor** (Script 11 conflict - currently NET Location)
 - **Update Frequency:** Every 4 hours
 
 ### MYSQLVersion
 - **Type:** Text
 - **Max Length:** 100 characters
 - **Default:** Not Installed
-- **Populated By:** **Script 11** - MySQL Server Monitor
+- **Populated By:** **TBD: MySQL Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### MYSQLDatabaseCount
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 11** - MySQL Server Monitor
+- **Populated By:** **TBD: MySQL Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### MYSQLReplicationStatus
 - **Type:** Dropdown
 - **Valid Values:** N/A, Master, Slave, Error, Unknown
 - **Default:** N/A
-- **Populated By:** **Script 11** - MySQL Server Monitor
+- **Populated By:** **TBD: MySQL Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### MYSQLReplicationLag
 - **Type:** Integer
 - **Default:** 0
 - **Purpose:** Seconds behind master
-- **Populated By:** **Script 11** - MySQL Server Monitor
+- **Populated By:** **TBD: MySQL Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### MYSQLSlowQueries24h
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 11** - MySQL Server Monitor
+- **Populated By:** **TBD: MySQL Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### MYSQLHealthStatus
 - **Type:** Dropdown
 - **Valid Values:** Healthy, Warning, Critical, Unknown
 - **Default:** Unknown
-- **Populated By:** **Script 11** - MySQL Server Monitor
+- **Populated By:** **TBD: MySQL Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ---
@@ -197,7 +199,7 @@ Condition:
 
 Action:
   Priority: P2 High
-  Automation: **Script 42** - Restart IIS App Pools
+  Automation: **TBD: Script 42** - Restart IIS App Pools (not yet implemented)
   Ticket: IIS application pool stopped
 ```
 
@@ -209,7 +211,7 @@ Condition:
 
 Action:
   Priority: P1 Critical
-  Automation: **Script 43** - Trigger SQL Backup
+  Automation: **TBD: Script 43** - Trigger SQL Backup (not yet implemented)
   Ticket: SQL Server backup overdue
 ```
 
@@ -221,19 +223,21 @@ Condition:
 
 Action:
   Priority: P1 Critical
-  Automation: **Script 44** - MySQL Replication Repair
+  Automation: **TBD: Script 44** - MySQL Replication Repair (not yet implemented)
   Ticket: MySQL replication failure
 ```
 
 ---
 
 **Total Fields This File:** 26 fields  
-**Scripts Required:** Scripts 9, 10, 11 (monitoring) + Scripts 42-44 (remediation)  
+**Scripts Required:** IIS, MSSQL, MySQL monitors (TBD) + Scripts 42-44 (remediation - TBD)  
 **Update Frequency:** Every 4 hours  
 **Priority Level:** Critical (Infrastructure Services)
 
+**Critical Issue:** All 26 fields in this document have NO script support. Scripts 9-11 are already used for other purposes. New monitoring scripts must be created.
+
 ---
 
-**File:** 22_IIS_MSSQL_MYSQL_Database_Web_Servers.md  
-**Last Updated:** February 1, 2026  
+**File:** 12_ROLE_Database_Web.md  
+**Last Updated:** February 2, 2026  
 **Framework Version:** 3.0 Complete

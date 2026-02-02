@@ -1,5 +1,5 @@
 # NinjaRMM Custom Field Framework - AUTO Fields
-**File:** 11_AUTO_Automation_Control.md
+**File:** 02_AUTO_Automation_Control.md
 **Category:** AUTO (Automation Control)
 **Description:** Automation control, remediation tracking, and safety monitoring
 
@@ -17,7 +17,7 @@ Automation control fields enable automated remediation with safety controls, tra
 - **Type:** Checkbox
 - **Default:** False
 - **Purpose:** Master switch to enable/disable automated remediation
-- **Populated By:** Manual configuration or **Script 40** - Automation Safety Validator
+- **Populated By:** Manual configuration or **TBD: Script 40** - Automation Safety Validator (not yet implemented)
 - **Update Frequency:** Manual or daily validation
 
 **Use Cases:**
@@ -71,7 +71,7 @@ Full:
 - **Type:** DateTime
 - **Default:** Empty
 - **Purpose:** Timestamp of last automated remediation action
-- **Populated By:** All remediation scripts
+- **Populated By:** Remediation scripts (when implemented)
 - **Update Frequency:** Real-time (when remediation occurs)
 - **Format:** yyyy-MM-dd HH:mm:ss
 
@@ -82,7 +82,7 @@ Full:
 - **Max Length:** 500 characters
 - **Default:** None
 - **Purpose:** Description of last automated action taken
-- **Populated By:** All remediation scripts
+- **Populated By:** Remediation scripts (when implemented)
 - **Update Frequency:** Real-time
 
 **Format:**
@@ -101,7 +101,7 @@ Script 52 | Failed to restart Print Spooler | Failed - Service locked
 - **Type:** Integer
 - **Default:** 0
 - **Purpose:** Count of automated actions in last 30 days
-- **Populated By:** **Script 40** - Automation Safety Validator
+- **Populated By:** **TBD: Script 40** - Automation Safety Validator (not yet implemented)
 - **Update Frequency:** Daily
 - **Range:** 0 to 9999
 
@@ -119,7 +119,7 @@ Script 52 | Failed to restart Print Spooler | Failed - Service locked
 - **Type:** Integer
 - **Default:** 0
 - **Purpose:** Count of failed automation attempts in last 30 days
-- **Populated By:** **Script 40** - Automation Safety Validator
+- **Populated By:** **TBD: Script 40** - Automation Safety Validator (not yet implemented)
 - **Update Frequency:** Daily
 - **Range:** 0 to 9999
 
@@ -129,7 +129,7 @@ Script 52 | Failed to restart Print Spooler | Failed - Service locked
 - **Type:** Checkbox
 - **Default:** False
 - **Purpose:** Automation safety concern detected
-- **Populated By:** **Script 40** - Automation Safety Validator
+- **Populated By:** **TBD: Script 40** - Automation Safety Validator (not yet implemented)
 - **Update Frequency:** Daily
 
 **Triggers:**
@@ -145,21 +145,25 @@ Set to True if:
 
 ## Script Integration
 
-### Script 40: Automation Safety Validator
-**Execution:** Daily
-**Runtime:** ~15 seconds
-**Fields Updated:**
+### TBD: Script 40 - Automation Safety Validator
+**Status:** Not yet implemented  
+**Planned Execution:** Daily  
+**Planned Runtime:** ~15 seconds  
+**Fields to Update:**
 - AUTORemediationEnabled (validates)
 - AUTORemediationCount30d
 - AUTOFailedRemediations30d
 - AUTOSafetyFlag
 
-### All Remediation Scripts (41-105)
-**Execution:** Triggered by conditions
-**Runtime:** Varies
-**Fields Updated:**
+### Remediation Scripts (Planned: 41+)
+**Status:** Not yet implemented  
+**Planned Execution:** Triggered by conditions  
+**Runtime:** Varies  
+**Fields to Update:**
 - AUTOLastRemediationDate
 - AUTOLastRemediationAction
+
+**Note:** References to Scripts 41-105 removed - these were placeholder references for future remediation automation that has not been implemented.
 
 ---
 

@@ -1,5 +1,5 @@
 # NinjaRMM Custom Field Framework - Additional Server Roles
-**File:** 24_EVT_FS_PRINT_HV_BL_FEAT_FLEXLM_Additional_Roles.md  
+**File:** 16_ROLE_Additional.md  
 **Categories:** EVT + FS + PRINT + HV + BL + FEAT + FLEXLM  
 **Field Count:** 54 fields  
 **Target:** Servers with specialized roles
@@ -10,6 +10,13 @@
 
 Monitoring for specialized server roles including Event Log management, File Servers, Print Servers, Hyper-V hosts, BitLocker encryption, Windows Features, and FlexLM license servers.
 
+**Critical Notes:** 
+- Script 4 is Security Analyzer (not Event Log Monitor)
+- Script 5 is Capacity Analyzer (not File Server Monitor)
+- Script 6 is Telemetry Collector (not Print Server Monitor)
+- Script 12 is BASE Baseline Manager (not FlexLM Monitor)
+- Scripts for EVT, FS, PRINT, FLEXLM need to be implemented separately
+
 ---
 
 ## EVT - Event Log Management Fields (7 fields)
@@ -18,45 +25,45 @@ Monitoring for specialized server roles including Event Log management, File Ser
 - **Type:** Integer
 - **Default:** 0
 - **Purpose:** Count of full event logs
-- **Populated By:** **Script 4** - Event Log Monitor
+- **Populated By:** **TBD: Event Log Monitor** (Script 4 conflict - Security Analyzer)
 - **Update Frequency:** Daily
 
 ### EVTCriticalErrors24h
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 4** - Event Log Monitor
+- **Populated By:** **TBD: Event Log Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### EVTWarnings24h
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 4** - Event Log Monitor
+- **Populated By:** **TBD: Event Log Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### EVTSecurityEvents24h
 - **Type:** Integer
 - **Default:** 0
 - **Purpose:** Security-related events
-- **Populated By:** **Script 4** - Event Log Monitor
+- **Populated By:** **TBD: Event Log Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### EVTTopErrorSource
 - **Type:** Text
 - **Max Length:** 200 characters
-- **Populated By:** **Script 4** - Event Log Monitor
+- **Populated By:** **TBD: Event Log Monitor**
 - **Update Frequency:** Daily
 
 ### EVTEventLogSummary
 - **Type:** WYSIWYG
 - **Default:** Empty
-- **Populated By:** **Script 4** - Event Log Monitor
+- **Populated By:** **TBD: Event Log Monitor**
 - **Update Frequency:** Daily
 
 ### EVTHealthStatus
 - **Type:** Dropdown
 - **Valid Values:** Healthy, Warning, Critical, Unknown
 - **Default:** Unknown
-- **Populated By:** **Script 4** - Event Log Monitor
+- **Populated By:** **TBD: Event Log Monitor**
 - **Update Frequency:** Daily
 
 ---
@@ -67,51 +74,51 @@ Monitoring for specialized server roles including Event Log management, File Ser
 - **Type:** Checkbox
 - **Default:** False
 - **Purpose:** File Server role installed
-- **Populated By:** **Script 5** - File Server Monitor
+- **Populated By:** **TBD: File Server Monitor** (Script 5 conflict - Capacity Analyzer)
 - **Update Frequency:** Daily
 
 ### FSShareCount
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 5** - File Server Monitor
+- **Populated By:** **TBD: File Server Monitor**
 - **Update Frequency:** Daily
 
 ### FSOpenFileCount
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 5** - File Server Monitor
+- **Populated By:** **TBD: File Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### FSConnectedUsersCount
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 5** - File Server Monitor
+- **Populated By:** **TBD: File Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### FSQuotaExceeded
 - **Type:** Integer
 - **Default:** 0
 - **Purpose:** Number of users exceeding quota
-- **Populated By:** **Script 5** - File Server Monitor
+- **Populated By:** **TBD: File Server Monitor**
 - **Update Frequency:** Daily
 
 ### FSShareAccessErrors24h
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 5** - File Server Monitor
+- **Populated By:** **TBD: File Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### FSShareSummary
 - **Type:** WYSIWYG
 - **Default:** Empty
-- **Populated By:** **Script 5** - File Server Monitor
+- **Populated By:** **TBD: File Server Monitor**
 - **Update Frequency:** Daily
 
 ### FSHealthStatus
 - **Type:** Dropdown
 - **Valid Values:** Healthy, Warning, Critical, Unknown
 - **Default:** Unknown
-- **Populated By:** **Script 5** - File Server Monitor
+- **Populated By:** **TBD: File Server Monitor**
 - **Update Frequency:** Daily
 
 ---
@@ -121,50 +128,50 @@ Monitoring for specialized server roles including Event Log management, File Ser
 ### PRINTPrintServerRole
 - **Type:** Checkbox
 - **Default:** False
-- **Populated By:** **Script 6** - Print Server Monitor
+- **Populated By:** **TBD: Print Server Monitor** (Script 6 conflict - Telemetry Collector)
 - **Update Frequency:** Daily
 
 ### PRINTPrinterCount
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 6** - Print Server Monitor
+- **Populated By:** **TBD: Print Server Monitor**
 - **Update Frequency:** Daily
 
 ### PRINTQueueCount
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 6** - Print Server Monitor
+- **Populated By:** **TBD: Print Server Monitor**
 - **Update Frequency:** Daily
 
 ### PRINTPrintJobsStuck
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 6** - Print Server Monitor
+- **Populated By:** **TBD: Print Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### PRINTPrinterErrors24h
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 6** - Print Server Monitor
+- **Populated By:** **TBD: Print Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### PRINTOfflinePrinters
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 6** - Print Server Monitor
+- **Populated By:** **TBD: Print Server Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### PRINTPrinterSummary
 - **Type:** WYSIWYG
 - **Default:** Empty
-- **Populated By:** **Script 6** - Print Server Monitor
+- **Populated By:** **TBD: Print Server Monitor**
 - **Update Frequency:** Daily
 
 ### PRINTHealthStatus
 - **Type:** Dropdown
 - **Valid Values:** Healthy, Warning, Critical, Unknown
 - **Default:** Unknown
-- **Populated By:** **Script 6** - Print Server Monitor
+- **Populated By:** **TBD: Print Server Monitor**
 - **Update Frequency:** Daily
 
 ---
@@ -316,71 +323,71 @@ Monitoring for specialized server roles including Event Log management, File Ser
 ### FLEXLMInstalled
 - **Type:** Checkbox
 - **Default:** False
-- **Populated By:** **Script 12** - FlexLM License Monitor
+- **Populated By:** **TBD: FlexLM License Monitor** (Script 12 conflict - BASE Baseline)
 - **Update Frequency:** Every 4 hours
 
 ### FLEXLMVersion
 - **Type:** Text
 - **Max Length:** 50 characters
-- **Populated By:** **Script 12** - FlexLM License Monitor
+- **Populated By:** **TBD: FlexLM License Monitor**
 - **Update Frequency:** Daily
 
 ### FLEXLMVendorDaemons
 - **Type:** Integer
 - **Default:** 0
 - **Purpose:** Number of vendor daemons
-- **Populated By:** **Script 12** - FlexLM License Monitor
+- **Populated By:** **TBD: FlexLM License Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### FLEXLMTotalLicenses
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 12** - FlexLM License Monitor
+- **Populated By:** **TBD: FlexLM License Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### FLEXLMLicensesInUse
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 12** - FlexLM License Monitor
+- **Populated By:** **TBD: FlexLM License Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### FLEXLMLicenseUtilizationPercent
 - **Type:** Integer (0-100)
 - **Default:** 0
 - **Calculation:** (InUse / Total) * 100
-- **Populated By:** **Script 12** - FlexLM License Monitor
+- **Populated By:** **TBD: FlexLM License Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### FLEXLMDeniedRequests24h
 - **Type:** Integer
 - **Default:** 0
 - **Purpose:** License checkout denials
-- **Populated By:** **Script 12** - FlexLM License Monitor
+- **Populated By:** **TBD: FlexLM License Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### FLEXLMDaemonsDown
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 12** - FlexLM License Monitor
+- **Populated By:** **TBD: FlexLM License Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### FLEXLMExpiringLicenses30d
 - **Type:** Integer
 - **Default:** 0
-- **Populated By:** **Script 12** - FlexLM License Monitor
+- **Populated By:** **TBD: FlexLM License Monitor**
 - **Update Frequency:** Daily
 
 ### FLEXLMLicenseSummary
 - **Type:** WYSIWYG
 - **Default:** Empty
-- **Populated By:** **Script 12** - FlexLM License Monitor
+- **Populated By:** **TBD: FlexLM License Monitor**
 - **Update Frequency:** Every 4 hours
 
 ### FLEXLMHealthStatus
 - **Type:** Dropdown
 - **Valid Values:** Healthy, Warning, Critical, Unknown
 - **Default:** Unknown
-- **Populated By:** **Script 12** - FlexLM License Monitor
+- **Populated By:** **TBD: FlexLM License Monitor**
 - **Update Frequency:** Every 4 hours
 
 ---
@@ -395,7 +402,7 @@ Condition:
 
 Action:
   Priority: P3 Medium
-  Automation: **Script 48** - File Share Diagnostics
+  Automation: **TBD: Script 48** - File Share Diagnostics (not implemented)
   Ticket: File server access issues
 ```
 
@@ -407,7 +414,7 @@ Condition:
 
 Action:
   Priority: P2 High
-  Automation: **Script 49** - Clear Print Queues
+  Automation: **TBD: Script 49** - Clear Print Queues (not implemented)
   Ticket: Print jobs stuck in queue
 ```
 
@@ -419,7 +426,7 @@ Condition:
 
 Action:
   Priority: P1 Critical
-  Automation: **Script 50** - Hyper-V Health Check
+  Automation: **TBD: Script 50** - Hyper-V Health Check (not implemented)
   Ticket: Hyper-V host critical issue
 ```
 
@@ -431,7 +438,7 @@ Condition:
 
 Action:
   Priority: P2 High
-  Automation: **Script 51** - FlexLM Alert
+  Automation: **TBD: Script 51** - FlexLM Alert (not implemented)
   Ticket: FlexLM license capacity warning
 ```
 
@@ -442,7 +449,7 @@ Condition:
 
 Action:
   Priority: P3 Medium
-  Automation: **Script 52** - BitLocker Enablement
+  Automation: **TBD: Script 52** - BitLocker Enablement (not implemented)
   Ticket: BitLocker encryption required
 ```
 
@@ -450,16 +457,16 @@ Action:
 
 ## Script-to-Field Mapping Summary
 
-### Script 4: Event Log Monitor
-**Fields:** 7 EVT fields  
+### TBD: Event Log Monitor
+**Fields:** 7 EVT fields (Script 4 conflict)  
 **Frequency:** Daily / Every 4 hours
 
-### Script 5: File Server Monitor
-**Fields:** 8 FS fields  
+### TBD: File Server Monitor
+**Fields:** 8 FS fields (Script 5 conflict)  
 **Frequency:** Daily / Every 4 hours
 
-### Script 6: Print Server Monitor
-**Fields:** 8 PRINT fields  
+### TBD: Print Server Monitor
+**Fields:** 8 PRINT fields (Script 6 conflict)  
 **Frequency:** Daily / Every 4 hours
 
 ### Script 7: BitLocker Monitor
@@ -470,8 +477,8 @@ Action:
 **Fields:** 9 HV fields  
 **Frequency:** Every 4 hours
 
-### Script 12: FlexLM License Monitor
-**Fields:** 11 FLEXLM fields  
+### TBD: FlexLM License Monitor
+**Fields:** 11 FLEXLM fields (Script 12 conflict)  
 **Frequency:** Every 4 hours
 
 ### Script 36: Server Role Detector
@@ -481,12 +488,16 @@ Action:
 ---
 
 **Total Fields This File:** 54 fields  
-**Scripts Required:** Scripts 4-8, 12, 36 (monitoring) + Scripts 48-52 (remediation)  
+**Scripts Implemented:** Scripts 7-8, 36 (15 fields supported)  
+**Scripts Needed:** EVT, FS, PRINT, FLEXLM monitors (39 fields unsupported)  
+**Remediation Scripts Needed:** Scripts 48-52 (TBD)  
 **Update Frequencies:** Daily, Every 4 hours  
 **Priority Level:** High (Specialized Infrastructure)
 
+**Critical Issue:** 39 of 54 fields (72%) have NO script support due to conflicts.
+
 ---
 
-**File:** 24_EVT_FS_PRINT_HV_BL_FEAT_FLEXLM_Additional_Roles.md  
-**Last Updated:** February 1, 2026  
+**File:** 16_ROLE_Additional.md  
+**Last Updated:** February 3, 2026  
 **Framework Version:** 3.0 Complete

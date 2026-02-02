@@ -13,29 +13,40 @@ try {
     $currentLocation = Ninja-Property-Get NETLocationCurrent
     if ([string]::IsNullOrEmpty($currentLocation)) { $currentLocation = "Unknown" }
 
-    $vpnAdapters = Get-NetAdapter | Where-Object { $_.InterfaceDescription -match 'VPN|Cisco|Palo Alto|FortiClient|OpenVPN' -and $_.Status -eq 'Up' }
-    $vpnConnected = $vpnAdapters.Count -gt 0
+    # Check for AzureVPN connection
+    $azureVpnAdapter = Get-NetAdapter | Where-Object { $_.InterfaceDescription -match 'Azure' -and $_.Status -eq 'Up' }
+    $vpnConnected = $azureVpnAdapter.Count -gt 0
 
-    $gateway = Get-NetRoute -DestinationPrefix "0.0.0.0/0" | Select-Object -First 1 -ExpandProperty NextHop
-    
     $newLocation = "Unknown"
-    if ($gateway) {
-        if ($gateway -match '^10\\.' -or $gateway -match '^172\\.(1[6-9]|2[0-9]|3[0-1])\\.' -or $gateway -match '^192\\.168\\.') {
-            if ($vpnConnected) {
-                $newLocation = "Remote"
+
+    if ($vpnConnected) {
+        # If AzureVPN is connected, always Remote
+        $newLocation = "Remote"
+    } else {
+        # Get local IP address
+        $localIP = Get-NetIPAddress -AddressFamily IPv4 -PrefixOrigin Dhcp, Manual | 
+            Where-Object { $_.IPAddress -notmatch '^169\.254\.' -and $_.IPAddress -ne '127.0.0.1' } | 
+            Select-Object -First 1 -ExpandProperty IPAddress
+
+        if ($localIP) {
+            # Check IP prefix for location mapping
+            if ($localIP -match '^10\.93\.') {
+                $newLocation = "location1"
+            } elseif ($localIP -match '^10\.43\.') {
+                $newLocation = "Hauptsitz"
+            } elseif ($localIP -match '^10\.') {
+                # Other 10.x.x.x networks - unknown office location
+                $newLocation = "Unknown"
             } else {
-                $pingResult = Test-Connection -ComputerName $gateway -Count 1 -Quiet
-                if ($pingResult) {
-                    $newLocation = "Office"
-                } else {
-                    $newLocation = "Unknown"
-                }
+                # Public IP or other private ranges - likely remote/external
+                $newLocation = "Remote"
             }
         } else {
-            $newLocation = "Remote"
+            $newLocation = "Unknown"
         }
     }
 
+    # Update previous location if changed
     if ($newLocation -ne $currentLocation -and $currentLocation -ne "Unknown") {
         Ninja-Property-Set NETLocationPrevious $currentLocation
     }
@@ -47,6 +58,9 @@ try {
     Write-Output "  Current Location: $newLocation"
     Write-Output "  Previous Location: $currentLocation"
     Write-Output "  VPN Connected: $vpnConnected"
+    if ($localIP) {
+        Write-Output "  Local IP: $localIP"
+    }
 
     exit 0
 } catch {

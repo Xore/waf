@@ -1,5 +1,5 @@
 # NinjaRMM Custom Field Framework - CAP Fields
-**File:** 15_CAP_Capacity_Planning.md
+**File:** 10_CAP_Capacity_Planning.md
 **Category:** CAP (Capacity Planning)
 **Description:** Capacity trend forecasting and resource utilization analysis
 

@@ -1,5 +1,5 @@
 # NinjaRMM Custom Field Framework - Update Management
-**File:** 09_UPD_Update_Management.md  
+**File:** 11_UPD_Update_Management.md  
 **Category:** UPD (Windows Update Management)  
 **Field Count:** 6 fields  
 **Extracted From:** 14_BASE_SEC_UPD_Core_Security_Baseline.md
@@ -18,7 +18,7 @@ Update management fields track Windows Update compliance, missing patches, pendi
 - **Type:** DateTime
 - **Default:** Empty
 - **Purpose:** Date of last successfully installed Windows update
-- **Populated By:** **Script 23** - Update Compliance Monitor
+- **Populated By:** **Script 10** - Update Compliance Monitor (Note: Script 23 is Update Aging Tracker)
 - **Update Frequency:** Daily
 - **Format:** yyyy-MM-dd HH:mm:ss
 
@@ -41,7 +41,7 @@ Thresholds:
 - **Type:** Checkbox
 - **Default:** False
 - **Purpose:** System restart required to complete update installation
-- **Populated By:** **Script 23** - Update Compliance Monitor
+- **Populated By:** **Script 10** - Update Compliance Monitor
 - **Update Frequency:** Every 4 hours
 
 **Detection Methods:**
@@ -59,7 +59,7 @@ Checks for:
 - **Type:** Integer
 - **Default:** 0
 - **Purpose:** Total count of missing Windows updates (all types)
-- **Populated By:** **Script 23** - Update Compliance Monitor
+- **Populated By:** **Script 10** - Update Compliance Monitor
 - **Update Frequency:** Daily
 - **Range:** 0 to 9999
 
@@ -78,7 +78,7 @@ Checks for:
 - **Type:** Integer
 - **Default:** 0
 - **Purpose:** Count of missing security and critical updates
-- **Populated By:** **Script 23** - Update Compliance Monitor
+- **Populated By:** **Script 10** - Update Compliance Monitor
 - **Update Frequency:** Daily
 - **Range:** 0 to 9999
 
@@ -108,7 +108,7 @@ Excludes:
 - **Type:** DateTime
 - **Default:** Empty
 - **Purpose:** Last successful Windows Update scan for available updates
-- **Populated By:** **Script 23** - Update Compliance Monitor
+- **Populated By:** **Script 10** - Update Compliance Monitor
 - **Update Frequency:** Daily
 - **Format:** yyyy-MM-dd HH:mm:ss
 
@@ -130,7 +130,7 @@ Alert if:
 - **Valid Values:** Compliant, Minor Gap, Significant Gap, Critical Gap, Unknown
 - **Default:** Unknown
 - **Purpose:** Overall Windows Update compliance status
-- **Populated By:** **Script 23** - Update Compliance Monitor
+- **Populated By:** **Script 10** - Update Compliance Monitor
 - **Update Frequency:** Daily
 
 **Compliance Logic:**
@@ -165,7 +165,7 @@ Unknown:
 
 ## Script-to-Field Mapping
 
-### Script 23: Update Compliance Monitor
+### Script 10: Update Compliance Monitor
 **Execution:** Daily (full scan), Every 4 hours (reboot check)  
 **Runtime:** ~45 seconds  
 **Fields Updated:** All UPD fields (6 fields)
@@ -186,6 +186,8 @@ If Windows Update service unavailable:
   - Log error details
   - Attempt service repair
 ```
+
+**Note:** Original documentation incorrectly referenced Script 23 (which is Update Aging Tracker). Script 10 is the actual Update Compliance Monitor.
 
 ---
 
@@ -285,11 +287,11 @@ Best Practices:
 ---
 
 **Total Fields:** 6 fields  
-**Scripts Required:** 1 script (Script 23)  
+**Scripts Required:** 1 script (Script 10)  
 **Related Categories:** SEC (Security), AUTO (Automation)
 
 ---
 
-**File:** 09_UPD_Update_Management.md  
+**File:** 11_UPD_Update_Management.md  
 **Last Updated:** February 2, 2026  
 **Framework Version:** 3.0

@@ -1,5 +1,5 @@
 # NinjaRMM Custom Field Framework - DRIFT Fields
-**File:** 14_DRIFT_Configuration_Drift.md
+**File:** 08_DRIFT_Configuration_Drift.md
 **Category:** DRIFT (Configuration Drift)
 **Description:** Configuration drift detection and change management
 
@@ -17,7 +17,7 @@ Configuration drift fields detect and track changes to system configuration comp
 - **Type:** Checkbox
 - **Default:** False
 - **Purpose:** Any configuration drift detected since baseline
-- **Populated By:** **Script 11** - Configuration Drift Detector
+- **Populated By:** **Script 13** - DRIFT Detector (Note: Script 11 is NET Location Tracker)
 - **Update Frequency:** Daily
 
 **Triggers:**
@@ -37,7 +37,7 @@ Set to True if ANY drift detected in:
 - **Type:** DateTime
 - **Default:** Empty
 - **Purpose:** Timestamp of most recent drift detection
-- **Populated By:** **Script 11** - Configuration Drift Detector
+- **Populated By:** **Script 13** - DRIFT Detector
 - **Update Frequency:** Daily
 - **Format:** yyyy-MM-dd HH:mm:ss
 
@@ -48,7 +48,7 @@ Set to True if ANY drift detected in:
 - **Valid Values:** None, Software, Service, Startup, Admin, Network, Policy, Multiple
 - **Default:** None
 - **Purpose:** Primary category of detected drift
-- **Populated By:** **Script 11** - Configuration Drift Detector
+- **Populated By:** **Script 13** - DRIFT Detector
 - **Update Frequency:** Daily
 
 ---
@@ -58,7 +58,7 @@ Set to True if ANY drift detected in:
 - **Valid Values:** None, Minor, Moderate, Significant, Critical
 - **Default:** None
 - **Purpose:** Severity assessment of configuration drift
-- **Populated By:** **Script 11** - Configuration Drift Detector
+- **Populated By:** **Script 13** - DRIFT Detector
 - **Update Frequency:** Daily
 
 **Severity Logic:**
@@ -95,7 +95,7 @@ Critical:
 - **Type:** WYSIWYG
 - **Default:** Empty
 - **Purpose:** HTML summary of all detected drift
-- **Populated By:** **Script 11** - Configuration Drift Detector
+- **Populated By:** **Script 13** - DRIFT Detector
 - **Update Frequency:** Daily
 
 **Example HTML:**
@@ -129,7 +129,7 @@ Critical:
 
 ## Script Integration
 
-### Script 11: Configuration Drift Detector
+### Script 13: DRIFT Detector
 **Execution:** Daily
 **Runtime:** ~40 seconds
 **Fields Updated:**
@@ -140,8 +140,10 @@ Critical:
 - DRIFTDriftSummary
 
 **Prerequisites:**
-- Baseline established (Script 18 must run first)
+- Baseline established (Script 12 - BASE Baseline Manager must run first)
 - Baseline age < 90 days recommended
+
+**Note:** Original documentation incorrectly referenced Script 11 (which is NET Location Tracker). Script 13 is the actual DRIFT Detector.
 
 ---
 

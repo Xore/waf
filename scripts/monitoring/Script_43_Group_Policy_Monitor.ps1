@@ -1,17 +1,17 @@
 <#
 .SYNOPSIS
     Script 43: Group Policy Monitor
-    NinjaRMM Custom Field Framework v3.0
+    NinjaRMM Custom Field Framework v1.1
 
 .DESCRIPTION
     Monitors Group Policy application status, tracks applied GPOs, detects processing errors,
     and provides HTML summary of all applied policies. Updates 6 GPO fields.
 
 .FIELDS UPDATED
-    - GPOApplied (Checkbox)
-    - GPOLastApplied (DateTime)
+    - GPOApplied (Text: "true"/"false")
+    - GPOLastApplied (Date/Time: Unix Epoch seconds since 1970-01-01 UTC)
     - GPOCount (Integer)
-    - GPOErrorsPresent (Checkbox)
+    - GPOErrorsPresent (Text: "true"/"false")
     - GPOLastError (Text)
     - GPOAppliedList (WYSIWYG)
 
@@ -23,55 +23,66 @@
 .NOTES
     File: Script_43_Group_Policy_Monitor.ps1
     Author: Windows Automation Framework
-    Version: 1.0
+    Version: 1.1
     Created: February 3, 2026
+    Updated: February 3, 2026
     Category: Domain Integration
-    Dependencies: gpresult.exe, Group Policy PowerShell module (optional)
+    Dependencies: gpresult.exe
+
+.MIGRATION NOTES
+    v1.0 -> v1.1 Changes:
+    - Converted GPOLastApplied from text to Date/Time field (Unix Epoch format)
+    - Uses inline DateTimeOffset conversion (no helper functions needed)
+    - Maintains human-readable logging for troubleshooting
+    - NinjaOne handles timezone display automatically
+    - Applies to both gpresult and registry fallback methods
 
 .RELATED DOCUMENTATION
     - docs/core/17_GPO_Group_Policy.md
-    - docs/ACTION_PLAN_Missing_Scripts.md (Phase 3)
+    - docs/DATE_TIME_FIELD_AUDIT.md
+    - docs/DATE_TIME_FIELD_MAPPING.md
+    - docs/ACTION_PLAN_Field_Conversion_Documentation.md (v1.9)
 #>
 
 [CmdletBinding()]
 param()
 
 try {
-    Write-Host "Starting Group Policy Monitor (Script 43)..."
+    Write-Host "Starting Group Policy Monitor (Script 43 v1.1)..."
     $ErrorActionPreference = 'Stop'
     
     # Initialize variables
-    $gpoApplied = $false
-    $lastApplied = ""
+    $gpoApplied = "false"
+    $lastApplied = 0
     $gpoCount = 0
-    $errorsPresent = $false
+    $errorsPresent = "false"
     $lastError = "None"
     $appliedList = ""
     
     # Check if computer is domain-joined
-    Write-Host "Checking domain membership..."
+    Write-Host "INFO: Checking domain membership..."
     $computerSystem = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
     
     if ($computerSystem.PartOfDomain -eq $false) {
-        Write-Host "Computer is not domain-joined. Group Policy not applicable."
+        Write-Host "INFO: Computer is not domain-joined. Group Policy not applicable."
         
         # Update fields for non-domain computers
-        Ninja-Property-Set gpoApplied $false
-        Ninja-Property-Set gpoLastApplied ""
+        Ninja-Property-Set gpoApplied "false"
+        Ninja-Property-Set gpoLastApplied 0
         Ninja-Property-Set gpoCount 0
-        Ninja-Property-Set gpoErrorsPresent $false
+        Ninja-Property-Set gpoErrorsPresent "false"
         Ninja-Property-Set gpoLastError "Not domain-joined"
         Ninja-Property-Set gpoAppliedList "Computer is not domain-joined"
         
-        Write-Host "Group Policy Monitor complete (not domain-joined)."
+        Write-Host "SUCCESS: Group Policy Monitor complete (not domain-joined)"
         exit 0
     }
     
-    Write-Host "Computer is domain-joined: $($computerSystem.Domain)"
+    Write-Host "INFO: Computer is domain-joined: $($computerSystem.Domain)"
     
     # Generate Group Policy report
     try {
-        Write-Host "Generating Group Policy report..."
+        Write-Host "INFO: Generating Group Policy report..."
         $reportPath = "$env:TEMP\gpresult.xml"
         
         # Run gpresult to generate XML report
@@ -85,7 +96,7 @@ try {
             throw "Group Policy report file not created"
         }
         
-        Write-Host "Group Policy report generated successfully."
+        Write-Host "INFO: Group Policy report generated successfully"
         
         # Parse XML report
         [xml]$gpoReport = Get-Content $reportPath
@@ -94,16 +105,16 @@ try {
         $computerGPOs = $gpoReport.Rsop.ComputerResults.GPO
         
         if ($computerGPOs) {
-            $gpoApplied = $true
+            $gpoApplied = "true"
             $gpoCount = @($computerGPOs).Count
-            Write-Host "Applied GPOs: $gpoCount"
+            Write-Host "INFO: Applied GPOs: $gpoCount"
             
             # Get last applied time from first GPO
             $readTime = $gpoReport.Rsop.ReadTime
             if ($readTime) {
                 $lastAppliedDate = [DateTime]::Parse($readTime)
-                $lastApplied = $lastAppliedDate.ToString("yyyy-MM-dd HH:mm:ss")
-                Write-Host "Last Applied: $lastApplied"
+                $lastApplied = [DateTimeOffset]$lastAppliedDate | Select-Object -ExpandProperty ToUnixTimeSeconds
+                Write-Host "INFO: Last Applied: $($lastAppliedDate.ToString('yyyy-MM-dd HH:mm:ss'))"
             }
             
             # Build HTML list of applied GPOs
@@ -122,7 +133,7 @@ $($htmlRows -join "`n")
 <p style='font-size:0.9em; color:#666; margin-top:10px;'>Total: $gpoCount GPO(s) applied</p>
 "@
         } else {
-            Write-Warning "No computer GPOs found in report."
+            Write-Host "WARNING: No computer GPOs found in report"
             $appliedList = "No Group Policies applied to this computer"
         }
         
@@ -130,26 +141,26 @@ $($htmlRows -join "`n")
         Remove-Item $reportPath -Force -ErrorAction SilentlyContinue
         
     } catch {
-        Write-Warning "Failed to generate/parse Group Policy report: $_"
+        Write-Host "WARNING: Failed to generate/parse Group Policy report: $_"
         $lastError = "Report generation failed: $_"
-        $errorsPresent = $true
+        $errorsPresent = "true"
         $appliedList = "Unable to generate GPO report"
     }
     
     # Check for Group Policy errors in event log
     try {
-        Write-Host "Checking for Group Policy errors..."
+        Write-Host "INFO: Checking for Group Policy errors..."
         $startTime = (Get-Date).AddHours(-24)
         
         $gpoErrors = Get-WinEvent -FilterHashtable @{
             LogName = 'System'
             ProviderName = 'Microsoft-Windows-GroupPolicy'
-            Level = 1,2  # Critical and Error
+            Level = 1,2
             StartTime = $startTime
         } -MaxEvents 10 -ErrorAction SilentlyContinue
         
         if ($gpoErrors -and $gpoErrors.Count -gt 0) {
-            $errorsPresent = $true
+            $errorsPresent = "true"
             $lastError = $gpoErrors[0].Message
             
             # Truncate if too long
@@ -157,19 +168,19 @@ $($htmlRows -join "`n")
                 $lastError = $lastError.Substring(0, 497) + "..."
             }
             
-            Write-Warning "Group Policy errors detected: $($gpoErrors.Count) error(s) in last 24 hours"
+            Write-Host "WARNING: Group Policy errors detected: $($gpoErrors.Count) error(s) in last 24 hours"
         } else {
-            Write-Host "No Group Policy errors detected."
+            Write-Host "INFO: No Group Policy errors detected"
             $lastError = "None"
         }
     } catch {
-        Write-Warning "Failed to check event log for GPO errors: $_"
+        Write-Host "WARNING: Failed to check event log for GPO errors: $_"
     }
     
     # Alternative method: Check GP application status from registry
-    if (-not $gpoApplied) {
+    if ($gpoApplied -eq "false") {
         try {
-            Write-Host "Checking registry for GP application status..."
+            Write-Host "INFO: Checking registry for GP application status..."
             $gpoRegPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Group Policy\State\Machine"
             
             if (Test-Path $gpoRegPath) {
@@ -179,13 +190,15 @@ $($htmlRows -join "`n")
                     # Get last GPUpdate time
                     $lastGPUpdate = $gpoState.LastGPOProcessingTime
                     if ($lastGPUpdate) {
-                        $lastApplied = ([DateTime]::Parse($lastGPUpdate)).ToString("yyyy-MM-dd HH:mm:ss")
-                        $gpoApplied = $true
+                        $lastAppliedDate = [DateTime]::Parse($lastGPUpdate)
+                        $lastApplied = [DateTimeOffset]$lastAppliedDate | Select-Object -ExpandProperty ToUnixTimeSeconds
+                        $gpoApplied = "true"
+                        Write-Host "INFO: Last Applied (registry): $($lastAppliedDate.ToString('yyyy-MM-dd HH:mm:ss'))"
                     }
                 }
             }
         } catch {
-            Write-Warning "Failed to check registry for GP status: $_"
+            Write-Host "WARNING: Failed to check registry for GP status: $_"
         }
     }
     
@@ -193,22 +206,22 @@ $($htmlRows -join "`n")
     try {
         $pendingRegPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Group Policy\State\Machine\Extension-List"
         if (Test-Path $pendingRegPath) {
-            Write-Host "Group Policy extensions are registered."
+            Write-Host "INFO: Group Policy extensions are registered"
         }
     } catch {
         # Silent fail
     }
     
     # If still no GPO data, set minimal info
-    if (-not $gpoApplied -and $computerSystem.PartOfDomain) {
-        $gpoApplied = $true  # Assume GPO is applied on domain computers
+    if ($gpoApplied -eq "false" -and $computerSystem.PartOfDomain) {
+        $gpoApplied = "true"
         $appliedList = "Unable to retrieve detailed GPO list (gpresult failed)"
         $lastError = "GPO report generation failed"
-        $errorsPresent = $true
+        $errorsPresent = "true"
     }
     
     # Update NinjaRMM custom fields
-    Write-Host "Updating NinjaRMM custom fields..."
+    Write-Host "INFO: Updating NinjaRMM custom fields..."
     
     Ninja-Property-Set gpoApplied $gpoApplied
     Ninja-Property-Set gpoLastApplied $lastApplied
@@ -217,15 +230,18 @@ $($htmlRows -join "`n")
     Ninja-Property-Set gpoLastError $lastError
     Ninja-Property-Set gpoAppliedList $appliedList
     
-    Write-Host "Group Policy Monitor complete. GPOs Applied: $gpoCount, Errors: $errorsPresent"
+    Write-Host "SUCCESS: Group Policy Monitor complete. GPOs Applied: $gpoCount, Errors: $errorsPresent"
+    
+    exit 0
     
 } catch {
     $errorMessage = $_.Exception.Message
-    Write-Error "Group Policy Monitor failed: $errorMessage"
+    Write-Host "ERROR: Group Policy Monitor failed: $errorMessage"
     
     # Set error state in fields
-    Ninja-Property-Set gpoApplied $false
-    Ninja-Property-Set gpoErrorsPresent $true
+    Ninja-Property-Set gpoApplied "false"
+    Ninja-Property-Set gpoLastApplied 0
+    Ninja-Property-Set gpoErrorsPresent "true"
     Ninja-Property-Set gpoLastError "Monitor script error: $errorMessage"
     Ninja-Property-Set gpoAppliedList "Script execution failed"
     

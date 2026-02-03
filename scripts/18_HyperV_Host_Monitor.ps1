@@ -22,10 +22,10 @@
     - hvStorageUsedGB (Integer)
     - hvReplicationHealthIssues (Integer)
     - hvVMSummary (WYSIWYG)
-    - hvHealthStatus (Dropdown)
+    - hvHealthStatus (Text)
     
     Framework Version: 4.0
-    Last Updated: February 2, 2026
+    Last Updated: February 3, 2026
 #>
 
 param()

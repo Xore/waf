@@ -16,13 +16,13 @@
     - mysqlInstalled (Checkbox)
     - mysqlVersion (Text)
     - mysqlDatabaseCount (Integer)
-    - mysqlReplicationStatus (Dropdown)
+    - mysqlReplicationStatus (Text)
     - mysqlReplicationLag (Integer)
     - mysqlSlowQueries24h (Integer)
-    - mysqlHealthStatus (Dropdown)
+    - mysqlHealthStatus (Text)
     
     Framework Version: 4.0
-    Last Updated: February 1, 2026
+    Last Updated: February 3, 2026
     
     IMPORTANT: Configure MySQL connection parameters before deployment
 #>

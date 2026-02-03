@@ -16,10 +16,10 @@
     - psPrinterCount (Integer)
     - psJobsQueued (Integer)
     - psStuckJobs (Integer)
-    - psHealthStatus (Dropdown)
+    - psHealthStatus (Text)
     
     Framework Version: 4.0
-    Last Updated: February 1, 2026
+    Last Updated: February 3, 2026
 #>
 
 param()

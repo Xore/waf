@@ -16,10 +16,10 @@
     - fsShareCount (Integer)
     - fsOpenFiles (Integer)
     - fsShadowCopyEnabled (Checkbox)
-    - fsHealthStatus (Dropdown)
+    - fsHealthStatus (Text)
     
     Framework Version: 4.0
-    Last Updated: February 1, 2026
+    Last Updated: February 3, 2026
 #>
 
 param()

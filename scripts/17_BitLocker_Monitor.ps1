@@ -16,10 +16,10 @@
     - bitlockerEnabled (Checkbox)
     - bitlockerVolumeCount (Integer)
     - bitlockerProtectedVolumes (Integer)
-    - bitlockerHealthStatus (Dropdown)
+    - bitlockerHealthStatus (Text)
     
     Framework Version: 4.0
-    Last Updated: February 2, 2026
+    Last Updated: February 3, 2026
 #>
 
 param()

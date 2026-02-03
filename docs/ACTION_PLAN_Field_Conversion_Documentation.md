@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-This plan outlines the systematic conversion of all dropdown custom fields to text fields and ensures complete documentation coverage for all 48+ scripts in the Windows Automation Framework. The goal is to eliminate dropdown field dependencies while creating a comprehensive documentation suite.
+This plan outlines the systematic conversion of all dropdown custom fields to text fields and ensures complete documentation coverage for all 48+ scripts in the Windows Automation Framework. The goal is to eliminate dropdown field dependencies while creating a comprehensive documentation suite following consistent style guidelines.
 
 ---
 
@@ -75,7 +75,7 @@ Ninja-Property-Set fieldname "Value"
 ## Phase 2: Documentation Audit & Creation
 
 ### Objective
-Ensure every script has corresponding markdown documentation in /docs/ folder with proper structure.
+Ensure every script has corresponding markdown documentation in /docs/ folder with proper structure following the established style guide.
 
 ### Task 2.1: Verify Existing Documentation
 
@@ -104,87 +104,225 @@ Check for matching docs for each script:
 ```markdown
 # Script XX: [Script Name]
 
-## Overview
-[Purpose and functionality]
+**File:** Script_XX_[Name].md  
+**Version:** v1.0  
+**Script Number:** XX  
+**Category:** [Category - Purpose]  
+**Last Updated:** [Date]
+
+---
+
+## Purpose
+
+[Single paragraph describing purpose and functionality]
+
+---
+
+## Execution Details
+
+- **Frequency:** [Recommended execution interval]
+- **Runtime:** [Typical execution time]
+- **Timeout:** [Maximum allowed execution time]
+- **Context:** [SYSTEM/USER]
+
+---
+
+## Native Integration
+
+[List any native NinjaOne fields or capabilities used]
+
+---
 
 ## Custom Fields
 
 ### Field Mappings
+
 | Field Name | Type | Description | Expected Values |
 |------------|------|-------------|-----------------|
 | fieldname | Text | Purpose | Format/Examples |
 
+---
+
 ## Logic Flow
 
 ### Main Processing Steps
-1. Initialization and environment validation
-2. Data collection
-3. Analysis and calculations
-4. Field updates
-5. Error handling and cleanup
+
+[Paragraph description of workflow]
 
 ### Compound Conditions
-[Document all multi-condition logic with pseudo-code]
+
+[See dedicated section below for multi-condition logic documentation]
+
+---
+
+## PowerShell Implementation
+
+```powershell
+[Code example demonstrating key functionality]
+```
+
+---
 
 ## Error Handling
-- Scenario 1: Description and response
-- Scenario 2: Description and response
+
+[Describe error scenarios and responses]
+
+---
 
 ## Dependencies
+
 - Required PowerShell modules
 - Required permissions
 - System requirements
 - External dependencies
 
-## Usage Examples
-[Practical deployment examples]
+---
 
-## Troubleshooting
-[Common issues and solutions]
+## Related Documentation
 
-## Performance Considerations
-- Execution time
-- Resource usage
-- Optimization notes
+- [Link to related docs]
 
-## Change Log
-| Date | Version | Changes |
-|------|---------|---------|
-| YYYY-MM-DD | 1.0 | Initial release |
+---
+
+**File:** Script_XX_[Name].md  
+**Version:** v1.0  
+**Status:** [Production Ready/In Development/Testing]
 ```
 
-### Task 2.3: Document Compound Conditions
+### Task 2.3: Document Compound Conditions (Enhanced)
 
 For each script with complex logic:
 
 1. Identify all compound conditional statements
-2. Create flowchart-style documentation
-3. Add pseudo-code representation
+2. Document with THREE representations:
+   - **Actual PowerShell code** (as implemented in script)
+   - **Pseudo-code with framework calls** (logical representation)
+   - **Pseudo-code without framework** (pure logic representation)
+3. Create flowchart-style documentation
 4. Document decision trees
 
-**Pseudo-Condition Format:**
-```
-CONDITION: Complex_Decision_Logic_1
+**Enhanced Compound Condition Format:**
 
-IF (Condition_A) AND (Condition_B) THEN
-    IF (Condition_C) OR (Condition_D) THEN
-        Execute: Action_X
-        Set: Field_1 = "Value_X"
-    ELSE
-        Execute: Action_Y
-        Set: Field_1 = "Value_Y"
-    END IF
-ELSE IF (Condition_E) THEN
-    Execute: Action_Z
-    Set: Field_1 = "Value_Z"
+```markdown
+### Condition: [Descriptive Name]
+
+**Purpose:** [What this condition determines]
+
+**Script Location:** Lines XXX-YYY in Script_XX.ps1
+
+**Complexity:** [Simple/Medium/Complex]
+
+#### Actual Implementation (PowerShell)
+
+```powershell
+# Actual code from script
+$healthScore = Ninja-Property-Get OPSHealthScore
+if ([string]::IsNullOrEmpty($healthScore)) { $healthScore = 50 }
+
+$securityScore = Ninja-Property-Get OPSSecurityScore
+if ([string]::IsNullOrEmpty($securityScore)) { $securityScore = 50 }
+
+if ($healthScore -ge 70 -and $securityScore -ge 80) {
+    $complianceFlag = "Compliant"
+    Ninja-Property-Set RISKComplianceFlag $complianceFlag
+} elseif ($healthScore -ge 50 -and $securityScore -ge 60) {
+    $complianceFlag = "Warning"
+    Ninja-Property-Set RISKComplianceFlag $complianceFlag
+} elseif ($healthScore -ge 30 -and $securityScore -ge 40) {
+    $complianceFlag = "Non-Compliant"
+    Ninja-Property-Set RISKComplianceFlag $complianceFlag
+} else {
+    $complianceFlag = "Critical"
+    Ninja-Property-Set RISKComplianceFlag $complianceFlag
+}
+```
+
+#### Pseudo-Code (With Framework References)
+
+```
+CONDITION: Compliance_Flag_Classification
+
+READ: OPSHealthScore -> healthScore (default: 50 if null)
+READ: OPSSecurityScore -> securityScore (default: 50 if null)
+
+IF (healthScore >= 70) AND (securityScore >= 80) THEN
+    SET: RISKComplianceFlag = "Compliant"
+    WRITE: RISKComplianceFlag
+ELSE IF (healthScore >= 50) AND (securityScore >= 60) THEN
+    SET: RISKComplianceFlag = "Warning"
+    WRITE: RISKComplianceFlag
+ELSE IF (healthScore >= 30) AND (securityScore >= 40) THEN
+    SET: RISKComplianceFlag = "Non-Compliant"
+    WRITE: RISKComplianceFlag
 ELSE
-    Execute: Default_Action
-    Set: Field_1 = "Unknown"
+    SET: RISKComplianceFlag = "Critical"
+    WRITE: RISKComplianceFlag
+END IF
+```
+
+#### Pseudo-Code (Pure Logic - No Framework)
+
+```
+FUNCTION: DetermineComplianceLevel(healthValue, securityValue)
+
+INPUT: healthValue (integer, 0-100, default: 50)
+INPUT: securityValue (integer, 0-100, default: 50)
+OUTPUT: complianceLevel (string)
+
+IF healthValue is NULL OR EMPTY THEN
+    healthValue = 50
 END IF
 
-DEPENDENCIES: Condition_A, Condition_B, Condition_C
-FIELDS AFFECTED: Field_1, Field_2
-ERROR PATHS: [Document error scenarios]
+IF securityValue is NULL OR EMPTY THEN
+    securityValue = 50
+END IF
+
+IF (healthValue >= 70) AND (securityValue >= 80) THEN
+    RETURN "Compliant"
+ELSE IF (healthValue >= 50) AND (securityValue >= 60) THEN
+    RETURN "Warning"
+ELSE IF (healthValue >= 30) AND (securityValue >= 40) THEN
+    RETURN "Non-Compliant"
+ELSE
+    RETURN "Critical"
+END IF
+```
+
+#### Field Dependencies
+
+**Input Fields:**
+- OPSHealthScore (Custom Field, Integer, 0-100)
+- OPSSecurityScore (Custom Field, Integer, 0-100)
+
+**Output Fields:**
+- RISKComplianceFlag (Custom Field, Text)
+  - Values: Compliant, Warning, Non-Compliant, Critical
+
+**Related Fields:**
+- [List any other fields that influence or are influenced by this logic]
+
+#### Decision Matrix
+
+| Health Score | Security Score | Result | Rationale |
+|--------------|----------------|--------|------------|
+| >= 70 | >= 80 | Compliant | Both metrics meet high standards |
+| >= 50 | >= 60 | Warning | Metrics acceptable but need monitoring |
+| >= 30 | >= 40 | Non-Compliant | Metrics below acceptable thresholds |
+| < 30 | < 40 | Critical | Immediate action required |
+
+#### Error Paths
+
+- **Null/Empty Health Score:** Defaults to 50 (neutral value)
+- **Null/Empty Security Score:** Defaults to 50 (neutral value)
+- **Invalid Score Range:** [Document handling if scores outside 0-100]
+- **Field Write Failure:** [Document error handling]
+
+#### Performance Notes
+
+- Execution time: < 1ms
+- Field reads: 2
+- Field writes: 1
+- Complexity: O(1) - Constant time
 ```
 
 ---
@@ -382,7 +520,89 @@ Update all existing diagrams to reflect text field changes and complete document
 ## Phase 5: Comprehensive Documentation Suite
 
 ### Objective
-Create complete reference materials for the entire framework.
+Create complete reference materials for the entire framework following consistent style guidelines.
+
+### Task 5.0: Documentation Style Guide Compliance
+
+**CRITICAL:** All documentation must follow the established style guide based on existing documentation.
+
+**Reference Documents for Style:**
+- `/docs/scripts/09_RISK_Classifier.md` (Primary style reference)
+- `/docs/scripts/01_OPS_Health_Score_Calculator.md`
+- `/docs/scripts/12_BASE_Baseline_Manager.md`
+- `/docs/scripts/README.md`
+
+**Style Guide Requirements:**
+
+#### File Header Format
+```markdown
+# Script XX: [Name]
+
+**File:** Script_XX_[Name].md  
+**Version:** vX.X  
+**Script Number:** XX  
+**Category:** [Category - Purpose]  
+**Last Updated:** [Date]
+
+---
+```
+
+#### Section Formatting
+- Use horizontal rules (`---`) between major sections
+- Use `##` for primary headings, `###` for subsections
+- Keep section headers concise (3-6 words)
+- Maintain consistent spacing (one blank line before/after sections)
+
+#### Code Blocks
+- Always specify language: ` ```powershell ` or ` ```markdown `
+- Include context comments within code blocks
+- Keep examples focused and relevant
+- Use actual script references where possible
+
+#### Lists and Tables
+- Use unordered lists (`-`) for items without sequence
+- Use ordered lists for sequential steps
+- Tables must have proper alignment with `|` separators
+- Include header row for all tables
+
+#### Cross-References
+- Use relative paths: `[Text](../folder/file.md)`
+- Use descriptive link text (not "click here")
+- Verify all links before committing
+- Group related documentation links in "Related Documentation" section
+
+#### Tone and Language
+- Use active voice
+- Be concise and technical
+- Avoid unnecessary adjectives
+- Use consistent terminology throughout
+
+#### Footer Format
+```markdown
+---
+
+**File:** Script_XX_[Name].md  
+**Version:** vX.X  
+**Status:** [Production Ready/In Development/Testing]
+```
+
+#### Consistency Requirements
+- Field names: Exact case and spelling (e.g., OPSHealthScore)
+- Script references: Use full name and number
+- Dates: YYYY-MM-DD format or "Month Day, Year"
+- Version numbers: vX.X format
+- Status values: Exact match to defined values
+
+**Validation Checklist for Each Document:**
+- [ ] Proper file header with all metadata
+- [ ] Horizontal rules between sections
+- [ ] Code blocks with language specification
+- [ ] Tables properly formatted
+- [ ] All links use relative paths and work correctly
+- [ ] Consistent terminology and field names
+- [ ] Footer with file info and status
+- [ ] No spelling or grammar errors
+- [ ] Follows reference document style
 
 ### Task 5.1: Quick Reference Documents
 
@@ -396,15 +616,18 @@ Create complete reference materials for the entire framework.
 - Related fields
 - NinjaOne configuration
 
-**Format:**
+**Format (following style guide):**
 ```markdown
 ## Field: apache_status
+
 - **Type:** Text
 - **Purpose:** Apache service operational status
 - **Used By:** Script_01_Apache_Web_Server_Monitor
 - **Values:** Running, Stopped, Not Installed, Error
 - **Related Fields:** apache_version, apache_uptime
 - **Implementation Status:** Complete
+
+---
 ```
 
 #### 2. Script Quick Reference
@@ -474,7 +697,7 @@ Create in `/docs/training/`:
 - Testing procedures
 - Contributing guidelines
 - Version control practices
-- Documentation requirements
+- Documentation requirements (including style guide)
 
 ### Task 5.3: README Files
 
@@ -516,7 +739,7 @@ Create in `/docs/training/`:
 - How to navigate documentation
 - Finding specific information
 - Contribution guidelines
-- Documentation standards
+- Documentation style guide summary
 
 ### Task 5.4: Index Documents (Created AFTER Phase 3 Complete)
 
@@ -578,7 +801,7 @@ Verify completeness and accuracy of all changes.
 **Verification Checklist:**
 - [ ] Every script has corresponding .md file
 - [ ] All 277 fields documented in at least one place
-- [ ] All compound conditions documented with pseudo-code
+- [ ] All compound conditions documented with THREE representations (PowerShell, Pseudo with framework, Pure logic)
 - [ ] All diagrams updated to reflect current state
 - [ ] Cross-references are accurate and functional
 - [ ] No broken links in documentation
@@ -586,6 +809,7 @@ Verify completeness and accuracy of all changes.
 - [ ] All tables properly formatted
 - [ ] No TBD items without documentation or implementation plan
 - [ ] All incomplete features documented in IMPLEMENTATION_STATUS.md
+- [ ] All documentation follows style guide
 
 ### Task 6.2: Field Type Validation
 
@@ -611,7 +835,7 @@ Verify completeness and accuracy of all changes.
 ### Task 6.4: Documentation Standards Check
 
 **All documentation must have:**
-- [ ] Proper markdown formatting
+- [ ] Proper markdown formatting per style guide
 - [ ] Consistent heading hierarchy
 - [ ] Code blocks with language specification
 - [ ] Tables properly aligned
@@ -621,6 +845,9 @@ Verify completeness and accuracy of all changes.
 - [ ] Version information
 - [ ] Last updated date
 - [ ] Implementation status where applicable
+- [ ] File header and footer matching style guide
+- [ ] Horizontal rules between sections
+- [ ] Relative path cross-references
 
 ### Task 6.5: Script Testing
 
@@ -657,6 +884,7 @@ Verify completeness and accuracy of all changes.
 - Complete file inventory
 - Quality metrics
 - TBD resolution summary
+- Style guide compliance verification
 - Compliance checklist
 - Sign-off information
 
@@ -691,37 +919,40 @@ Verify completeness and accuracy of all changes.
 
 **Week 1: Assessment and Setup**
 1. Phase 2.1: Documentation Audit (identify what exists)
-2. Create tracking spreadsheet for all tasks
-3. Set up testing environment
+2. Phase 5.0: Review style guide and create compliance checklist
+3. Create tracking spreadsheet for all tasks
+4. Set up testing environment
 
 **Week 2: Core Changes and TBD Audit**
-4. Phase 1: Field Conversion (update all scripts)
-5. Phase 3: TBD and Incomplete Implementation Audit (CRITICAL)
-6. Create TBD_INVENTORY.md and IMPLEMENTATION_STATUS.md
-7. Script testing and validation
+5. Phase 1: Field Conversion (update all scripts)
+6. Phase 3: TBD and Incomplete Implementation Audit (CRITICAL)
+7. Create TBD_INVENTORY.md and IMPLEMENTATION_STATUS.md
+8. Script testing and validation
 
 **Week 3: Documentation Creation and TBD Resolution**
-8. Phase 2.2: Create Missing Documentation (fill gaps)
-9. Phase 2.3: Document Conditions (detail logic)
-10. Phase 3.3: Document or implement all TBD items
-11. Initial review of created documentation
+9. Phase 2.2: Create Missing Documentation (fill gaps, follow style guide)
+10. Phase 2.3: Document Conditions with three-layer documentation
+11. Phase 3.3: Document or implement all TBD items
+12. Initial review of created documentation for style compliance
 
 **Week 4: Visual and Reference Materials**
-12. Phase 4: Update Diagrams (visual representation)
-13. Phase 5.1-5.2: Quick References and Training Docs
-14. Phase 5.3: README files
-15. Verify all TBD items resolved before proceeding
+13. Phase 4: Update Diagrams (visual representation)
+14. Phase 5.1-5.2: Quick References and Training Docs
+15. Phase 5.3: README files
+16. Verify all TBD items resolved before proceeding
+17. Style guide compliance check
 
 **Week 5: Index Creation and Quality Assurance**
-16. Phase 5.4: Create All Index Documents (AFTER TBD resolution)
-17. Phase 6: Complete QA checks
-18. Fix identified issues
-19. Second round of testing
+18. Phase 5.4: Create All Index Documents (AFTER TBD resolution)
+19. Phase 6: Complete QA checks
+20. Fix identified issues
+21. Second round of testing
+22. Final style guide compliance verification
 
 **Week 6: Finalization**
-20. Phase 7: Create final deliverables
-21. Final review and approval
-22. Repository cleanup and organization
+23. Phase 7: Create final deliverables
+24. Final review and approval
+25. Repository cleanup and organization
 
 ---
 
@@ -737,12 +968,16 @@ Verify completeness and accuracy of all changes.
 
 **Documentation Requirements:**
 - Every script has corresponding documentation
-- All compound conditions documented with pseudo-code
+- All compound conditions documented with THREE representations:
+  1. Actual PowerShell implementation
+  2. Pseudo-code with framework references
+  3. Pure logic pseudo-code without framework
 - All diagrams reflect current state
 - Complete index and reference suite exists
 - 100% documentation coverage verified
 - All quality checks passed
 - Zero unresolved TBD items (all documented, implemented, or deferred with rationale)
+- All documentation follows established style guide
 
 **Quality Requirements:**
 - No broken links in any documentation
@@ -752,6 +987,7 @@ Verify completeness and accuracy of all changes.
 - All cross-references accurate
 - Implementation status clearly documented
 - TBD_INVENTORY.md shows 100% resolution
+- Style guide compliance verified for all documents
 
 ---
 
@@ -762,24 +998,25 @@ Verify completeness and accuracy of all changes.
 | Phase | Estimated Hours | Complexity |
 |-------|----------------|------------|
 | Phase 1: Field Conversion | 4-6 hours | Medium |
-| Phase 2: Documentation Audit & Creation | 6-8 hours | High |
+| Phase 2: Documentation Audit & Creation | 8-10 hours | High |
 | Phase 3: TBD Audit and Resolution | 4-6 hours | High |
 | Phase 4: Diagram Updates | 2-3 hours | Medium |
-| Phase 5: Comprehensive Suite | 5-7 hours | Medium |
+| Phase 5: Comprehensive Suite | 6-8 hours | Medium-High |
 | Phase 6: Quality Assurance | 3-4 hours | Medium |
 | Phase 7: Final Deliverables | 1-2 hours | Low |
 
-**Total Estimated Effort:** 25-36 hours
+**Total Estimated Effort:** 28-39 hours
 
 ### Required Tools
 
 - PowerShell ISE or VS Code
 - Git for version control
-- Markdown editor
+- Markdown editor with style checking
 - Diagram creation tool (Draw.io, Mermaid, etc.)
 - NinjaOne test instance
 - Documentation review tools
 - Text search tools (grep, ripgrep, or IDE search)
+- Markdown linter for style consistency
 
 ---
 
@@ -808,6 +1045,11 @@ Verify completeness and accuracy of all changes.
    - Validation: Manual review of all files
    - Control: TBD_INVENTORY.md as single source of truth
 
+6. **Style Inconsistency Risk**
+   - Mitigation: Clear style guide and reference documents
+   - Validation: Automated linting where possible
+   - Control: Style compliance checklist for each document
+
 ---
 
 ## Change Log
@@ -816,6 +1058,7 @@ Verify completeness and accuracy of all changes.
 |------|---------|--------|---------|
 | 2026-02-03 | 1.0 | WAF Team | Initial action plan created |
 | 2026-02-03 | 1.1 | WAF Team | Added Phase 3 for TBD audit, moved index creation to after TBD resolution |
+| 2026-02-03 | 1.2 | WAF Team | Enhanced compound condition documentation with three-layer approach, added comprehensive style guide requirements |
 
 ---
 

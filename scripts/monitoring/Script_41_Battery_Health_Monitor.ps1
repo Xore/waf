@@ -16,7 +16,7 @@
     - BATCycleCount (Integer)
     - BATChemistry (Text)
     - BATEstimatedRuntime (Integer)
-    - BATChargeStatus (Dropdown)
+    - BATChargeStatus (Text)
     - BATLastFullCharge (DateTime)
     - BATReplacementRecommended (Checkbox)
 

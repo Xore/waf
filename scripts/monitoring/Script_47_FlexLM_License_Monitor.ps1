@@ -13,12 +13,12 @@
     - FLEXLMVendorDaemonCount (Integer)
     - FLEXLMLicenseUtilization (Integer)
     - FLEXLMDeniedRequests24h (Integer)
-    - FLEXLMDaemonStatus (Dropdown)
+    - FLEXLMDaemonStatus (Text)
     - FLEXLMExpiringLicenses30d (Integer)
     - FLEXLMServerUptime (Integer)
     - FLEXLMLicenseServerName (Text)
     - FLEXLMLicenseSummary (WYSIWYG)
-    - FLEXLMHealthStatus (Dropdown)
+    - FLEXLMHealthStatus (Text)
 
 .EXECUTION
     Frequency: Every 4 hours

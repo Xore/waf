@@ -11,10 +11,10 @@
     - MYSQLInstalled (Checkbox)
     - MYSQLVersion (Text)
     - MYSQLDatabaseCount (Integer)
-    - MYSQLReplicationStatus (Dropdown)
+    - MYSQLReplicationStatus (Text)
     - MYSQLReplicationLag (Integer)
     - MYSQLSlowQueries24h (Integer)
-    - MYSQLHealthStatus (Dropdown)
+    - MYSQLHealthStatus (Text)
 
 .EXECUTION
     Frequency: Every 4 hours

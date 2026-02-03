@@ -9,7 +9,7 @@
 
 .FIELDS UPDATED
     - NETConnected (Checkbox)
-    - NETConnectionType (Dropdown)
+    - NETConnectionType (Text)
     - NETAdapterSpeed (Integer)
     - NETPublicIP (Text)
     - NETPrivateIP (Text)

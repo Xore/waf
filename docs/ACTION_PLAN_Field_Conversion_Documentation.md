@@ -1,7 +1,7 @@
 # WAF Field Type Conversion & Documentation Completeness Plan
 
 **Date:** February 3, 2026  
-**Status:** Planning Phase  
+**Status:** Phase 1 Ready for Execution  
 **Priority:** High
 
 ---
@@ -111,56 +111,101 @@ Pre-Phase E is complete. Documentation standards are now in place for all future
 
 ---
 
-## Phase 1: Field Conversion (Dropdown → Text)
+## Phase 1: Field Conversion (Dropdown → Text) 🔄
 
-**STATUS: NOT STARTED**
+**STATUS: READY FOR EXECUTION**  
+**Started:** February 3, 2026  
+**Target Completion:** TBD
 
 ### Objective
-Convert all NinjaRMM dropdown custom fields to text fields to eliminate dropdown field dependencies and allow for more flexible data storage.
+Convert all NinjaRMM dropdown custom fields to text fields to enable dashboard filtering, improve usability, and eliminate dropdown field dependencies.
 
-### Background
+### Phase 1 Documentation
 
-Search results show 35 scripts contain "dropdown" references. These need to be analyzed to determine:
-1. Which fields are actually dropdown fields
-2. What values they currently store
-3. How to migrate them to text fields
-4. Whether any scripts need code changes
+✓ **Complete Field Inventory Created**
+   - [PHASE1_Dropdown_to_Text_Conversion_Tracking.md](./PHASE1_Dropdown_to_Text_Conversion_Tracking.md)
+   - 27+ dropdown fields identified across framework
+   - 17 fields in main scripts directory
+   - 10+ fields in monitoring directory
+   - Fields categorized by purpose and priority
 
-### Steps
+✓ **Conversion Procedure Documented**
+   - [PHASE1_Conversion_Procedure.md](./PHASE1_Conversion_Procedure.md)
+   - Step-by-step conversion guide
+   - Pre/post-conversion testing protocols
+   - Troubleshooting guidelines
+   - Quality checklist
 
-**Step 1: Identify All Dropdown Fields**
-- Search codebase for dropdown field references
-- Document field names and current values
-- Identify scripts that read/write to each dropdown field
+### Conversion Batches
 
-**Step 2: Analyze Impact**
-- Determine if any scripts rely on dropdown-specific behavior
-- Check if any conditions/logic depend on dropdown values
-- Identify potential breaking changes
+Fields organized into 4 priority batches:
 
-**Step 3: Plan Conversion**
-- Create mapping of dropdown values to text values
-- Determine if any validation logic needed
-- Plan field recreation in NinjaRMM
+**Batch 1: Core Health Status Fields (5 fields)**
+- bitlockerHealthStatus
+- dnsServerStatus
+- fileServerHealthStatus
+- printServerStatus
+- mysqlServerStatus
 
-**Step 4: Execute Conversion**
-- Delete old dropdown fields in NinjaRMM
-- Create new text fields with same names
-- Update any scripts with dropdown-specific logic
-- Test on representative systems
+**Batch 2: Advanced Monitoring (5 fields)**
+- hypervHostStatus
+- mssqlHealthStatus
+- apacheHealthStatus
+- veeamHealthStatus
+- evtHealthStatus
 
-**Step 5: Validate**
-- Verify all scripts work with text fields
-- Confirm data consistency
-- Check NinjaRMM dashboard displays correctly
+**Batch 3: Validation & Analysis (5 fields)**
+- criticalDeviceStatus
+- highPriorityStatus
+- adminDriftStatus
+- profileHygieneStatus
+- serverRoleStatus
 
-### Priority
+**Batch 4: Specialized Fields (3+ fields)**
+- licenseServerStatus
+- batteryHealthStatus
+- netConnectionType
 
-High - Blocking documentation work for affected scripts.
+### Key Benefits
+
+- **Dashboard Filtering:** Text fields support search and filter operations
+- **Better Sorting:** Proper alphabetical sorting in dashboard views
+- **Improved UX:** Users can quickly find specific values
+- **Consistency:** Aligns with framework text-first strategy
+- **No Code Changes:** `Ninja-Property-Set` works identically for both types
+
+### Process per Field
+
+1. Document current NinjaOne dropdown configuration
+2. Convert dropdown to text field in NinjaOne admin panel
+3. Test script execution and dashboard filtering
+4. Update script header documentation (Dropdown → Text)
+5. Mark complete in tracking document with date
+
+### Success Criteria
+
+- All 27+ dropdown fields converted to text
+- Dashboard filtering functional on all converted fields
+- No data loss during conversions
+- All script documentation headers updated
+- All changes committed to repository
+- Tracking document shows 100% completion
 
 ### Estimated Time
 
-1-2 hours (depending on number of dropdown fields found)
+**Per Batch:** ~55 minutes
+- Pre-work: 15 minutes
+- Conversion: 10 minutes
+- Testing: 20 minutes
+- Documentation: 10 minutes
+
+**Total for Phase 1:** ~4 hours (all 4 batches)
+
+### Next Actions
+
+1. Begin with Batch 1 (Core Health Status Fields)
+2. Follow [PHASE1_Conversion_Procedure.md](./PHASE1_Conversion_Procedure.md)
+3. Update [PHASE1_Dropdown_to_Text_Conversion_Tracking.md](./PHASE1_Dropdown_to_Text_Conversion_Tracking.md) as fields complete
 
 ---
 
@@ -391,25 +436,25 @@ Document testing procedures and validation methods for WAF scripts.
 - Pre-Phase D: Language Compatibility (Feb 3, 2026)
 - Pre-Phase E: Date/Time Standards (Feb 3, 2026)
 
-**In Progress:**
-- None
+**Ready for Execution:**
+- Phase 1: Field Conversion (Documented, ready to start - Est. 4 hours)
 
 **Up Next:**
-- Phase 1: Field Conversion (1-2 hours)
 - Phase 2: Documentation Audit (4-6 hours)
 - Phase 3: Custom Field Docs (2-3 hours)
 - Phase 4: Style Guide (2-3 hours)
 - Phase 5: README/Overview (1-2 hours)
 - Phase 6: Testing Docs (2-3 hours)
 
-**Total Estimated Time Remaining:** 12-19 hours
+**Total Estimated Time Remaining:** 15-23 hours
 
 ---
 
 ## Notes
 
 - All Pre-Phases (A through E) are now complete
+- Phase 1 fully documented and ready for execution
 - Standards and patterns are established
-- Ready to begin Phase 1 (Field Conversion)
 - Documentation work can proceed in parallel where applicable
-- Priority should be given to blocking tasks (Phase 1) before moving to documentation phases
+- Priority should be given to Phase 1 (blocking task) before moving to documentation phases
+- Tracking documents and procedures in place for Phase 1 conversions

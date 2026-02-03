@@ -8,586 +8,420 @@
 
 ## Executive Summary
 
-This plan outlines the systematic conversion of all dropdown custom fields to text fields and ensures complete documentation coverage for all 48+ scripts in the Windows Automation Framework. The goal is to eliminate dropdown field dependencies, reduce RSAT and non-native PowerShell module dependencies, migrate Active Directory queries to ADSI LDAP:// queries exclusively, standardize data encoding with Base64, ensure language compatibility (German/English Windows), and create a comprehensive documentation suite following consistent style guidelines and coding standards.
+This plan outlines the systematic conversion of all dropdown custom fields to text fields and ensures complete documentation coverage for all 48+ scripts in the Windows Automation Framework. The goal is to eliminate dropdown field dependencies, reduce RSAT and non-native PowerShell module dependencies, migrate Active Directory queries to ADSI LDAP:// queries exclusively, standardize data encoding with Base64, use proper Date/Time fields with Unix Epoch format, ensure language compatibility (German/English Windows), and create a comprehensive documentation suite following consistent style guidelines and coding standards.
 
 ---
 
-## Pre-Phase A: Active Directory ADSI Migration (LDAP:// Only)
+[Pre-Phase A through D sections remain unchanged - content from current version]
+
+## Pre-Phase E: Date/Time Field Standards (Unix Epoch Format)
 
 ### Objective
-Migrate Active Directory monitoring scripts from ActiveDirectory PowerShell module to native ADSI using **LDAP:// queries exclusively** to eliminate RSAT module dependencies and improve performance.
+Standardize all date and time data to use NinjaOne **Date** or **Date and Time** custom field types with proper Unix Epoch formatting instead of text fields. This ensures consistent date handling, proper sorting, filtering, and display across the NinjaOne platform.
 
-**CRITICAL:** All ADSI queries must use the **LDAP://** protocol. No WinNT://, GC://, or other providers.
+### Why Use Date/Time Fields
 
-### Scope
+**Benefits:**
+- Proper sorting and filtering in NinjaOne dashboard
+- Consistent date display across different regional settings
+- Better reporting and analytics capabilities
+- Automatic timezone handling
+- Native date comparison operators
+- ISO 8601 compliance for international teams
+- Prevents date format ambiguity (MM/DD vs DD/MM)
 
-**Primary Script:**
-- Script_42_Active_Directory_Monitor.ps1
+**When to Use:**
+- Timestamps (last run, last updated, last checked)
+- System dates (installation date, last boot time, password last set)
+- Event dates (last logon, certificate expiration, warranty expiration)
+- Monitoring intervals (next scheduled check, last success/failure)
+- Any date/time value that needs sorting or comparison
 
-**Related Scripts (check for AD dependencies):**
-- Script_20_Server_Role_Identifier.ps1
-- Script_43_Group_Policy_Monitor.ps1
-- Any other scripts querying AD user/computer information
+### NinjaOne Date/Time Field Format
 
-### Migration Requirements
+**CRITICAL:** NinjaOne expects date/time values as **Unix Epoch timestamps** (seconds since January 1, 1970 00:00:00 UTC)
 
-#### AD Information to Query via ADSI LDAP://
+**Field Types:**
+1. **Date** - Stores date only (no time component)
+2. **Date and Time** - Stores both date and time with timezone
 
-**User Information:**
-- Last Name (surname / sn)
-- First Name (givenName)
-- Display Name (displayName)
-- User Principal Name (userPrincipalName)
-- Group Memberships (memberOf)
-- Account Status (userAccountControl)
-- Last Logon (lastLogonTimestamp)
-- SAM Account Name (sAMAccountName)
+**Required Format:** Unix Epoch as integer (seconds since 1970-01-01 00:00:00 UTC)
 
-**Computer Information:**
-- Computer Name (cn)
-- DNS Host Name (dNSHostName)
-- Operating System (operatingSystem)
-- Operating System Version (operatingSystemVersion)
-- Group Memberships (memberOf)
-- Last Logon (lastLogonTimestamp)
-- Computer Account Status (userAccountControl)
+### Implementation Pattern
 
-**Group Information:**
-- Group Name (cn)
-- Group Members (member)
-- Group Type (groupType)
-- Group Scope (groupType values)
-- Distinguished Name (distinguishedName)
-- SAM Account Name (sAMAccountName)
+**Convert DateTime to Unix Epoch for NinjaOne:**
 
-### ADSI LDAP:// Implementation Pattern
-
-**CRITICAL: Always use LDAP:// protocol for all ADSI queries**
-
-**Connection Validation:**
 ```powershell
-# Check Active Directory connectivity using LDAP:// protocol
-function Test-ADConnection {
-    try {
-        # Use LDAP:// protocol to connect to RootDSE
-        $rootDSE = [ADSI]"LDAP://RootDSE"
-        $defaultNamingContext = $rootDSE.defaultNamingContext
-        
-        if ([string]::IsNullOrEmpty($defaultNamingContext)) {
-            Write-Host "ERROR: Unable to connect to Active Directory via LDAP"
-            return $false
-        }
-        
-        Write-Host "INFO: Active Directory LDAP connection established"
-        Write-Host "INFO: Default naming context: $defaultNamingContext"
-        return $true
-    } catch {
-        Write-Host "ERROR: Active Directory LDAP connection failed - $($_.Exception.Message)"
-        return $false
-    }
-}
-
-# Always check LDAP connection before AD queries
-if (-not (Test-ADConnection)) {
-    Write-Host "ERROR: Cannot proceed without Active Directory LDAP connection"
-    exit 1
-}
-```
-
-**User Query via ADSI LDAP://:**
-```powershell
-# Query user information using LDAP:// protocol only
-function Get-ADUserViaADSI {
+# Helper function to convert DateTime to Unix Epoch (seconds)
+function ConvertTo-UnixEpoch {
+    <#
+    .SYNOPSIS
+        Convert DateTime object to Unix Epoch seconds for NinjaOne date fields
+    .DESCRIPTION
+        NinjaOne Date and Date/Time fields require Unix Epoch format (seconds since 1970-01-01 UTC)
+    .PARAMETER DateTime
+        DateTime object to convert. Can be from Get-Date, file timestamps, AD attributes, etc.
+    .EXAMPLE
+        $unixTime = ConvertTo-UnixEpoch -DateTime (Get-Date)
+        Ninja-Property-Set lastChecked $unixTime
+    #>
     param(
-        [string]$SamAccountName
+        [Parameter(Mandatory=$true)]
+        [DateTime]$DateTime
     )
     
     try {
-        # Get domain information using LDAP://
-        $rootDSE = [ADSI]"LDAP://RootDSE"
-        $defaultNamingContext = $rootDSE.defaultNamingContext
+        # Convert to UTC to ensure consistent timezone handling
+        $utcDate = $DateTime.ToUniversalTime()
         
-        # Create LDAP searcher
-        $searcher = New-Object System.DirectoryServices.DirectorySearcher
-        # Use LDAP:// protocol for SearchRoot
-        $searcher.SearchRoot = [ADSI]"LDAP://$defaultNamingContext"
-        $searcher.Filter = "(&(objectClass=user)(objectCategory=person)(sAMAccountName=$SamAccountName))"
-        $searcher.PropertiesToLoad.AddRange(@(
-            'givenName',
-            'sn',
-            'displayName',
-            'userPrincipalName',
-            'sAMAccountName',
-            'memberOf',
-            'userAccountControl',
-            'lastLogonTimestamp',
-            'mail',
-            'distinguishedName'
-        ))
+        # Calculate seconds since Unix Epoch (1970-01-01 00:00:00 UTC)
+        $epoch = Get-Date "1970-01-01 00:00:00"
+        $timeSpan = New-TimeSpan -Start $epoch -End $utcDate
+        $unixSeconds = [Math]::Floor($timeSpan.TotalSeconds)
         
-        # Set search scope
-        $searcher.SearchScope = [System.DirectoryServices.SearchScope]::Subtree
-        
-        $result = $searcher.FindOne()
-        
-        if ($result) {
-            $user = $result.Properties
-            
-            # Extract group memberships from memberOf attribute
-            $groups = @()
-            if ($user['memberOf']) {
-                foreach ($groupDN in $user['memberOf']) {
-                    # Extract CN from DN (e.g., "CN=Domain Admins,CN=Users,DC=domain,DC=com")
-                    if ($groupDN -match 'CN=([^,]+)') {
-                        $groups += $matches[1]
-                    }
-                }
-            }
-            
-            # Return user object
-            return [PSCustomObject]@{
-                SamAccountName = if ($user['sAMAccountName']) { $user['sAMAccountName'][0] } else { "" }
-                FirstName = if ($user['givenName']) { $user['givenName'][0] } else { "" }
-                LastName = if ($user['sn']) { $user['sn'][0] } else { "" }
-                DisplayName = if ($user['displayName']) { $user['displayName'][0] } else { "" }
-                UserPrincipalName = if ($user['userPrincipalName']) { $user['userPrincipalName'][0] } else { "" }
-                EmailAddress = if ($user['mail']) { $user['mail'][0] } else { "" }
-                DistinguishedName = if ($user['distinguishedName']) { $user['distinguishedName'][0] } else { "" }
-                Groups = $groups -join ", "
-                GroupCount = $groups.Count
-                GroupsArray = $groups
-                Enabled = if ($user['userAccountControl']) { 
-                    # Check if account is disabled (bit 2)
-                    -not ([int]$user['userAccountControl'][0] -band 2) 
-                } else { 
-                    $false 
-                }
-            }
-        } else {
-            Write-Host "WARNING: User not found via LDAP - $SamAccountName"
-            return $null
-        }
+        Write-Host "INFO: Converted $DateTime to Unix Epoch: $unixSeconds"
+        return $unixSeconds
     } catch {
-        Write-Host "ERROR: Failed to query user via LDAP - $($_.Exception.Message)"
+        Write-Host "ERROR: Failed to convert DateTime to Unix Epoch - $($_.Exception.Message)"
         return $null
-    }
-}
-
-# Usage example with Base64 encoding for groups
-$userInfo = Get-ADUserViaADSI -SamAccountName $env:USERNAME
-if ($userInfo) {
-    Write-Host "INFO: User - $($userInfo.DisplayName)"
-    Write-Host "INFO: Groups - $($userInfo.GroupCount) memberships"
-    
-    # Store simple fields directly
-    Ninja-Property-Set ADUserLastName $userInfo.LastName
-    Ninja-Property-Set ADUserFirstName $userInfo.FirstName
-    Ninja-Property-Set ADUserEmail $userInfo.EmailAddress
-    
-    # Store groups array as Base64
-    if ($userInfo.GroupsArray -and $userInfo.GroupsArray.Count -gt 0) {
-        $groupsBase64 = ConvertTo-Base64 -InputObject $userInfo.GroupsArray
-        Ninja-Property-Set ADUserGroupsEncoded $groupsBase64
-        Write-Host "SUCCESS: Stored $($userInfo.GroupCount) groups as Base64"
     }
 }
 ```
 
-**Computer Query via ADSI LDAP://:**
+**Convert Unix Epoch back to DateTime (for display/logging):**
+
 ```powershell
-# Query computer information using LDAP:// protocol only
-function Get-ADComputerViaADSI {
+# Helper function to convert Unix Epoch back to DateTime
+function ConvertFrom-UnixEpoch {
+    <#
+    .SYNOPSIS
+        Convert Unix Epoch seconds back to DateTime object
+    .PARAMETER UnixSeconds
+        Unix Epoch timestamp (seconds since 1970-01-01 UTC)
+    .EXAMPLE
+        $dateTime = ConvertFrom-UnixEpoch -UnixSeconds 1738548000
+    #>
     param(
-        [string]$ComputerName = $env:COMPUTERNAME
+        [Parameter(Mandatory=$true)]
+        [int64]$UnixSeconds
     )
     
     try {
-        # Get domain information using LDAP://
-        $rootDSE = [ADSI]"LDAP://RootDSE"
-        $defaultNamingContext = $rootDSE.defaultNamingContext
-        
-        # Create LDAP searcher
-        $searcher = New-Object System.DirectoryServices.DirectorySearcher
-        # Use LDAP:// protocol for SearchRoot
-        $searcher.SearchRoot = [ADSI]"LDAP://$defaultNamingContext"
-        $searcher.Filter = "(&(objectClass=computer)(cn=$ComputerName))"
-        $searcher.PropertiesToLoad.AddRange(@(
-            'cn',
-            'dNSHostName',
-            'sAMAccountName',
-            'operatingSystem',
-            'operatingSystemVersion',
-            'memberOf',
-            'userAccountControl',
-            'lastLogonTimestamp',
-            'distinguishedName',
-            'whenCreated'
-        ))
-        
-        # Set search scope
-        $searcher.SearchScope = [System.DirectoryServices.SearchScope]::Subtree
-        
-        $result = $searcher.FindOne()
-        
-        if ($result) {
-            $computer = $result.Properties
-            
-            # Extract group memberships from memberOf attribute
-            $groups = @()
-            if ($computer['memberOf']) {
-                foreach ($groupDN in $computer['memberOf']) {
-                    # Extract CN from DN
-                    if ($groupDN -match 'CN=([^,]+)') {
-                        $groups += $matches[1]
-                    }
-                }
-            }
-            
-            # Return computer object
-            return [PSCustomObject]@{
-                Name = if ($computer['cn']) { $computer['cn'][0] } else { "" }
-                SamAccountName = if ($computer['sAMAccountName']) { $computer['sAMAccountName'][0] } else { "" }
-                DNSHostName = if ($computer['dNSHostName']) { $computer['dNSHostName'][0] } else { "" }
-                OperatingSystem = if ($computer['operatingSystem']) { $computer['operatingSystem'][0] } else { "" }
-                OSVersion = if ($computer['operatingSystemVersion']) { $computer['operatingSystemVersion'][0] } else { "" }
-                DistinguishedName = if ($computer['distinguishedName']) { $computer['distinguishedName'][0] } else { "" }
-                Groups = $groups -join ", "
-                GroupCount = $groups.Count
-                GroupsArray = $groups
-                Enabled = if ($computer['userAccountControl']) { 
-                    # Check if account is disabled (bit 2)
-                    -not ([int]$computer['userAccountControl'][0] -band 2) 
-                } else { 
-                    $false 
-                }
-            }
-        } else {
-            Write-Host "WARNING: Computer not found in AD via LDAP - $ComputerName"
-            return $null
-        }
+        $epoch = Get-Date "1970-01-01 00:00:00"
+        $dateTime = $epoch.AddSeconds($UnixSeconds)
+        return $dateTime
     } catch {
-        Write-Host "ERROR: Failed to query computer via LDAP - $($_.Exception.Message)"
+        Write-Host "ERROR: Failed to convert Unix Epoch to DateTime - $($_.Exception.Message)"
         return $null
     }
 }
+```
 
-# Usage example with Base64 encoding
-$computerInfo = Get-ADComputerViaADSI -ComputerName $env:COMPUTERNAME
-if ($computerInfo) {
-    Write-Host "INFO: Computer - $($computerInfo.Name)"
-    Write-Host "INFO: OS - $($computerInfo.OperatingSystem)"
-    Write-Host "INFO: Groups - $($computerInfo.GroupCount) memberships"
-    
-    # Store simple fields directly
-    Ninja-Property-Set ADComputerName $computerInfo.Name
-    Ninja-Property-Set ADComputerOS $computerInfo.OperatingSystem
-    Ninja-Property-Set ADComputerDNS $computerInfo.DNSHostName
-    
-    # Store groups array as Base64
-    if ($computerInfo.GroupsArray -and $computerInfo.GroupsArray.Count -gt 0) {
-        $groupsBase64 = ConvertTo-Base64 -InputObject $computerInfo.GroupsArray
-        Ninja-Property-Set ADComputerGroupsEncoded $groupsBase64
-        Write-Host "SUCCESS: Stored $($computerInfo.GroupCount) groups as Base64"
-    }
+### Common Date/Time Scenarios
+
+**1. Current Timestamp (Last Run/Last Checked):**
+
+```powershell
+# Store current date/time
+$currentTimestamp = ConvertTo-UnixEpoch -DateTime (Get-Date)
+Ninja-Property-Set lastRunTimestamp $currentTimestamp
+Write-Host "INFO: Script last run: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+```
+
+**2. System Boot Time:**
+
+```powershell
+# Get last boot time from WMI/CIM
+$os = Get-CimInstance -ClassName Win32_OperatingSystem
+$lastBootTime = $os.LastBootUpTime
+
+if ($lastBootTime) {
+    $bootTimestamp = ConvertTo-UnixEpoch -DateTime $lastBootTime
+    Ninja-Property-Set systemLastBootTime $bootTimestamp
+    Write-Host "INFO: System last boot: $($lastBootTime.ToString('yyyy-MM-dd HH:mm:ss'))"
 }
 ```
 
-**Group Query via ADSI LDAP://:**
+**3. File Modification Time:**
+
 ```powershell
-# Query group information using LDAP:// protocol only
-function Get-ADGroupViaADSI {
-    param(
-        [string]$GroupName
-    )
-    
+# Get file last modified time
+$file = Get-Item "C:\SomeFile.txt" -ErrorAction SilentlyContinue
+if ($file) {
+    $modifiedTimestamp = ConvertTo-UnixEpoch -DateTime $file.LastWriteTime
+    Ninja-Property-Set configFileLastModified $modifiedTimestamp
+    Write-Host "INFO: File modified: $($file.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss'))"
+}
+```
+
+**4. Active Directory pwdLastSet (Password Last Set):**
+
+```powershell
+# Convert AD FileTime to DateTime, then to Unix Epoch
+if ($computer['pwdLastSet'] -and $computer['pwdLastSet'][0]) {
     try {
-        # Get domain information using LDAP://
-        $rootDSE = [ADSI]"LDAP://RootDSE"
-        $defaultNamingContext = $rootDSE.defaultNamingContext
+        # AD stores as FileTime (100-nanosecond intervals since 1601-01-01)
+        $pwdLastSetValue = [Int64]$computer['pwdLastSet'][0]
+        $pwdLastSetDate = [DateTime]::FromFileTime($pwdLastSetValue)
         
-        # Create LDAP searcher
-        $searcher = New-Object System.DirectoryServices.DirectorySearcher
-        # Use LDAP:// protocol for SearchRoot
-        $searcher.SearchRoot = [ADSI]"LDAP://$defaultNamingContext"
-        $searcher.Filter = "(&(objectClass=group)(cn=$GroupName))"
-        $searcher.PropertiesToLoad.AddRange(@(
-            'cn',
-            'sAMAccountName',
-            'member',
-            'groupType',
-            'distinguishedName',
-            'description'
-        ))
+        # Convert to Unix Epoch for NinjaOne
+        $pwdTimestamp = ConvertTo-UnixEpoch -DateTime $pwdLastSetDate
+        Ninja-Property-Set adPasswordLastSet $pwdTimestamp
         
-        # Set search scope
-        $searcher.SearchScope = [System.DirectoryServices.SearchScope]::Subtree
-        
-        $result = $searcher.FindOne()
-        
-        if ($result) {
-            $group = $result.Properties
-            
-            # Extract member DNs
-            $members = @()
-            if ($group['member']) {
-                foreach ($memberDN in $group['member']) {
-                    # Extract CN from DN
-                    if ($memberDN -match 'CN=([^,]+)') {
-                        $members += $matches[1]
-                    }
-                }
-            }
-            
-            # Determine group scope from groupType
-            $groupType = if ($group['groupType']) { [int]$group['groupType'][0] } else { 0 }
-            $groupScope = switch ($groupType -band 0x0000000F) {
-                2 { "Global" }
-                4 { "DomainLocal" }
-                8 { "Universal" }
-                default { "Unknown" }
-            }
-            
-            $isSecurityGroup = ($groupType -band 0x80000000) -ne 0
-            
-            # Return group object
-            return [PSCustomObject]@{
-                Name = if ($group['cn']) { $group['cn'][0] } else { "" }
-                SamAccountName = if ($group['sAMAccountName']) { $group['sAMAccountName'][0] } else { "" }
-                Description = if ($group['description']) { $group['description'][0] } else { "" }
-                DistinguishedName = if ($group['distinguishedName']) { $group['distinguishedName'][0] } else { "" }
-                GroupScope = $groupScope
-                IsSecurityGroup = $isSecurityGroup
-                MemberCount = $members.Count
-                Members = $members -join ", "
-                MembersArray = $members
-            }
-        } else {
-            Write-Host "WARNING: Group not found via LDAP - $GroupName"
-            return $null
-        }
+        Write-Host "INFO: Password last set: $($pwdLastSetDate.ToString('yyyy-MM-dd HH:mm:ss'))"
     } catch {
-        Write-Host "ERROR: Failed to query group via LDAP - $($_.Exception.Message)"
-        return $null
+        Write-Host "ERROR: Failed to convert pwdLastSet - $($_.Exception.Message)"
     }
-}
-
-# Usage example
-$groupInfo = Get-ADGroupViaADSI -GroupName "Domain Admins"
-if ($groupInfo) {
-    Write-Host "INFO: Group - $($groupInfo.Name)"
-    Write-Host "INFO: Scope - $($groupInfo.GroupScope)"
-    Write-Host "INFO: Members - $($groupInfo.MemberCount)"
-    Write-Host "INFO: Security Group - $($groupInfo.IsSecurityGroup)"
 }
 ```
 
-**Query Current User's Groups via LDAP://:**
-```powershell
-# Get current user's group memberships using LDAP:// only
-function Get-CurrentUserGroups {
-    try {
-        # Get current user's SAM account name
-        $samAccountName = $env:USERNAME
-        
-        # Query user via LDAP://
-        $userInfo = Get-ADUserViaADSI -SamAccountName $samAccountName
-        
-        if ($userInfo -and $userInfo.GroupsArray) {
-            Write-Host "INFO: Current user is member of $($userInfo.GroupCount) groups"
-            return $userInfo.GroupsArray
-        } else {
-            Write-Host "WARNING: No group memberships found for current user"
-            return @()
-        }
-    } catch {
-        Write-Host "ERROR: Failed to get current user groups - $($_.Exception.Message)"
-        return @()
-    }
-}
+**5. Certificate Expiration Date:**
 
-# Usage
-$userGroups = Get-CurrentUserGroups
-if ($userGroups.Count -gt 0) {
-    # Store as Base64
-    $groupsBase64 = ConvertTo-Base64 -InputObject $userGroups
-    Ninja-Property-Set CurrentUserGroups $groupsBase64
+```powershell
+# Get certificate expiration
+$cert = Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.Subject -match "CN=MyCert" } | Select-Object -First 1
+
+if ($cert) {
+    $expirationTimestamp = ConvertTo-UnixEpoch -DateTime $cert.NotAfter
+    Ninja-Property-Set certificateExpiration $expirationTimestamp
     
-    # Also log for visibility
-    foreach ($group in $userGroups) {
-        Write-Host "INFO: Member of - $group"
+    # Calculate days until expiration for alerting
+    $daysUntilExpiration = ($cert.NotAfter - (Get-Date)).Days
+    Ninja-Property-Set certificateExpirationDays $daysUntilExpiration
+    
+    Write-Host "INFO: Certificate expires: $($cert.NotAfter.ToString('yyyy-MM-dd'))"
+    Write-Host "INFO: Days until expiration: $daysUntilExpiration"
+}
+```
+
+**6. Scheduled Task Next Run Time:**
+
+```powershell
+# Get scheduled task next run time
+$task = Get-ScheduledTask -TaskName "MyTask" -ErrorAction SilentlyContinue
+if ($task) {
+    $taskInfo = Get-ScheduledTaskInfo -TaskName "MyTask"
+    $nextRunTime = $taskInfo.NextRunTime
+    
+    if ($nextRunTime) {
+        $nextRunTimestamp = ConvertTo-UnixEpoch -DateTime $nextRunTime
+        Ninja-Property-Set taskNextRunTime $nextRunTimestamp
+        Write-Host "INFO: Task next run: $($nextRunTime.ToString('yyyy-MM-dd HH:mm:ss'))"
     }
 }
 ```
 
-### LDAP:// Query Best Practices
+### Date vs Text Field Comparison
 
-**1. Always Use LDAP:// Protocol:**
+**BAD - Using Text Field:**
 ```powershell
-# CORRECT - Always use LDAP://
-$rootDSE = [ADSI]"LDAP://RootDSE"
-$searcher.SearchRoot = [ADSI]"LDAP://$defaultNamingContext"
-
-# WRONG - Do not use WinNT:// for AD queries
-$user = [ADSI]"WinNT://$env:USERDOMAIN/$env:USERNAME,user"  # AVOID
-
-# WRONG - Do not use GC:// unless specifically needed for global catalog
-$searcher.SearchRoot = [ADSI]"GC://$defaultNamingContext"  # AVOID
+# Text field - inconsistent format, poor sorting, no timezone handling
+$dateString = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+Ninja-Property-Set lastChecked $dateString
+# Issues: String comparison, locale problems, no timezone awareness
 ```
 
-**2. Use Specific LDAP Filters:**
+**GOOD - Using Date/Time Field:**
 ```powershell
-# GOOD - Specific filter for user accounts
-$searcher.Filter = "(&(objectClass=user)(objectCategory=person)(sAMAccountName=$username))"
-
-# GOOD - Specific filter for computers
-$searcher.Filter = "(&(objectClass=computer)(cn=$computername))"
-
-# GOOD - Specific filter for groups
-$searcher.Filter = "(&(objectClass=group)(cn=$groupname))"
-
-# AVOID - Too broad
-$searcher.Filter = "(sAMAccountName=$username)"  # Could match computer accounts
+# Date/Time field - proper format, correct sorting, timezone aware
+$timestamp = ConvertTo-UnixEpoch -DateTime (Get-Date)
+Ninja-Property-Set lastChecked $timestamp
+# Benefits: Numeric comparison, universal format, automatic timezone handling
 ```
 
-**3. Set Search Scope:**
-```powershell
-# Always set search scope explicitly
-$searcher.SearchScope = [System.DirectoryServices.SearchScope]::Subtree
+### Field Creation in NinjaOne
 
-# Available options:
-# - Base: Only the base object
-# - OneLevel: Immediate children only
-# - Subtree: All descendants (recommended for domain-wide searches)
-```
+**Creating Date Custom Field:**
+1. Go to Administration → Devices → Global Custom Fields
+2. Click Add → Field
+3. Select **Date** or **Date and Time** from Custom field type dropdown
+4. Enter Label (e.g., "Last Boot Time", "Certificate Expiration")
+5. Set Definition Scope to Device
+6. Leave Filter Date Options as None (unless specific filtering needed)
+7. Click Create
 
-**4. Request Only Needed Attributes:**
-```powershell
-# GOOD - Request specific attributes
-$searcher.PropertiesToLoad.AddRange(@('cn', 'sAMAccountName', 'memberOf'))
+**Field Naming Convention:**
+- Use descriptive names: `lastBootTime`, `certificateExpiration`, `passwordLastSet`
+- Include context: `adPasswordLastSet`, `backupLastSuccess`, `updateLastChecked`
+- Use camelCase for field names in scripts
 
-# AVOID - Loading all attributes (slower)
-# Don't add PropertiesToLoad if you need everything (but this is slower)
-```
+### Migration Strategy
 
-**5. Error Handling for LDAP Queries:**
-```powershell
-try {
-    $rootDSE = [ADSI]"LDAP://RootDSE"
-    if ([string]::IsNullOrEmpty($rootDSE.defaultNamingContext)) {
-        Write-Host "ERROR: Not connected to domain or LDAP unavailable"
-        exit 1
-    }
-} catch {
-    Write-Host "ERROR: LDAP connection failed - $($_.Exception.Message)"
-    Write-Host "INFO: System may be workgroup or domain unreachable"
-    exit 1
-}
-```
+**Identify Text Fields Storing Dates:**
+Search for patterns in existing scripts:
+- `ToString("yyyy-MM-dd")`
+- `Get-Date -Format`
+- Fields ending in "Date", "Time", "Timestamp", "LastRun", "LastChecked"
+- ISO 8601 format strings
 
-### Migration Tasks
+**Convert to Date/Time Fields:**
 
-**For Script_42_Active_Directory_Monitor.ps1:**
+1. **Audit Current Fields:**
+   - List all custom fields storing date/time as text
+   - Document current format used
+   - Identify scripts writing to these fields
 
-1. **Add LDAP Connection Check:**
-   - Implement Test-ADConnection function using LDAP:// at script start
-   - Exit gracefully if not domain-joined or no LDAP access
-   - Log connection status to custom field
+2. **Create New Date/Time Fields:**
+   - Create Date or Date/Time field in NinjaOne
+   - Use same name or append "Timestamp" to distinguish
+   - Set to Device scope
 
-2. **Replace Import-Module ActiveDirectory:**
-   - Remove all Import-Module ActiveDirectory calls
-   - Replace Get-ADUser with Get-ADUserViaADSI (LDAP:// only)
-   - Replace Get-ADComputer with Get-ADComputerViaADSI (LDAP:// only)
-   - Replace Get-ADGroup with Get-ADGroupViaADSI (LDAP:// only)
-   - Ensure all ADSI connections use LDAP:// protocol
+3. **Update Scripts:**
+   - Add `ConvertTo-UnixEpoch` helper function
+   - Replace text field writes with Unix Epoch conversion
+   - Keep human-readable logging for troubleshooting
 
-3. **Update Field Writes:**
-   - Ensure all AD-related custom fields populated via LDAP://
-   - Use Base64 encoding for array data (group memberships)
-   - Add error handling for each LDAP query
-   - Implement fallback values for query failures
-
-4. **Test Scenarios:**
-   - Domain-joined computer (should work with LDAP://)
-   - Workgroup computer (should gracefully exit)
-   - Domain computer without AD connectivity (should report error)
-   - Different user contexts (SYSTEM vs USER)
-   - Verify all queries use LDAP:// protocol only
+4. **Test and Validate:**
+   - Verify date displays correctly in NinjaOne dashboard
+   - Test sorting and filtering
+   - Confirm timezone handling
+   - Validate on both German and English Windows
 
 5. **Document Changes:**
-   - Update script documentation with LDAP:// approach
-   - Document connection requirements
-   - List LDAP attributes queried
-   - Provide troubleshooting guide
-   - Note LDAP:// protocol requirement
+   - Update script documentation
+   - Note Unix Epoch requirement
+   - Document field types in script headers
+   - Add examples in comments
 
-### Benefits of ADSI LDAP:// Migration
+### Language Compatibility
 
-**Performance:**
-- No module loading overhead (saves 2-5 seconds)
-- Direct LDAP queries are faster
-- Reduced memory footprint
-- Efficient attribute retrieval
+**Unix Epoch Benefits:**
+- Language-neutral (numeric value)
+- No locale-specific formatting issues
+- Works identically on German and English Windows
+- No date format ambiguity (MM/DD/YYYY vs DD/MM/YYYY)
+- Timezone-agnostic (always UTC-based)
 
-**Compatibility:**
-- Works on systems without RSAT
-- No PowerShell module dependencies
-- Compatible with PowerShell 2.0+
-- Works in constrained language mode
-- Standard LDAP protocol (RFC 4511)
+**Regional Settings:**
+NinjaOne handles display formatting based on user preferences, but storage format (Unix Epoch) remains consistent.
 
-**Reliability:**
-- Fewer external dependencies
-- More predictable behavior
-- Better error handling capabilities
-- Explicit connection validation
-- Direct LDAP protocol communication
+### Scripts to Update
 
-**Consistency:**
-- Single protocol (LDAP://) for all AD queries
-- Standard LDAP filters and attributes
-- Predictable behavior across all Windows versions
-- No WinNT:// or GC:// protocol mixing
+**Priority Scripts (Date/Time Fields Recommended):**
 
----
+1. **Script_42_Active_Directory_Monitor.ps1**
+   - `adPasswordLastSet` (currently text) → Date/Time field
+   - Already has pwdLastSet from LDAP, needs Unix Epoch conversion
 
-[Continue with Pre-Phase B, C, D sections from version 1.6, no changes needed]
+2. **Script_01_System_Information_Monitor.ps1**
+   - `systemLastBootTime` → Date/Time field
+   - `osInstallDate` → Date field
 
-## Pre-Phase B: Module Dependency Reduction (RSAT and Non-Native Only)
+3. **Backup Monitoring Scripts**
+   - `backupLastSuccess` → Date/Time field
+   - `backupLastFailure` → Date/Time field
+   - `backupNextScheduled` → Date/Time field
 
-[Content from version 1.6 - no changes]
+4. **Certificate Monitoring Scripts**
+   - `certificateExpiration` → Date field
+   - `certificateIssueDate` → Date field
 
----
+5. **Update/Patch Scripts**
+   - `lastUpdateCheck` → Date/Time field
+   - `lastPatchInstalled` → Date/Time field
 
-## Pre-Phase C: Base64 Encoding Standard for Data Storage
+6. **Antivirus/Security Scripts**
+   - `avLastScan` → Date/Time field
+   - `avDefinitionDate` → Date/Time field
 
-[Content from version 1.6 - no changes]
+7. **Script Execution Tracking**
+   - All scripts should track `lastRunTimestamp` → Date/Time field
 
----
+### Error Handling
 
-## Pre-Phase D: Language Compatibility (German/English Windows)
+```powershell
+# Always validate DateTime before conversion
+function Set-DateField {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$FieldName,
+        
+        [Parameter(Mandatory=$false)]
+        [DateTime]$DateTime
+    )
+    
+    if ($null -eq $DateTime) {
+        Write-Host "WARNING: DateTime is null, skipping field $FieldName"
+        return
+    }
+    
+    try {
+        $timestamp = ConvertTo-UnixEpoch -DateTime $DateTime
+        if ($null -ne $timestamp) {
+            Ninja-Property-Set $FieldName $timestamp
+            Write-Host "SUCCESS: Set $FieldName to $($DateTime.ToString('yyyy-MM-dd HH:mm:ss'))"
+        } else {
+            Write-Host "ERROR: Failed to convert DateTime for field $FieldName"
+        }
+    } catch {
+        Write-Host "ERROR: Failed to set date field $FieldName - $($_.Exception.Message)"
+    }
+}
+```
 
-[Content from version 1.6 with additional note]
+### Testing and Validation
 
-### Additional Note on LDAP:// and Language Compatibility
+**Test Cases:**
 
-LDAP:// queries are inherently language-neutral because:
-- LDAP attribute names are always English (cn, sAMAccountName, memberOf, etc.)
-- LDAP filters use standard syntax regardless of Windows language
-- Distinguished Names (DNs) use standard format
-- No localized display names in LDAP attributes
-- Protocol is RFC-standardized and language-agnostic
+1. **Current Date/Time:**
+   - Store `Get-Date` as Unix Epoch
+   - Verify displays correctly in NinjaOne
 
-This makes LDAP:// queries perfectly compatible with German and English Windows installations.
+2. **Historical Dates:**
+   - Test with dates in the past (last boot time, password set date)
+   - Verify correct conversion and display
 
-[Continue with rest of Pre-Phase D content]
+3. **Future Dates:**
+   - Test with future dates (certificate expiration, scheduled tasks)
+   - Verify correct calculation and display
+
+4. **Timezone Handling:**
+   - Test on systems in different timezones
+   - Verify UTC conversion is correct
+
+5. **Regional Settings:**
+   - Test on German Windows (date format DD.MM.YYYY)
+   - Test on English Windows (date format MM/DD/YYYY)
+   - Verify NinjaOne displays correctly regardless of system locale
+
+6. **Null Handling:**
+   - Test with null/empty dates
+   - Verify graceful error handling
+
+### Documentation Requirements
+
+**Script Header Documentation:**
+```powershell
+<#
+.FIELDS UPDATED
+    - lastBootTime (Date/Time: Unix Epoch seconds since 1970-01-01 UTC)
+    - certificateExpiration (Date: Unix Epoch seconds, date only)
+    - passwordLastSet (Date/Time: Unix Epoch seconds)
+    
+.NOTES
+    Date/Time fields use Unix Epoch format (seconds since 1970-01-01 00:00:00 UTC)
+    NinjaOne handles timezone display automatically based on user preferences
+#>
+```
+
+**Helper Function Documentation:**
+Include `ConvertTo-UnixEpoch` and `ConvertFrom-UnixEpoch` functions in all scripts using Date/Time fields with full documentation.
 
 ---
 
 ## Phase 0: Coding Standards and Conventions
 
-[Content from version 1.6 with additions]
-
 ### Additional Coding Standards
+
+**Date/Time Field Usage:**
+- Always use Date or Date/Time custom fields for temporal data (not text)
+- Always convert DateTime to Unix Epoch seconds before storing
+- Always use UTC for consistency (`ToUniversalTime()`)
+- Always include `ConvertTo-UnixEpoch` helper function in scripts
+- Always validate DateTime is not null before conversion
+- Always log human-readable dates for troubleshooting
+- Document field types in script header FIELDS UPDATED section
+- Include "Unix Epoch" in field documentation
 
 **ADSI LDAP:// Protocol Usage:**
 - Always use LDAP:// protocol for all Active Directory queries
@@ -598,7 +432,14 @@ This makes LDAP:// queries perfectly compatible with German and English Windows 
 - Request only needed attributes via PropertiesToLoad
 - Always check for null/empty before accessing LDAP properties
 
-[Continue with rest of coding standards from version 1.6]
+**Base64 Encoding Usage:**
+- Always use Base64 encoding for complex data structures (arrays, hashtables, nested objects)
+- Always validate encoded data does not exceed 9999 characters
+- Always include `ConvertTo-Base64` and `ConvertFrom-Base64` helper functions
+- Log encoded data size for monitoring
+- Return null and log error if size limit exceeded
+
+[Continue with rest of coding standards]
 
 ---
 
@@ -607,17 +448,47 @@ This makes LDAP:// queries perfectly compatible with German and English Windows 
 ### Recommended Implementation Order
 
 **Week 0: Pre-Implementation (CRITICAL)**
+
 1. **Pre-Phase A: Active Directory ADSI Migration (LDAP:// Only)**
    - Implement Test-ADConnection function (LDAP:// only)
    - Create Get-ADUserViaADSI function (LDAP:// only)
    - Create Get-ADComputerViaADSI function (LDAP:// only)
    - Create Get-ADGroupViaADSI function (LDAP:// only)
    - Update Script_42_Active_Directory_Monitor.ps1
-   - **Verify all ADSI queries use LDAP:// protocol**
+   - Verify all ADSI queries use LDAP:// protocol
    - Test on domain-joined and workgroup systems
    - Document LDAP:// approach
 
-[Continue with rest of execution sequence from version 1.6]
+2. **Pre-Phase B: Module Dependency Reduction**
+   - Audit all Import-Module statements
+   - Identify RSAT modules to replace
+   - Keep native Windows modules (Storage, BitLocker, etc.)
+   - Document which modules retained and why
+
+3. **Pre-Phase C: Base64 Encoding Standard** (COMPLETE)
+   - Implement ConvertTo-Base64 helper with 9999 char limit
+   - Implement ConvertFrom-Base64 helper
+   - Update Script_42, Script_10, Script_11 with Base64 encoding
+   - Test with complex data structures
+   - Verify special character handling
+
+4. **Pre-Phase D: Language Compatibility**
+   - Test all scripts on German Windows
+   - Test all scripts on English Windows
+   - Verify no hardcoded language-specific strings
+   - Document language-neutral approaches
+
+5. **Pre-Phase E: Date/Time Field Standards** (NEW)
+   - Create ConvertTo-UnixEpoch helper function
+   - Create ConvertFrom-UnixEpoch helper function
+   - Audit all scripts storing dates as text
+   - Create Date/Time custom fields in NinjaOne
+   - Update scripts to use Unix Epoch format
+   - Test timezone handling and display
+   - Verify German/English Windows compatibility
+   - Document Unix Epoch requirement
+
+[Continue with rest of execution sequence]
 
 ---
 
@@ -627,10 +498,12 @@ This makes LDAP:// queries perfectly compatible with German and English Windows 
 
 **Technical Requirements:**
 - All dropdown field references converted to text
-- **All AD queries migrated to ADSI using LDAP:// protocol exclusively**
-- **No WinNT:// or GC:// protocols used for AD queries**
+- All AD queries migrated to ADSI using LDAP:// protocol exclusively
+- No WinNT:// or GC:// protocols used for AD queries
 - RSAT module dependencies eliminated (native modules retained)
 - All complex data storage uses Base64 encoding
+- **All date/time data uses Date or Date/Time fields with Unix Epoch format**
+- **All scripts include ConvertTo-UnixEpoch helper function where needed**
 - All scripts tested and working on German Windows
 - All scripts tested and working on English Windows
 - No language-dependent code remains
@@ -643,11 +516,13 @@ This makes LDAP:// queries perfectly compatible with German and English Windows 
 
 **Documentation Requirements:**
 - Every script has corresponding documentation
-- **ADSI LDAP:// implementation documented with examples**
-- **LDAP:// protocol requirement clearly stated**
+- ADSI LDAP:// implementation documented with examples
+- LDAP:// protocol requirement clearly stated
 - Native module usage documented (why kept)
 - RSAT module replacements documented
 - Base64 encoding documented with examples
+- **Unix Epoch date/time format documented with examples**
+- **DATE_TIME_FIELD_REPORT.md complete**
 - BASE64_ENCODING_REPORT.md complete
 - Language compatibility documented for each script
 - LANGUAGE_COMPATIBILITY_REPORT.md complete
@@ -663,10 +538,12 @@ This makes LDAP:// queries perfectly compatible with German and English Windows 
 - No broken links in any documentation
 - All code examples tested and working
 - All code examples use Write-Host only
-- **All ADSI examples use LDAP:// protocol only**
+- All ADSI examples use LDAP:// protocol only
+- **All date/time examples use Unix Epoch format**
 - Native Windows modules used where appropriate
 - RSAT dependencies eliminated
 - Base64 encoding tested with special characters
+- **Date/Time fields tested with timezone handling**
 - Script outputs identical on German and English Windows
 - Consistent formatting throughout
 - All cross-references accurate
@@ -674,15 +551,10 @@ This makes LDAP:// queries perfectly compatible with German and English Windows 
 - Style guide compliance verified
 - Coding standards compliance verified
 - No checkmarks, crosses, or emojis
-- **ADSI LDAP:// functions tested on domain and workgroup systems**
+- ADSI LDAP:// functions tested on domain and workgroup systems
 - Language-neutral code verified on multiple Windows languages
 - Base64 encoding verified with umlauts and special characters
-
----
-
-## Resource Estimates
-
-[Same as version 1.6 - no time estimate changes needed]
+- **Unix Epoch date conversion verified on multiple timezones**
 
 ---
 
@@ -698,6 +570,7 @@ This makes LDAP:// queries perfectly compatible with German and English Windows 
 | 2026-02-03 | 1.5 | WAF Team | Added Pre-Phase D (German/English Windows language compatibility) |
 | 2026-02-03 | 1.6 | WAF Team | Refined Pre-Phase B (keep native modules, replace RSAT only) and added Pre-Phase C (Base64 encoding standard) |
 | 2026-02-03 | 1.7 | WAF Team | Standardized Pre-Phase A to use LDAP:// protocol exclusively for all ADSI queries |
+| 2026-02-03 | 1.8 | WAF Team | Added Pre-Phase E (Date/Time Field Standards with Unix Epoch format per NinjaOne guidelines) |
 
 ---
 

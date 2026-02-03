@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
     Script 42: Active Directory Monitor
-    NinjaRMM Custom Field Framework v3.1
+    NinjaRMM Custom Field Framework v3.2
 
 .DESCRIPTION
     Monitors Active Directory domain membership, domain controller connectivity, secure channel
@@ -19,7 +19,7 @@
     - ADUserFirstName (Text)
     - ADUserLastName (Text)
     - ADUserGroupsEncoded (Text: Base64 encoded array, max 9999 chars)
-    - ADPasswordLastSet (Text: ISO 8601 format)
+    - ADPasswordLastSet (Date/Time: Unix Epoch seconds since 1970-01-01 UTC)
     - ADTrustRelationshipHealthy (Text: "true"/"false")
 
 .EXECUTION
@@ -30,13 +30,19 @@
 .NOTES
     File: Script_42_Active_Directory_Monitor.ps1
     Author: Windows Automation Framework
-    Version: 3.1
+    Version: 3.2
     Created: February 3, 2026
     Updated: February 3, 2026
     Category: Domain Integration
     Dependencies: None (uses native ADSI LDAP:// queries)
 
 .MIGRATION NOTES
+    v3.1 -> v3.2 Changes:
+    - Converted ADPasswordLastSet from text to Date/Time field (Unix Epoch format)
+    - Uses inline DateTimeOffset conversion (no helper functions needed)
+    - Maintains human-readable logging for troubleshooting
+    - NinjaOne handles timezone display automatically
+    
     v3.0 -> v3.1 Changes:
     - Removed ActiveDirectory PowerShell module dependency
     - Migrated to LDAP:// ADSI queries exclusively
@@ -50,7 +56,8 @@
 
 .RELATED DOCUMENTATION
     - docs/core/18_AD_Active_Directory.md
-    - docs/ACTION_PLAN_Field_Conversion_Documentation.md (v1.7)
+    - docs/ACTION_PLAN_Field_Conversion_Documentation.md (v1.9)
+    - docs/DATE_TIME_FIELD_AUDIT.md
     - docs/PROGRESS_TRACKING.md
 #>
 
@@ -182,7 +189,7 @@ function Get-ADComputerViaADSI {
                 }
             }
             
-            $pwdLastSet = ""
+            $pwdLastSet = 0
             if ($computer['pwdLastSet'] -and $computer['pwdLastSet'][0]) {
                 try {
                     $pwdLastSetValue = $computer['pwdLastSet'][0]
@@ -190,9 +197,11 @@ function Get-ADComputerViaADSI {
                         $pwdLastSetValue = [Int64]$pwdLastSetValue
                     }
                     $pwdLastSetDate = [DateTime]::FromFileTime($pwdLastSetValue)
-                    $pwdLastSet = $pwdLastSetDate.ToString("yyyy-MM-dd HH:mm:ss", [System.Globalization.CultureInfo]::InvariantCulture)
+                    $pwdLastSet = [DateTimeOffset]$pwdLastSetDate | Select-Object -ExpandProperty ToUnixTimeSeconds
+                    Write-Host "INFO: Password last set: $($pwdLastSetDate.ToString('yyyy-MM-dd HH:mm:ss'))"
                 } catch {
                     Write-Host "WARNING: Failed to convert pwdLastSet - $($_.Exception.Message)"
+                    $pwdLastSet = 0
                 }
             }
             
@@ -296,7 +305,7 @@ function Get-ADUserViaADSI {
 # Main Script
 
 try {
-    Write-Host "Starting Active Directory Monitor (Script 42 v3.1)..."
+    Write-Host "Starting Active Directory Monitor (Script 42 v3.2)..."
     Write-Host "INFO: Using native ADSI LDAP:// queries (no RSAT required)"
     $ErrorActionPreference = 'Stop'
     
@@ -318,7 +327,7 @@ try {
         Ninja-Property-Set adUserFirstName ""
         Ninja-Property-Set adUserLastName ""
         Ninja-Property-Set adUserGroupsEncoded ""
-        Ninja-Property-Set adPasswordLastSet ""
+        Ninja-Property-Set adPasswordLastSet 0
         Ninja-Property-Set adTrustRelationshipHealthy "true"
         
         Write-Host "SUCCESS: Active Directory Monitor complete (not domain-joined)"
@@ -393,7 +402,7 @@ try {
     
     $computerOU = "Unable to query"
     $computerGroupsBase64 = ""
-    $passwordLastSet = ""
+    $passwordLastSet = 0
     
     if ($computerInfo) {
         $computerOU = $computerInfo.DistinguishedName
@@ -401,9 +410,6 @@ try {
         Write-Host "INFO: Computer Groups: $($computerInfo.GroupCount) memberships"
         
         $passwordLastSet = $computerInfo.PasswordLastSet
-        if ($passwordLastSet) {
-            Write-Host "INFO: Password Last Set: $passwordLastSet"
-        }
         
         if ($computerInfo.GroupsArray -and $computerInfo.GroupsArray.Count -gt 0) {
             $computerGroupsBase64 = ConvertTo-Base64 -InputObject $computerInfo.GroupsArray

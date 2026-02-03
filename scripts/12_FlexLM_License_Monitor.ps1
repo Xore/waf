@@ -23,10 +23,10 @@
     - flexlmDeniedRequests24h (Integer)
     - flexlmExpiringLicenses30d (Integer)
     - flexlmLicenseSummary (WYSIWYG)
-    - flexlmHealthStatus (Dropdown)
+    - flexlmHealthStatus (Text)
     
     Framework Version: 4.0
-    Last Updated: February 1, 2026
+    Last Updated: February 3, 2026
     
     IMPORTANT: Configure FlexLM paths and license file location before deployment
 #>

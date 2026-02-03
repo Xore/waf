@@ -14,13 +14,13 @@
     
     Fields Updated:
     - driftLocalAdminDrift (Checkbox)
-    - driftLocalAdminDriftMagnitude (Dropdown: None, Minor, Moderate, Significant)
+    - driftLocalAdminDriftMagnitude (Text: None, Minor, Moderate, Significant)
     
     Prerequisites:
     - Run Script 18 (Baseline Refresh) first to establish baseline
     
     Framework Version: 4.0
-    Last Updated: February 1, 2026
+    Last Updated: February 3, 2026
 #>
 
 param()

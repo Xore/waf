@@ -13,12 +13,12 @@
     Context: SYSTEM
     
     Fields Updated:
-    - srvRole (Dropdown: None, DC, File, Web, SQL, Exchange, App, Multi)
+    - srvRole (Text: None, DC, File, Web, SQL, Exchange, App, Multi)
     - srvCriticalServices (Text)
-    - baseDeviceType (Dropdown: Workstation, Server, Mobile, Virtual)
+    - baseDeviceType (Text: Workstation, Server, Mobile, Virtual)
     
     Framework Version: 4.0
-    Last Updated: February 1, 2026
+    Last Updated: February 3, 2026
 #>
 
 param()

@@ -14,7 +14,7 @@
     
     Fields Updated:
     - cleanupRecommendedCleanupMB (Integer)
-    - cleanupCleanupPriority (Dropdown: Low, Medium, High, Critical)
+    - cleanupCleanupPriority (Text: Low, Medium, High, Critical)
     
     Priority Thresholds:
     - Low: < 1 GB
@@ -23,7 +23,7 @@
     - Critical: > 10 GB
     
     Framework Version: 4.0
-    Last Updated: February 1, 2026
+    Last Updated: February 3, 2026
 #>
 
 param()

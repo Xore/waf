@@ -15,7 +15,7 @@
     Context: SYSTEM
     
     Fields Updated:
-    - patchValidationStatus (Dropdown: Passed, Failed, Error, Pending)
+    - patchValidationStatus (Text: Passed, Failed, Error, Pending)
     - patchValidationNotes (Text)
     - patchValidationDate (DateTime)
     
@@ -25,7 +25,7 @@
     Exit Code 1 = Validation failed
     
     Framework Version: 4.0
-    Last Updated: February 1, 2026
+    Last Updated: February 3, 2026
 #>
 
 try {

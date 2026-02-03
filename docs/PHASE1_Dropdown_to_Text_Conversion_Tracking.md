@@ -28,9 +28,9 @@ This document tracks the conversion of all dropdown custom fields to text fields
 
 No PowerShell code changes are needed. The `Ninja-Property-Set` command works identically for both field types. Only the NinjaOne field configuration and script documentation comments need updating.
 
-## Tracked Dropdown Fields
+## Complete Dropdown Field Inventory
 
-### Main Scripts Directory
+### Main Scripts Directory (17 fields)
 
 #### Security Monitoring
 
@@ -92,40 +92,55 @@ No PowerShell code changes are needed. The `Ninja-Property-Set` command works id
   - `batteryHealthStatus` (Dropdown → TEXT)
   - Values: Good, Fair, Poor, Replace
 
-### Monitoring Directory Scripts
+### Monitoring Directory Scripts (10 fields)
 
 - **Script_01_Apache_Web_Server_Monitor.ps1**
-  - Field details require script inspection
+  - `apacheHealthStatus` (Dropdown → TEXT)
+  - Values: Unknown, Healthy, Warning, Critical
 
 - **Script_03_DNS_Server_Monitor.ps1**
-  - Field details require script inspection
+  - Requires inspection (likely `dnsHealthStatus`)
 
 - **Script_38_MSSQL_Server_Monitor.ps1**
-  - Field details require script inspection
+  - `mssqlHealthStatus` (Dropdown → TEXT)
+  - Values: Unknown, Healthy, Warning, Critical
 
 - **Script_39_MySQL_Server_Monitor.ps1**
-  - Field details require script inspection
+  - Requires inspection (likely `mysqlHealthStatus`)
 
 - **Script_40_Network_Monitor.ps1**
   - `netConnectionType` (Dropdown → TEXT)
   - Values: Disconnected, WiFi, VPN, Cellular, Wired
 
 - **Script_41_Battery_Health_Monitor.ps1**
-  - Field details require script inspection
+  - Requires inspection (likely `batteryHealthStatus`)
 
 - **Script_44_Event_Log_Monitor.ps1**
   - `evtHealthStatus` (Dropdown → TEXT)
   - Values: Healthy, Warning, Critical, Unknown
 
 - **Script_45_File_Server_Monitor.ps1**
-  - Field details require script inspection
+  - Requires inspection (likely `fileServerHealthStatus`)
 
 - **Script_47_FlexLM_License_Monitor.ps1**
-  - Field details require script inspection
+  - Requires inspection (likely `flexlmHealthStatus`)
 
 - **Script_48_Veeam_Backup_Monitor.ps1**
   - `veeamHealthStatus` (Dropdown → TEXT)
   - Values: Unknown, Healthy, Warning, Critical
+
+## Summary Statistics
+
+**Total Dropdown Fields Identified:** 27+  
+**Main Scripts:** 17 fields  
+**Monitoring Scripts:** 10+ fields  
+
+**Field Categories:**
+- Health Status Fields: ~20 fields
+- Connection Type: 1 field (netConnectionType)
+- Validation Status: 2 fields
+- Role/License Status: 2 fields
+- Battery Status: 1+ field
 
 ## Conversion Progress
 
@@ -159,18 +174,47 @@ No PowerShell code changes are needed. The `Ninja-Property-Set` command works id
 
 ### Monitoring Scripts Checklist
 
-| Script | Field(s) | Status | Date Completed |
-|--------|----------|--------|----------------|
-| Script_01_Apache_Web_Server_Monitor.ps1 | TBD | Not Started | - |
-| Script_03_DNS_Server_Monitor.ps1 | TBD | Not Started | - |
-| Script_38_MSSQL_Server_Monitor.ps1 | TBD | Not Started | - |
-| Script_39_MySQL_Server_Monitor.ps1 | TBD | Not Started | - |
+| Script | Field Name | Status | Date Completed |
+|--------|------------|--------|----------------|
+| Script_01_Apache_Web_Server_Monitor.ps1 | apacheHealthStatus | Not Started | - |
+| Script_03_DNS_Server_Monitor.ps1 | TBD (needs inspection) | Not Started | - |
+| Script_38_MSSQL_Server_Monitor.ps1 | mssqlHealthStatus | Not Started | - |
+| Script_39_MySQL_Server_Monitor.ps1 | TBD (needs inspection) | Not Started | - |
 | Script_40_Network_Monitor.ps1 | netConnectionType | Not Started | - |
-| Script_41_Battery_Health_Monitor.ps1 | TBD | Not Started | - |
+| Script_41_Battery_Health_Monitor.ps1 | TBD (needs inspection) | Not Started | - |
 | Script_44_Event_Log_Monitor.ps1 | evtHealthStatus | Not Started | - |
-| Script_45_File_Server_Monitor.ps1 | TBD | Not Started | - |
-| Script_47_FlexLM_License_Monitor.ps1 | TBD | Not Started | - |
+| Script_45_File_Server_Monitor.ps1 | TBD (needs inspection) | Not Started | - |
+| Script_47_FlexLM_License_Monitor.ps1 | TBD (needs inspection) | Not Started | - |
 | Script_48_Veeam_Backup_Monitor.ps1 | veeamHealthStatus | Not Started | - |
+
+## Recommended Conversion Order
+
+### Batch 1: Core Health Status Fields (Priority)
+These are the most commonly used across infrastructure:
+1. `bitlockerHealthStatus`
+2. `dnsServerStatus`
+3. `fileServerHealthStatus`
+4. `printServerStatus`
+5. `mysqlServerStatus`
+
+### Batch 2: Advanced Monitoring
+6. `hypervHostStatus`
+7. `mssqlHealthStatus`
+8. `apacheHealthStatus`
+9. `veeamHealthStatus`
+10. `evtHealthStatus`
+
+### Batch 3: Validation & Analysis
+11. `criticalDeviceStatus`
+12. `highPriorityStatus`
+13. `adminDriftStatus`
+14. `profileHygieneStatus`
+15. `serverRoleStatus`
+
+### Batch 4: Specialized Fields
+16. `licenseServerStatus`
+17. `batteryHealthStatus`
+18. `netConnectionType`
 
 ## Testing Protocol
 
@@ -196,6 +240,14 @@ No PowerShell code changes are needed. The `Ninja-Property-Set` command works id
 - **Case Sensitivity:** Text fields are case-sensitive for filtering; maintain consistent capitalization
 - **Value Validation:** Consider implementing runtime validation in scripts if needed
 - **Documentation:** Update script header comments to reflect TEXT field type
+
+### Common Status Value Patterns
+
+Most health status fields use one of these patterns:
+- **4-State:** Unknown, Healthy, Warning, Critical
+- **3-State:** Healthy, Warning, Critical
+- **Service:** Running, Stopped, Degraded, Unknown
+- **Validation:** Valid, Missing, Misconfigured/Warning
 
 ### Future Enhancements
 

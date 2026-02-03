@@ -62,7 +62,7 @@ $date.ToString("yyyy-MM-ddTHH:mm:ssZ")
 
 **Action Items:**
 1. Create Date/Time custom fields in NinjaOne for each timestamp field
-2. Document field mappings (old text field to new Date/Time field)
+2. Document field mappings (old text field → new Date/Time field)
 3. Set proper field scopes and permissions
 
 **Field Naming Convention:**
@@ -349,7 +349,7 @@ Update these documentation files:
 ## Migration Schedule
 
 ### Week 1: Foundation
-- [ ] Complete this audit document
+- [x] Complete this audit document
 - [ ] Analyze all scripts for date/time patterns
 - [ ] Create comprehensive field mapping
 - [ ] Create Date/Time custom fields in NinjaOne

@@ -14,11 +14,11 @@
     - ADDomainController (Text)
     - ADSiteName (Text)
     - ADComputerOU (Text)
-    - ADComputerGroupsEncoded (Text: Base64 encoded array)
+    - ADComputerGroupsEncoded (Text: Base64 encoded array, max 9999 chars)
     - ADLastLogonUser (Text)
     - ADUserFirstName (Text)
     - ADUserLastName (Text)
-    - ADUserGroupsEncoded (Text: Base64 encoded array)
+    - ADUserGroupsEncoded (Text: Base64 encoded array, max 9999 chars)
     - ADPasswordLastSet (Text: ISO 8601 format)
     - ADTrustRelationshipHealthy (Text: "true"/"false")
 
@@ -41,6 +41,7 @@
     - Removed ActiveDirectory PowerShell module dependency
     - Migrated to LDAP:// ADSI queries exclusively
     - Added Base64 encoding for group memberships
+    - Added 9999 character limit validation for Base64 fields
     - Added user account queries (first name, last name, groups)
     - Changed checkbox fields to text fields ("true"/"false")
     - Added language-neutral implementation
@@ -62,6 +63,8 @@ function ConvertTo-Base64 {
     <#
     .SYNOPSIS
         Convert any PowerShell object to Base64 string for reliable storage
+    .DESCRIPTION
+        Validates that Base64 output does not exceed 9999 characters (NinjaRMM field limit)
     #>
     param(
         [Parameter(Mandatory=$true)]
@@ -72,6 +75,14 @@ function ConvertTo-Base64 {
         $json = $InputObject | ConvertTo-Json -Compress -Depth 10
         $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
         $base64 = [System.Convert]::ToBase64String($bytes)
+        
+        if ($base64.Length -gt 9999) {
+            Write-Host "ERROR: Base64 encoded data exceeds 9999 character limit ($($base64.Length) chars)"
+            Write-Host "WARNING: Data will be truncated or omitted to prevent field overflow"
+            return $null
+        }
+        
+        Write-Host "INFO: Base64 encoded data size: $($base64.Length) characters"
         return $base64
     } catch {
         Write-Host "ERROR: Failed to convert to Base64 - $($_.Exception.Message)"
@@ -397,7 +408,9 @@ try {
         if ($computerInfo.GroupsArray -and $computerInfo.GroupsArray.Count -gt 0) {
             $computerGroupsBase64 = ConvertTo-Base64 -InputObject $computerInfo.GroupsArray
             if ($computerGroupsBase64) {
-                Write-Host "INFO: Encoded $($computerInfo.GroupCount) computer groups as Base64"
+                Write-Host "INFO: Encoded $($computerInfo.GroupCount) computer groups as Base64 (validated <9999 chars)"
+            } else {
+                Write-Host "WARNING: Computer groups Base64 encoding failed or exceeded limit"
             }
         }
     } else {
@@ -447,7 +460,9 @@ try {
             if ($userInfo.GroupsArray -and $userInfo.GroupsArray.Count -gt 0) {
                 $userGroupsBase64 = ConvertTo-Base64 -InputObject $userInfo.GroupsArray
                 if ($userGroupsBase64) {
-                    Write-Host "INFO: Encoded $($userInfo.GroupCount) user groups as Base64"
+                    Write-Host "INFO: Encoded $($userInfo.GroupCount) user groups as Base64 (validated <9999 chars)"
+                } else {
+                    Write-Host "WARNING: User groups Base64 encoding failed or exceeded limit"
                 }
             }
         } else {

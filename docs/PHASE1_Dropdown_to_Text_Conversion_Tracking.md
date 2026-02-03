@@ -1,8 +1,7 @@
 # Phase 1: Dropdown to Text Field Conversion Tracking
 
 **Status:** In Progress  
-**Started:** February 3, 2026  
-**Completion Target:** TBD
+**Started:** February 3, 2026
 
 ## Overview
 
@@ -31,9 +30,7 @@ No PowerShell code changes are needed. The `Ninja-Property-Set` command works id
 
 ## Tracked Dropdown Fields
 
-### Scripts with Dropdown Fields
-
-The following scripts contain dropdown field assignments that need conversion:
+### Main Scripts Directory
 
 #### Security Monitoring
 
@@ -97,18 +94,38 @@ The following scripts contain dropdown field assignments that need conversion:
 
 ### Monitoring Directory Scripts
 
-Scripts in the `scripts/monitoring/` directory also contain dropdown fields:
+- **Script_01_Apache_Web_Server_Monitor.ps1**
+  - Field details require script inspection
 
 - **Script_03_DNS_Server_Monitor.ps1**
+  - Field details require script inspection
+
 - **Script_38_MSSQL_Server_Monitor.ps1**
+  - Field details require script inspection
+
 - **Script_39_MySQL_Server_Monitor.ps1**
+  - Field details require script inspection
+
 - **Script_40_Network_Monitor.ps1**
+  - `netConnectionType` (Dropdown → TEXT)
+  - Values: Disconnected, WiFi, VPN, Cellular, Wired
+
 - **Script_41_Battery_Health_Monitor.ps1**
+  - Field details require script inspection
+
 - **Script_44_Event_Log_Monitor.ps1**
+  - `evtHealthStatus` (Dropdown → TEXT)
+  - Values: Healthy, Warning, Critical, Unknown
+
 - **Script_45_File_Server_Monitor.ps1**
+  - Field details require script inspection
+
 - **Script_47_FlexLM_License_Monitor.ps1**
+  - Field details require script inspection
+
 - **Script_48_Veeam_Backup_Monitor.ps1**
-- **Script_01_Apache_Web_Server_Monitor.ps1**
+  - `veeamHealthStatus` (Dropdown → TEXT)
+  - Values: Unknown, Healthy, Warning, Critical
 
 ## Conversion Progress
 
@@ -118,7 +135,7 @@ Scripts in the `scripts/monitoring/` directory also contain dropdown fields:
 - **In Progress:** NinjaOne field being converted or tested
 - **Completed:** Field converted, documentation updated, tested
 
-### Field Conversion Checklist
+### Main Scripts Checklist
 
 | Script | Field Name | Status | Date Completed |
 |--------|-----------|--------|----------------|
@@ -148,12 +165,12 @@ Scripts in the `scripts/monitoring/` directory also contain dropdown fields:
 | Script_03_DNS_Server_Monitor.ps1 | TBD | Not Started | - |
 | Script_38_MSSQL_Server_Monitor.ps1 | TBD | Not Started | - |
 | Script_39_MySQL_Server_Monitor.ps1 | TBD | Not Started | - |
-| Script_40_Network_Monitor.ps1 | TBD | Not Started | - |
+| Script_40_Network_Monitor.ps1 | netConnectionType | Not Started | - |
 | Script_41_Battery_Health_Monitor.ps1 | TBD | Not Started | - |
-| Script_44_Event_Log_Monitor.ps1 | TBD | Not Started | - |
+| Script_44_Event_Log_Monitor.ps1 | evtHealthStatus | Not Started | - |
 | Script_45_File_Server_Monitor.ps1 | TBD | Not Started | - |
 | Script_47_FlexLM_License_Monitor.ps1 | TBD | Not Started | - |
-| Script_48_Veeam_Backup_Monitor.ps1 | TBD | Not Started | - |
+| Script_48_Veeam_Backup_Monitor.ps1 | veeamHealthStatus | Not Started | - |
 
 ## Testing Protocol
 
@@ -194,5 +211,4 @@ Scripts in the `scripts/monitoring/` directory also contain dropdown fields:
 
 ---
 
-**Last Updated:** February 3, 2026  
-**Next Review:** After first 5 field conversions
+**Last Updated:** February 3, 2026

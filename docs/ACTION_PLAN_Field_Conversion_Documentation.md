@@ -8,7 +8,155 @@
 
 ## Executive Summary
 
-This plan outlines the systematic conversion of all dropdown custom fields to text fields and ensures complete documentation coverage for all 48+ scripts in the Windows Automation Framework. The goal is to eliminate dropdown field dependencies while creating a comprehensive documentation suite following consistent style guidelines.
+This plan outlines the systematic conversion of all dropdown custom fields to text fields and ensures complete documentation coverage for all 48+ scripts in the Windows Automation Framework. The goal is to eliminate dropdown field dependencies while creating a comprehensive documentation suite following consistent style guidelines and coding standards.
+
+---
+
+## Phase 0: Coding Standards and Conventions
+
+### Objective
+Establish and enforce consistent coding standards across all PowerShell scripts in the framework.
+
+### PowerShell Output Standards
+
+**CRITICAL:** All scripts must use standardized output cmdlets for consistency and proper integration with NinjaRMM.
+
+#### Output Cmdlet Usage Rules
+
+**REQUIRED: Use Write-Host Exclusively**
+
+All script output must use `Write-Host` for status messages, results, and logging.
+
+**PROHIBITED: Do Not Use:**
+- `Write-Output` - Reserved for pipeline data
+- `Write-Error` - Not compatible with framework standards
+- `Write-Warning` - Not compatible with framework standards
+- `Write-Verbose` - Not compatible with framework standards
+- `Write-Debug` - Not compatible with framework standards
+- `Write-Information` - Not compatible with framework standards
+
+**Standard Output Patterns:**
+
+```powershell
+# SUCCESS messages
+Write-Host "SUCCESS: Operation completed successfully"
+Write-Host "SUCCESS: Field updated - FieldName: Value"
+
+# ERROR messages
+Write-Host "ERROR: Operation failed - Reason"
+Write-Host "ERROR: $($_.Exception.Message)"
+
+# INFO messages
+Write-Host "INFO: Processing step X of Y"
+Write-Host "INFO: Current value: $variable"
+
+# STATUS messages
+Write-Host "Starting Script_XX - [Script Name]"
+Write-Host "Completed Script_XX - [Script Name]"
+```
+
+**Examples of Correct Usage:**
+
+```powershell
+try {
+    Write-Host "Starting Risk Classifier"
+    
+    # Processing logic
+    $result = Get-SomeData
+    Write-Host "INFO: Retrieved $($result.Count) items"
+    
+    # Update fields
+    Ninja-Property-Set FieldName $value
+    Write-Host "SUCCESS: Field updated - FieldName: $value"
+    
+    Write-Host "SUCCESS: Risk classification completed"
+    exit 0
+} catch {
+    Write-Host "ERROR: $($_.Exception.Message)"
+    Write-Host "ERROR: Script execution failed"
+    exit 1
+}
+```
+
+**Examples of Incorrect Usage (DO NOT USE):**
+
+```powershell
+# WRONG - Do not use Write-Error
+Write-Error "Something went wrong"  # PROHIBITED
+
+# WRONG - Do not use Write-Warning
+Write-Warning "This is a warning"  # PROHIBITED
+
+# WRONG - Do not use Write-Verbose
+Write-Verbose "Detailed information"  # PROHIBITED
+
+# WRONG - Do not use Write-Output for logging
+Write-Output "Status message"  # PROHIBITED for logging
+
+# CORRECT - Use Write-Host instead
+Write-Host "ERROR: Something went wrong"
+Write-Host "WARNING: This is a warning"
+Write-Host "INFO: Detailed information"
+```
+
+#### Audit Task: Output Cmdlet Standardization
+
+**Search and Replace Patterns:**
+
+1. Find all instances of prohibited cmdlets:
+   - `Write-Error`
+   - `Write-Warning`
+   - `Write-Verbose`
+   - `Write-Debug`
+   - `Write-Information`
+   - Inappropriate `Write-Output` usage
+
+2. Replace with appropriate `Write-Host` equivalents:
+   - `Write-Error "text"` → `Write-Host "ERROR: text"`
+   - `Write-Warning "text"` → `Write-Host "WARNING: text"`
+   - `Write-Verbose "text"` → `Write-Host "INFO: text"`
+   - `Write-Debug "text"` → `Write-Host "DEBUG: text"`
+
+3. Document conversion in script comments
+
+**Quality Check:**
+- [ ] No Write-Error in any script
+- [ ] No Write-Warning in any script
+- [ ] No Write-Verbose in any script
+- [ ] No Write-Debug in any script
+- [ ] No Write-Information in any script
+- [ ] All logging uses Write-Host
+- [ ] Consistent message prefixes (SUCCESS, ERROR, INFO, WARNING, DEBUG)
+
+### Additional Coding Standards
+
+**Error Handling:**
+```powershell
+try {
+    # Script logic
+    Write-Host "SUCCESS: Operation completed"
+    exit 0
+} catch {
+    Write-Host "ERROR: $($_.Exception.Message)"
+    exit 1
+}
+```
+
+**Exit Codes:**
+- `exit 0` - Success
+- `exit 1` - General error
+- `exit 2` - Configuration error (if needed)
+
+**Variable Naming:**
+- Use PascalCase for custom field names: `$OPSHealthScore`
+- Use camelCase for local variables: `$healthScore`, `$dataValue`
+- Use descriptive names, avoid single letters except for loops
+
+**Comments:**
+- No checkmark or cross characters in comments
+- No emojis in code or comments
+- Use clear, technical language
+- Document complex logic with inline comments
 
 ---
 
@@ -54,13 +202,15 @@ For each script:
 3. Keep existing value logic (same strings, just as text input)
 4. Update field documentation comments
 5. Add validation comments where dropdown values were previously enforced
-6. Test script logic remains intact
+6. **Convert all Write-Error, Write-Warning, etc. to Write-Host**
+7. Test script logic remains intact
 
 ### Conversion Standards
 
 **Before:**
 ```powershell
 Ninja-Property-Set fieldname "Value" -Type Dropdown
+Write-Warning "Field updated"
 ```
 
 **After:**
@@ -68,6 +218,7 @@ Ninja-Property-Set fieldname "Value" -Type Dropdown
 Ninja-Property-Set fieldname "Value"
 # Expected values: Value1, Value2, Value3
 # Format: Text string
+Write-Host "INFO: Field updated - fieldname: Value"
 ```
 
 ---
@@ -159,6 +310,7 @@ Check for matching docs for each script:
 
 ```powershell
 [Code example demonstrating key functionality]
+# Note: All output uses Write-Host exclusively
 ```
 
 ---
@@ -225,15 +377,19 @@ if ([string]::IsNullOrEmpty($securityScore)) { $securityScore = 50 }
 if ($healthScore -ge 70 -and $securityScore -ge 80) {
     $complianceFlag = "Compliant"
     Ninja-Property-Set RISKComplianceFlag $complianceFlag
+    Write-Host "SUCCESS: Compliance flag set to Compliant"
 } elseif ($healthScore -ge 50 -and $securityScore -ge 60) {
     $complianceFlag = "Warning"
     Ninja-Property-Set RISKComplianceFlag $complianceFlag
+    Write-Host "WARNING: Compliance flag set to Warning"
 } elseif ($healthScore -ge 30 -and $securityScore -ge 40) {
     $complianceFlag = "Non-Compliant"
     Ninja-Property-Set RISKComplianceFlag $complianceFlag
+    Write-Host "WARNING: Compliance flag set to Non-Compliant"
 } else {
     $complianceFlag = "Critical"
     Ninja-Property-Set RISKComplianceFlag $complianceFlag
+    Write-Host "ERROR: Compliance flag set to Critical"
 }
 ```
 
@@ -248,15 +404,19 @@ READ: OPSSecurityScore -> securityScore (default: 50 if null)
 IF (healthScore >= 70) AND (securityScore >= 80) THEN
     SET: RISKComplianceFlag = "Compliant"
     WRITE: RISKComplianceFlag
+    LOG: SUCCESS message
 ELSE IF (healthScore >= 50) AND (securityScore >= 60) THEN
     SET: RISKComplianceFlag = "Warning"
     WRITE: RISKComplianceFlag
+    LOG: WARNING message
 ELSE IF (healthScore >= 30) AND (securityScore >= 40) THEN
     SET: RISKComplianceFlag = "Non-Compliant"
     WRITE: RISKComplianceFlag
+    LOG: WARNING message
 ELSE
     SET: RISKComplianceFlag = "Critical"
     WRITE: RISKComplianceFlag
+    LOG: ERROR message
 END IF
 ```
 
@@ -345,6 +505,10 @@ Identify and document all placeholder content, incomplete implementations, and f
 - "Future enhancement"
 - "[Pending]"
 - Empty sections with headers only
+- **Write-Error** (prohibited cmdlet)
+- **Write-Warning** (prohibited cmdlet)
+- **Write-Verbose** (prohibited cmdlet)
+- **Write-Debug** (prohibited cmdlet)
 
 **Scan Locations:**
 - All .ps1 script files
@@ -366,6 +530,7 @@ Identify and document all placeholder content, incomplete implementations, and f
 - Total TBD Items Found: [count]
 - Scripts with TBD: [count]
 - Documentation with TBD: [count]
+- Prohibited Cmdlet Instances: [count]
 - Priority Distribution: Critical/High/Medium/Low
 
 ## TBD Items by Category
@@ -379,6 +544,12 @@ Identify and document all placeholder content, incomplete implementations, and f
 | Document | Section | TBD Description | Priority | Status |
 |----------|---------|-----------------|----------|--------|
 | File.md | Section | Description | Medium | Open |
+
+### Prohibited Cmdlets Found
+| Script Name | Line | Cmdlet | Replacement Needed | Status |
+|-------------|------|--------|-------------------|--------|
+| Script_XX | 42 | Write-Error | Write-Host "ERROR:" | Open |
+| Script_YY | 15 | Write-Warning | Write-Host "WARNING:" | Open |
 
 ### Features Not Yet Implemented
 | Feature | Location | Description | Planned Version | Status |
@@ -443,12 +614,20 @@ For each identified TBD:
   - Reason: [Explanation]
   - Reconsider: Version Z or upon request
 
+## Coding Standards Compliance
+
+### Output Cmdlet Standardization
+- Total scripts: [count]
+- Scripts using Write-Host only: [count]
+- Scripts requiring conversion: [count]
+- Conversion progress: [percentage]
+
 ## Script Implementation Matrix
 
-| Script | Core Logic | Error Handling | Documentation | Tests | Status |
-|--------|------------|----------------|---------------|-------|--------|
-| Script_01 | Complete | Complete | Complete | TBD | 90% |
-| Script_02 | Complete | Partial | Complete | TBD | 85% |
+| Script | Core Logic | Error Handling | Output Cmdlets | Documentation | Status |
+|--------|------------|----------------|----------------|---------------|--------|
+| Script_01 | Complete | Complete | Compliant | Complete | 100% |
+| Script_02 | Complete | Partial | Non-Compliant | Complete | 75% |
 ```
 
 ### Task 3.5: Update Code Comments
@@ -558,6 +737,7 @@ Create complete reference materials for the entire framework following consisten
 - Include context comments within code blocks
 - Keep examples focused and relevant
 - Use actual script references where possible
+- **Document Write-Host usage in all examples**
 
 #### Lists and Tables
 - Use unordered lists (`-`) for items without sequence
@@ -576,6 +756,8 @@ Create complete reference materials for the entire framework following consisten
 - Be concise and technical
 - Avoid unnecessary adjectives
 - Use consistent terminology throughout
+- No checkmarks or crosses in text
+- No emojis
 
 #### Footer Format
 ```markdown
@@ -592,16 +774,19 @@ Create complete reference materials for the entire framework following consisten
 - Dates: YYYY-MM-DD format or "Month Day, Year"
 - Version numbers: vX.X format
 - Status values: Exact match to defined values
+- Output cmdlets: Write-Host only
 
 **Validation Checklist for Each Document:**
 - [ ] Proper file header with all metadata
 - [ ] Horizontal rules between sections
 - [ ] Code blocks with language specification
+- [ ] All code examples use Write-Host only
 - [ ] Tables properly formatted
 - [ ] All links use relative paths and work correctly
 - [ ] Consistent terminology and field names
 - [ ] Footer with file info and status
 - [ ] No spelling or grammar errors
+- [ ] No checkmarks or emojis
 - [ ] Follows reference document style
 
 ### Task 5.1: Quick Reference Documents
@@ -640,6 +825,7 @@ Create complete reference materials for the entire framework following consisten
 - Execution frequency recommendations
 - Resource requirements
 - Implementation status
+- Output cmdlet compliance status
 
 #### 3. Condition Quick Reference
 **Location:** `/docs/reference/Condition_Quick_Reference.md`
@@ -649,6 +835,17 @@ Create complete reference materials for the entire framework following consisten
 - Complexity rating (Simple/Medium/Complex)
 - Cross-reference to scripts
 - Decision tree summary
+
+#### 4. Coding Standards Quick Reference
+**Location:** `/docs/reference/Coding_Standards_Quick_Reference.md`
+
+**Content:**
+- PowerShell output standards (Write-Host only)
+- Variable naming conventions
+- Error handling patterns
+- Exit code standards
+- Comment guidelines
+- Field naming conventions
 
 ### Task 5.2: Training Documents
 
@@ -664,6 +861,7 @@ Create in `/docs/training/`:
 - Basic concepts
 - Running your first script
 - Understanding custom fields
+- Coding standards overview
 
 #### 2. Advanced Topics Guide
 **File:** `02_Advanced_Topics.md`
@@ -693,7 +891,7 @@ Create in `/docs/training/`:
 
 **Sections:**
 - How to extend the framework
-- Coding standards
+- Coding standards (including Write-Host requirement)
 - Testing procedures
 - Contributing guidelines
 - Version control practices
@@ -708,6 +906,7 @@ Create in `/docs/training/`:
 - Implementation status summary
 - Quick start guide
 - Link to all documentation
+- Coding standards summary
 - License information
 - Contribution guidelines
 
@@ -720,6 +919,7 @@ Create in `/docs/training/`:
 - Prerequisites
 - Links to detailed documentation
 - Deployment recommendations
+- Coding standards reference
 
 #### 3. Scripts/Monitoring README
 **Location:** `/scripts/monitoring/README.md`
@@ -740,6 +940,7 @@ Create in `/docs/training/`:
 - Finding specific information
 - Contribution guidelines
 - Documentation style guide summary
+- Coding standards reference
 
 ### Task 5.4: Index Documents (Created AFTER Phase 3 Complete)
 
@@ -754,6 +955,7 @@ Create in `/docs/training/`:
 - Full navigation tree
 - Quick links to key documents
 - Implementation status for each component
+- Coding standards compliance overview
 - No TBD items in index itself
 
 #### 2. Script Index
@@ -764,6 +966,7 @@ Create in `/docs/training/`:
 - Scripts categorized by role
 - Scripts by complexity level
 - Scripts by implementation status
+- Scripts by coding standards compliance
 - Alphabetical listing
 - Dependency matrix
 
@@ -806,10 +1009,12 @@ Verify completeness and accuracy of all changes.
 - [ ] Cross-references are accurate and functional
 - [ ] No broken links in documentation
 - [ ] All code examples tested
+- [ ] All code examples use Write-Host only
 - [ ] All tables properly formatted
 - [ ] No TBD items without documentation or implementation plan
 - [ ] All incomplete features documented in IMPLEMENTATION_STATUS.md
 - [ ] All documentation follows style guide
+- [ ] No checkmarks or emojis in documentation
 
 ### Task 6.2: Field Type Validation
 
@@ -822,7 +1027,22 @@ Verify completeness and accuracy of all changes.
 - [ ] Field validation comments added where needed
 - [ ] No breaking changes to existing functionality
 
-### Task 6.3: TBD Resolution Verification
+### Task 6.3: Coding Standards Validation
+
+**Verification Checklist:**
+- [ ] No Write-Error in any script
+- [ ] No Write-Warning in any script
+- [ ] No Write-Verbose in any script
+- [ ] No Write-Debug in any script
+- [ ] No Write-Information in any script
+- [ ] All output uses Write-Host
+- [ ] Message prefixes consistent (SUCCESS, ERROR, INFO, WARNING)
+- [ ] Exit codes standardized (0 = success, 1 = error)
+- [ ] No checkmarks or crosses in script comments
+- [ ] No emojis in scripts or comments
+- [ ] Variable naming conventions followed
+
+### Task 6.4: TBD Resolution Verification
 
 **Verification Checklist:**
 - [ ] All TBD items cataloged in TBD_INVENTORY.md
@@ -831,8 +1051,10 @@ Verify completeness and accuracy of all changes.
 - [ ] Future features have specifications
 - [ ] No undocumented placeholders remain
 - [ ] IMPLEMENTATION_STATUS.md is complete and accurate
+- [ ] Prohibited cmdlets inventory complete
+- [ ] All prohibited cmdlets replaced
 
-### Task 6.4: Documentation Standards Check
+### Task 6.5: Documentation Standards Check
 
 **All documentation must have:**
 - [ ] Proper markdown formatting per style guide
@@ -848,14 +1070,17 @@ Verify completeness and accuracy of all changes.
 - [ ] File header and footer matching style guide
 - [ ] Horizontal rules between sections
 - [ ] Relative path cross-references
+- [ ] No checkmarks, crosses, or emojis
 
-### Task 6.5: Script Testing
+### Task 6.6: Script Testing
 
 **For each modified script:**
 - [ ] Syntax validation passed
 - [ ] Test execution in isolated environment
 - [ ] Field updates verified in NinjaOne
 - [ ] Error handling tested
+- [ ] Output messages display correctly (Write-Host)
+- [ ] Exit codes function correctly
 - [ ] Performance acceptable
 - [ ] No regression issues
 - [ ] Documentation matches actual behavior
@@ -876,7 +1101,17 @@ Verify completeness and accuracy of all changes.
 - Known issues and workarounds
 - Migration notes for existing deployments
 
-#### 2. Documentation Completeness Certificate
+#### 2. Coding Standards Compliance Report
+**Location:** `/docs/CODING_STANDARDS_COMPLIANCE_REPORT.md`
+
+**Content:**
+- Output cmdlet conversion summary
+- Scripts converted from Write-Error/Warning to Write-Host
+- Before/after code examples
+- Compliance verification results
+- Remaining non-compliant items (if any) with justification
+
+#### 3. Documentation Completeness Certificate
 **Location:** `/docs/DOCUMENTATION_COMPLETENESS_CERTIFICATE.md`
 
 **Content:**
@@ -884,11 +1119,12 @@ Verify completeness and accuracy of all changes.
 - Complete file inventory
 - Quality metrics
 - TBD resolution summary
+- Coding standards compliance verification
 - Style guide compliance verification
 - Compliance checklist
 - Sign-off information
 
-#### 3. Updated Architecture Overview
+#### 4. Updated Architecture Overview
 **Location:** `/docs/ARCHITECTURE_OVERVIEW.md`
 
 **Content:**
@@ -900,7 +1136,7 @@ Verify completeness and accuracy of all changes.
 - Security architecture
 - Implementation status visualization
 
-#### 4. Implementation Guide
+#### 5. Implementation Guide
 **Location:** `/docs/IMPLEMENTATION_GUIDE.md`
 
 **Content:**
@@ -910,6 +1146,7 @@ Verify completeness and accuracy of all changes.
 - Testing procedures
 - Rollback procedures
 - Post-deployment validation
+- Coding standards enforcement
 
 ---
 
@@ -918,41 +1155,42 @@ Verify completeness and accuracy of all changes.
 ### Recommended Implementation Order
 
 **Week 1: Assessment and Setup**
-1. Phase 2.1: Documentation Audit (identify what exists)
-2. Phase 5.0: Review style guide and create compliance checklist
-3. Create tracking spreadsheet for all tasks
-4. Set up testing environment
+1. Phase 0: Review coding standards and create compliance checklist
+2. Phase 2.1: Documentation Audit (identify what exists)
+3. Phase 5.0: Review style guide and create compliance checklist
+4. Create tracking spreadsheet for all tasks
+5. Set up testing environment
 
-**Week 2: Core Changes and TBD Audit**
-5. Phase 1: Field Conversion (update all scripts)
-6. Phase 3: TBD and Incomplete Implementation Audit (CRITICAL)
-7. Create TBD_INVENTORY.md and IMPLEMENTATION_STATUS.md
-8. Script testing and validation
+**Week 2: Core Changes and Standards Audit**
+6. Phase 1: Field Conversion + Output Cmdlet Standardization (update all scripts)
+7. Phase 3: TBD and Incomplete Implementation Audit (CRITICAL)
+8. Create TBD_INVENTORY.md and IMPLEMENTATION_STATUS.md
+9. Script testing and validation
 
 **Week 3: Documentation Creation and TBD Resolution**
-9. Phase 2.2: Create Missing Documentation (fill gaps, follow style guide)
-10. Phase 2.3: Document Conditions with three-layer documentation
-11. Phase 3.3: Document or implement all TBD items
-12. Initial review of created documentation for style compliance
+10. Phase 2.2: Create Missing Documentation (fill gaps, follow style guide)
+11. Phase 2.3: Document Conditions with three-layer documentation
+12. Phase 3.3: Document or implement all TBD items
+13. Initial review of created documentation for style compliance
 
 **Week 4: Visual and Reference Materials**
-13. Phase 4: Update Diagrams (visual representation)
-14. Phase 5.1-5.2: Quick References and Training Docs
-15. Phase 5.3: README files
-16. Verify all TBD items resolved before proceeding
-17. Style guide compliance check
+14. Phase 4: Update Diagrams (visual representation)
+15. Phase 5.1-5.2: Quick References and Training Docs
+16. Phase 5.3: README files
+17. Verify all TBD items resolved before proceeding
+18. Style guide and coding standards compliance check
 
 **Week 5: Index Creation and Quality Assurance**
-18. Phase 5.4: Create All Index Documents (AFTER TBD resolution)
-19. Phase 6: Complete QA checks
-20. Fix identified issues
-21. Second round of testing
-22. Final style guide compliance verification
+19. Phase 5.4: Create All Index Documents (AFTER TBD resolution)
+20. Phase 6: Complete QA checks (including coding standards)
+21. Fix identified issues
+22. Second round of testing
+23. Final style guide and coding standards compliance verification
 
 **Week 6: Finalization**
-23. Phase 7: Create final deliverables
-24. Final review and approval
-25. Repository cleanup and organization
+24. Phase 7: Create final deliverables
+25. Final review and approval
+26. Repository cleanup and organization
 
 ---
 
@@ -965,6 +1203,7 @@ Verify completeness and accuracy of all changes.
 - All scripts function correctly with text fields
 - No breaking changes to existing deployments
 - All automated tests passing
+- All scripts use Write-Host exclusively (no Write-Error, Write-Warning, etc.)
 
 **Documentation Requirements:**
 - Every script has corresponding documentation
@@ -978,16 +1217,20 @@ Verify completeness and accuracy of all changes.
 - All quality checks passed
 - Zero unresolved TBD items (all documented, implemented, or deferred with rationale)
 - All documentation follows established style guide
+- Coding standards documentation complete
 
 **Quality Requirements:**
 - No broken links in any documentation
 - All code examples tested and working
+- All code examples use Write-Host only
 - Consistent formatting throughout
 - Professional presentation quality
 - All cross-references accurate
 - Implementation status clearly documented
 - TBD_INVENTORY.md shows 100% resolution
 - Style guide compliance verified for all documents
+- Coding standards compliance verified for all scripts
+- No checkmarks, crosses, or emojis in code or documentation
 
 ---
 
@@ -997,15 +1240,16 @@ Verify completeness and accuracy of all changes.
 
 | Phase | Estimated Hours | Complexity |
 |-------|----------------|------------|
-| Phase 1: Field Conversion | 4-6 hours | Medium |
+| Phase 0: Coding Standards | 1-2 hours | Low |
+| Phase 1: Field Conversion + Output Standardization | 5-7 hours | Medium-High |
 | Phase 2: Documentation Audit & Creation | 8-10 hours | High |
 | Phase 3: TBD Audit and Resolution | 4-6 hours | High |
 | Phase 4: Diagram Updates | 2-3 hours | Medium |
 | Phase 5: Comprehensive Suite | 6-8 hours | Medium-High |
-| Phase 6: Quality Assurance | 3-4 hours | Medium |
-| Phase 7: Final Deliverables | 1-2 hours | Low |
+| Phase 6: Quality Assurance | 4-5 hours | Medium |
+| Phase 7: Final Deliverables | 2-3 hours | Low |
 
-**Total Estimated Effort:** 28-39 hours
+**Total Estimated Effort:** 32-44 hours
 
 ### Required Tools
 
@@ -1017,6 +1261,7 @@ Verify completeness and accuracy of all changes.
 - Documentation review tools
 - Text search tools (grep, ripgrep, or IDE search)
 - Markdown linter for style consistency
+- PowerShell script analyzer
 
 ---
 
@@ -1050,6 +1295,11 @@ Verify completeness and accuracy of all changes.
    - Validation: Automated linting where possible
    - Control: Style compliance checklist for each document
 
+7. **Coding Standards Non-Compliance Risk**
+   - Mitigation: Automated script analysis for prohibited cmdlets
+   - Validation: Manual code review
+   - Control: Coding standards document and compliance checklist
+
 ---
 
 ## Change Log
@@ -1059,6 +1309,7 @@ Verify completeness and accuracy of all changes.
 | 2026-02-03 | 1.0 | WAF Team | Initial action plan created |
 | 2026-02-03 | 1.1 | WAF Team | Added Phase 3 for TBD audit, moved index creation to after TBD resolution |
 | 2026-02-03 | 1.2 | WAF Team | Enhanced compound condition documentation with three-layer approach, added comprehensive style guide requirements |
+| 2026-02-03 | 1.3 | WAF Team | Added Phase 0 for coding standards, Write-Host requirement, prohibited cmdlet audit and conversion |
 
 ---
 

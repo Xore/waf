@@ -8,11 +8,11 @@
 
 ## Executive Summary
 
-This plan outlines the systematic conversion of all dropdown custom fields to text fields and ensures complete documentation coverage for all 48+ scripts in the Windows Automation Framework. The goal is to eliminate dropdown field dependencies, reduce RSAT and non-native PowerShell module dependencies, migrate Active Directory queries to ADSI LDAP:// queries exclusively, standardize data encoding with Base64, use proper Date/Time fields with Unix Epoch format, ensure language compatibility (German/English Windows), and create a comprehensive documentation suite following consistent style guidelines and coding standards.
+This plan outlines the systematic conversion of all dropdown custom fields to text fields and ensures complete documentation coverage for all 48+ scripts in the Windows Automation Framework. The goal is to eliminate dropdown field dependencies, reduce RSAT and non-native PowerShell module dependencies, migrate Active Directory queries to ADSI LDAP:// queries exclusively, standardize data encoding with Base64, use proper Date/Time fields with Unix Epoch format, ensure all helper functions are embedded in scripts (no external references), ensure language compatibility (German/English Windows), and create a comprehensive documentation suite following consistent style guidelines and coding standards.
 
 ---
 
-[Pre-Phase A through D sections remain unchanged - content from current version]
+[Pre-Phase A through D sections remain the same - preserving all content]
 
 ## Pre-Phase E: Date/Time Field Standards (Unix Epoch Format)
 
@@ -25,7 +25,7 @@ Standardize all date and time data to use NinjaOne **Date** or **Date and Time**
 - Proper sorting and filtering in NinjaOne dashboard
 - Consistent date display across different regional settings
 - Better reporting and analytics capabilities
-- Automatic timezone handling
+- Automatic timezone handling by NinjaOne
 - Native date comparison operators
 - ISO 8601 compliance for international teams
 - Prevents date format ambiguity (MM/DD vs DD/MM)
@@ -49,71 +49,46 @@ Standardize all date and time data to use NinjaOne **Date** or **Date and Time**
 
 ### Implementation Pattern
 
-**Convert DateTime to Unix Epoch for NinjaOne:**
+**RECOMMENDED: Use .NET DateTimeOffset for Simplicity**
+
+The preferred method uses `[DateTimeOffset]::FromUnixTimeSeconds()` and `.ToUnixTimeSeconds()` for cleaner, more maintainable code.
+
+**Writing to Date/Time Field (DateTime to Unix Epoch):**
 
 ```powershell
-# Helper function to convert DateTime to Unix Epoch (seconds)
-function ConvertTo-UnixEpoch {
-    <#
-    .SYNOPSIS
-        Convert DateTime object to Unix Epoch seconds for NinjaOne date fields
-    .DESCRIPTION
-        NinjaOne Date and Date/Time fields require Unix Epoch format (seconds since 1970-01-01 UTC)
-    .PARAMETER DateTime
-        DateTime object to convert. Can be from Get-Date, file timestamps, AD attributes, etc.
-    .EXAMPLE
-        $unixTime = ConvertTo-UnixEpoch -DateTime (Get-Date)
-        Ninja-Property-Set lastChecked $unixTime
-    #>
-    param(
-        [Parameter(Mandatory=$true)]
-        [DateTime]$DateTime
-    )
-    
-    try {
-        # Convert to UTC to ensure consistent timezone handling
-        $utcDate = $DateTime.ToUniversalTime()
-        
-        # Calculate seconds since Unix Epoch (1970-01-01 00:00:00 UTC)
-        $epoch = Get-Date "1970-01-01 00:00:00"
-        $timeSpan = New-TimeSpan -Start $epoch -End $utcDate
-        $unixSeconds = [Math]::Floor($timeSpan.TotalSeconds)
-        
-        Write-Host "INFO: Converted $DateTime to Unix Epoch: $unixSeconds"
-        return $unixSeconds
-    } catch {
-        Write-Host "ERROR: Failed to convert DateTime to Unix Epoch - $($_.Exception.Message)"
-        return $null
-    }
+# Example 1: Store current date/time
+$currentTimestamp = [DateTimeOffset]::Now.ToUnixTimeSeconds()
+Ninja-Property-Set lastRunTimestamp $currentTimestamp
+Write-Host "INFO: Script last run: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+
+# Example 2: Store specific DateTime
+$lastBootTime = (Get-CimInstance -ClassName Win32_OperatingSystem).LastBootUpTime
+if ($lastBootTime) {
+    $bootTimestamp = [DateTimeOffset]$lastBootTime.ToUniversalTime() | Select-Object -ExpandProperty ToUnixTimeSeconds
+    # Or more simply:
+    $bootTimestamp = [DateTimeOffset]$lastBootTime | Select-Object -ExpandProperty ToUnixTimeSeconds
+    Ninja-Property-Set systemLastBootTime $bootTimestamp
+    Write-Host "INFO: System last boot: $($lastBootTime.ToString('yyyy-MM-dd HH:mm:ss'))"
 }
 ```
 
-**Convert Unix Epoch back to DateTime (for display/logging):**
+**Reading from Date/Time Field (Unix Epoch to DateTime):**
 
 ```powershell
-# Helper function to convert Unix Epoch back to DateTime
-function ConvertFrom-UnixEpoch {
-    <#
-    .SYNOPSIS
-        Convert Unix Epoch seconds back to DateTime object
-    .PARAMETER UnixSeconds
-        Unix Epoch timestamp (seconds since 1970-01-01 UTC)
-    .EXAMPLE
-        $dateTime = ConvertFrom-UnixEpoch -UnixSeconds 1738548000
-    #>
-    param(
-        [Parameter(Mandatory=$true)]
-        [int64]$UnixSeconds
-    )
+# Example: Get planned reboot time from custom field
+$epoch = Ninja-Property-Get customRebootDateTime
+if ($epoch) {
+    # Convert epoch (UTC) to local time
+    $planned = [DateTimeOffset]::FromUnixTimeSeconds([int64]$epoch).ToLocalTime().DateTime
+    $now = Get-Date
     
-    try {
-        $epoch = Get-Date "1970-01-01 00:00:00"
-        $dateTime = $epoch.AddSeconds($UnixSeconds)
-        return $dateTime
-    } catch {
-        Write-Host "ERROR: Failed to convert Unix Epoch to DateTime - $($_.Exception.Message)"
-        return $null
-    }
+    # Calculate difference in seconds
+    $diffSeconds = ($planned - $now).TotalSeconds
+    
+    Write-Host "INFO: Planned reboot time: $($planned.ToString('yyyy-MM-dd HH:mm:ss'))"
+    Write-Host "INFO: Time until reboot: $diffSeconds seconds"
+} else {
+    Write-Host "INFO: No custom reboot time set."
 }
 ```
 
@@ -122,8 +97,8 @@ function ConvertFrom-UnixEpoch {
 **1. Current Timestamp (Last Run/Last Checked):**
 
 ```powershell
-# Store current date/time
-$currentTimestamp = ConvertTo-UnixEpoch -DateTime (Get-Date)
+# Store current date/time as Unix Epoch
+$currentTimestamp = [DateTimeOffset]::Now.ToUnixTimeSeconds()
 Ninja-Property-Set lastRunTimestamp $currentTimestamp
 Write-Host "INFO: Script last run: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 ```
@@ -136,7 +111,7 @@ $os = Get-CimInstance -ClassName Win32_OperatingSystem
 $lastBootTime = $os.LastBootUpTime
 
 if ($lastBootTime) {
-    $bootTimestamp = ConvertTo-UnixEpoch -DateTime $lastBootTime
+    $bootTimestamp = [DateTimeOffset]$lastBootTime | Select-Object -ExpandProperty ToUnixTimeSeconds
     Ninja-Property-Set systemLastBootTime $bootTimestamp
     Write-Host "INFO: System last boot: $($lastBootTime.ToString('yyyy-MM-dd HH:mm:ss'))"
 }
@@ -148,7 +123,7 @@ if ($lastBootTime) {
 # Get file last modified time
 $file = Get-Item "C:\SomeFile.txt" -ErrorAction SilentlyContinue
 if ($file) {
-    $modifiedTimestamp = ConvertTo-UnixEpoch -DateTime $file.LastWriteTime
+    $modifiedTimestamp = [DateTimeOffset]$file.LastWriteTime | Select-Object -ExpandProperty ToUnixTimeSeconds
     Ninja-Property-Set configFileLastModified $modifiedTimestamp
     Write-Host "INFO: File modified: $($file.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss'))"
 }
@@ -165,7 +140,7 @@ if ($computer['pwdLastSet'] -and $computer['pwdLastSet'][0]) {
         $pwdLastSetDate = [DateTime]::FromFileTime($pwdLastSetValue)
         
         # Convert to Unix Epoch for NinjaOne
-        $pwdTimestamp = ConvertTo-UnixEpoch -DateTime $pwdLastSetDate
+        $pwdTimestamp = [DateTimeOffset]$pwdLastSetDate | Select-Object -ExpandProperty ToUnixTimeSeconds
         Ninja-Property-Set adPasswordLastSet $pwdTimestamp
         
         Write-Host "INFO: Password last set: $($pwdLastSetDate.ToString('yyyy-MM-dd HH:mm:ss'))"
@@ -182,7 +157,7 @@ if ($computer['pwdLastSet'] -and $computer['pwdLastSet'][0]) {
 $cert = Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.Subject -match "CN=MyCert" } | Select-Object -First 1
 
 if ($cert) {
-    $expirationTimestamp = ConvertTo-UnixEpoch -DateTime $cert.NotAfter
+    $expirationTimestamp = [DateTimeOffset]$cert.NotAfter | Select-Object -ExpandProperty ToUnixTimeSeconds
     Ninja-Property-Set certificateExpiration $expirationTimestamp
     
     # Calculate days until expiration for alerting
@@ -204,10 +179,62 @@ if ($task) {
     $nextRunTime = $taskInfo.NextRunTime
     
     if ($nextRunTime) {
-        $nextRunTimestamp = ConvertTo-UnixEpoch -DateTime $nextRunTime
+        $nextRunTimestamp = [DateTimeOffset]$nextRunTime | Select-Object -ExpandProperty ToUnixTimeSeconds
         Ninja-Property-Set taskNextRunTime $nextRunTimestamp
         Write-Host "INFO: Task next run: $($nextRunTime.ToString('yyyy-MM-dd HH:mm:ss'))"
     }
+}
+```
+
+**7. Reading and Comparing Dates:**
+
+```powershell
+# Real-world example: Scheduled reboot script
+$warningSeconds = 300  # 5 minutes warning
+
+# Get planned reboot time from custom field
+$epoch = Ninja-Property-Get customRebootDateTime
+if (-not $epoch) {
+    Write-Host "INFO: No custom reboot time set."
+    exit 0
+}
+
+# Convert epoch (UTC) to local time
+$planned = [DateTimeOffset]::FromUnixTimeSeconds([int64]$epoch).ToLocalTime().DateTime
+$now = Get-Date
+
+# Calculate difference in seconds
+$diffSeconds = ($planned - $now).TotalSeconds
+
+# Max wait time = 15 minutes (900 seconds)
+$maxWait = 900
+
+if ($diffSeconds -gt 0 -and $diffSeconds -le $maxWait) {
+    # Reboot is coming up within the next cycle
+    if ($diffSeconds -gt $warningSeconds) {
+        # Wait until warning moment
+        $waitUntilWarning = $diffSeconds - $warningSeconds
+        Write-Host "INFO: Waiting $waitUntilWarning seconds until showing reboot warning..."
+        Start-Sleep -Seconds [int]$waitUntilWarning
+    }
+
+    # Show warning
+    $msg = "System will reboot in $warningSeconds seconds. Please save your work."
+    Write-Host "INFO: $msg"
+    msg * $msg   # show message to all logged-on users
+
+    # Wait remaining warning time
+    Start-Sleep -Seconds [int]$warningSeconds
+
+    # Execute reboot
+    Write-Host "INFO: Executing reboot now."
+    Restart-Computer -Force
+}
+elseif ($diffSeconds -gt $maxWait) {
+    Write-Host "INFO: Planned reboot is more than 15 minutes away ($planned). Will check again later."
+}
+else {
+    Write-Host "INFO: Planned reboot time $planned has already passed. No action taken."
 }
 ```
 
@@ -224,7 +251,7 @@ Ninja-Property-Set lastChecked $dateString
 **GOOD - Using Date/Time Field:**
 ```powershell
 # Date/Time field - proper format, correct sorting, timezone aware
-$timestamp = ConvertTo-UnixEpoch -DateTime (Get-Date)
+$timestamp = [DateTimeOffset]::Now.ToUnixTimeSeconds()
 Ninja-Property-Set lastChecked $timestamp
 # Benefits: Numeric comparison, universal format, automatic timezone handling
 ```
@@ -267,9 +294,9 @@ Search for patterns in existing scripts:
    - Set to Device scope
 
 3. **Update Scripts:**
-   - Add `ConvertTo-UnixEpoch` helper function
-   - Replace text field writes with Unix Epoch conversion
+   - Replace text field writes with Unix Epoch conversion using DateTimeOffset
    - Keep human-readable logging for troubleshooting
+   - No helper functions needed (use inline conversion)
 
 4. **Test and Validate:**
    - Verify date displays correctly in NinjaOne dashboard
@@ -331,62 +358,18 @@ NinjaOne handles display formatting based on user preferences, but storage forma
 
 ```powershell
 # Always validate DateTime before conversion
-function Set-DateField {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$FieldName,
-        
-        [Parameter(Mandatory=$false)]
-        [DateTime]$DateTime
-    )
-    
-    if ($null -eq $DateTime) {
-        Write-Host "WARNING: DateTime is null, skipping field $FieldName"
-        return
+try {
+    if ($null -ne $someDateTime) {
+        $timestamp = [DateTimeOffset]$someDateTime | Select-Object -ExpandProperty ToUnixTimeSeconds
+        Ninja-Property-Set someField $timestamp
+        Write-Host "SUCCESS: Set someField to $($someDateTime.ToString('yyyy-MM-dd HH:mm:ss'))"
+    } else {
+        Write-Host "WARNING: DateTime is null, skipping field update"
     }
-    
-    try {
-        $timestamp = ConvertTo-UnixEpoch -DateTime $DateTime
-        if ($null -ne $timestamp) {
-            Ninja-Property-Set $FieldName $timestamp
-            Write-Host "SUCCESS: Set $FieldName to $($DateTime.ToString('yyyy-MM-dd HH:mm:ss'))"
-        } else {
-            Write-Host "ERROR: Failed to convert DateTime for field $FieldName"
-        }
-    } catch {
-        Write-Host "ERROR: Failed to set date field $FieldName - $($_.Exception.Message)"
-    }
+} catch {
+    Write-Host "ERROR: Failed to convert DateTime - $($_.Exception.Message)"
 }
 ```
-
-### Testing and Validation
-
-**Test Cases:**
-
-1. **Current Date/Time:**
-   - Store `Get-Date` as Unix Epoch
-   - Verify displays correctly in NinjaOne
-
-2. **Historical Dates:**
-   - Test with dates in the past (last boot time, password set date)
-   - Verify correct conversion and display
-
-3. **Future Dates:**
-   - Test with future dates (certificate expiration, scheduled tasks)
-   - Verify correct calculation and display
-
-4. **Timezone Handling:**
-   - Test on systems in different timezones
-   - Verify UTC conversion is correct
-
-5. **Regional Settings:**
-   - Test on German Windows (date format DD.MM.YYYY)
-   - Test on English Windows (date format MM/DD/YYYY)
-   - Verify NinjaOne displays correctly regardless of system locale
-
-6. **Null Handling:**
-   - Test with null/empty dates
-   - Verify graceful error handling
 
 ### Documentation Requirements
 
@@ -401,11 +384,259 @@ function Set-DateField {
 .NOTES
     Date/Time fields use Unix Epoch format (seconds since 1970-01-01 00:00:00 UTC)
     NinjaOne handles timezone display automatically based on user preferences
+    Uses [DateTimeOffset] for conversion (no helper functions needed)
 #>
 ```
 
-**Helper Function Documentation:**
-Include `ConvertTo-UnixEpoch` and `ConvertFrom-UnixEpoch` functions in all scripts using Date/Time fields with full documentation.
+---
+
+## Pre-Phase F: Helper Function Embedding Requirement
+
+### Objective
+Ensure all helper functions are embedded directly within each script. Scripts must be completely self-contained with no external dependencies or references to other PowerShell scripts.
+
+### Critical Requirement
+
+**NEVER reference external PowerShell scripts or modules within WAF scripts**
+
+NinjaRMM executes scripts in isolation. Scripts cannot:
+- Dot-source other scripts (`. .\HelperFunctions.ps1`)
+- Import custom modules from file system (`Import-Module .\MyModule.psm1`)
+- Call other PowerShell scripts (`& .\AnotherScript.ps1`)
+- Reference shared function libraries
+
+### Implementation Rules
+
+**Rule 1: Embed All Helper Functions**
+Every helper function must be defined within the script that uses it.
+
+```powershell
+# CORRECT - Helper function embedded in script
+function ConvertTo-Base64 {
+    param([Parameter(Mandatory=$true)]$InputObject)
+    try {
+        $json = $InputObject | ConvertTo-Json -Compress -Depth 10
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+        $base64 = [System.Convert]::ToBase64String($bytes)
+        if ($base64.Length -gt 9999) {
+            Write-Host "ERROR: Base64 exceeds 9999 characters"
+            return $null
+        }
+        return $base64
+    } catch {
+        Write-Host "ERROR: Failed to convert to Base64 - $($_.Exception.Message)"
+        return $null
+    }
+}
+
+# Main script logic here
+$data = @("Group1", "Group2", "Group3")
+$encoded = ConvertTo-Base64 -InputObject $data
+Ninja-Property-Set myField $encoded
+```
+
+```powershell
+# WRONG - External reference (will fail)
+. .\HelperFunctions.ps1  # DO NOT DO THIS
+$encoded = ConvertTo-Base64 -InputObject $data
+```
+
+**Rule 2: Duplicate Functions When Necessary**
+If multiple scripts need the same helper function, copy the function into each script.
+
+**Benefits:**
+- Scripts are portable and self-contained
+- No dependency management required
+- Each script can be tested independently
+- No version conflicts between shared functions
+- Clear which functions each script uses
+
+**Maintenance:**
+- When updating a helper function, update it in all scripts that use it
+- Document which scripts use each helper function
+- Consider creating a "function library" document for reference (but NOT for execution)
+
+**Rule 3: Use Native .NET Methods for Simple Operations**
+For simple operations, use inline .NET methods instead of creating helper functions.
+
+```powershell
+# GOOD - Inline conversion (no helper function needed)
+$timestamp = [DateTimeOffset]::Now.ToUnixTimeSeconds()
+Ninja-Property-Set lastRunTimestamp $timestamp
+
+# GOOD - Inline Base64 encoding for simple data
+$bytes = [System.Text.Encoding]::UTF8.GetBytes($simpleString)
+$base64 = [System.Convert]::ToBase64String($bytes)
+Ninja-Property-Set someField $base64
+```
+
+**Rule 4: Native Windows Modules Are Allowed**
+Scripts CAN import native Windows PowerShell modules that are part of Windows.
+
+```powershell
+# ALLOWED - Native Windows modules
+Import-Module Storage          # Part of Windows Server/Client
+Import-Module BitLocker        # Part of Windows (when feature installed)
+Import-Module NetSecurity      # Part of Windows
+Import-Module Defender         # Part of Windows
+
+# NOT ALLOWED - Custom modules or external scripts
+Import-Module .\MyCustomModule.psm1       # External reference
+. .\SharedFunctions.ps1                   # External reference
+```
+
+### Audit Strategy
+
+**Search for External References:**
+
+Search all scripts for these patterns:
+```powershell
+# Pattern 1: Dot-sourcing
+. .
+. $
+
+# Pattern 2: External script calls
+& .
+& $
+Invoke-Expression
+
+# Pattern 3: Custom module imports
+Import-Module .
+Import-Module $
+```
+
+**Allowed Patterns:**
+```powershell
+# Native Windows modules (OK)
+Import-Module Storage
+Import-Module BitLocker
+Import-Module NetSecurity
+Import-Module Defender
+Import-Module ScheduledTasks
+Import-Module DnsClient
+
+# .NET framework calls (OK)
+[System.Convert]::ToBase64String()
+[DateTimeOffset]::Now
+[ADSI]"LDAP://"
+```
+
+### Common Helper Functions to Embed
+
+**Base64 Encoding/Decoding:**
+```powershell
+function ConvertTo-Base64 {
+    param([Parameter(Mandatory=$true)]$InputObject)
+    try {
+        $json = $InputObject | ConvertTo-Json -Compress -Depth 10
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+        $base64 = [System.Convert]::ToBase64String($bytes)
+        if ($base64.Length -gt 9999) {
+            Write-Host "ERROR: Base64 exceeds 9999 characters ($($base64.Length))"
+            return $null
+        }
+        Write-Host "INFO: Base64 size: $($base64.Length) characters"
+        return $base64
+    } catch {
+        Write-Host "ERROR: Failed to convert to Base64 - $($_.Exception.Message)"
+        return $null
+    }
+}
+
+function ConvertFrom-Base64 {
+    param([Parameter(Mandatory=$true)][string]$Base64String)
+    try {
+        if ([string]::IsNullOrWhiteSpace($Base64String)) { return $null }
+        $bytes = [System.Convert]::FromBase64String($Base64String)
+        $json = [System.Text.Encoding]::UTF8.GetString($bytes)
+        return ($json | ConvertFrom-Json)
+    } catch {
+        Write-Host "ERROR: Failed to decode Base64 - $($_.Exception.Message)"
+        return $null
+    }
+}
+```
+
+**ADSI LDAP:// Helper Functions:**
+```powershell
+function Test-ADConnection {
+    try {
+        $rootDSE = [ADSI]"LDAP://RootDSE"
+        if ([string]::IsNullOrEmpty($rootDSE.defaultNamingContext)) {
+            Write-Host "ERROR: Unable to connect via LDAP"
+            return $false
+        }
+        Write-Host "INFO: LDAP connection established"
+        return $true
+    } catch {
+        Write-Host "ERROR: LDAP connection failed - $($_.Exception.Message)"
+        return $false
+    }
+}
+
+function Get-ADUserViaADSI {
+    param([string]$SamAccountName)
+    # ... full function implementation here ...
+}
+
+function Get-ADComputerViaADSI {
+    param([string]$ComputerName = $env:COMPUTERNAME)
+    # ... full function implementation here ...
+}
+```
+
+**Note:** Date/Time conversions do NOT need helper functions. Use inline DateTimeOffset methods instead.
+
+### Documentation Requirements
+
+**Script Header:**
+```powershell
+<#
+.SYNOPSIS
+    Script XX: Description
+
+.DESCRIPTION
+    Full description
+
+.HELPER FUNCTIONS
+    - ConvertTo-Base64: Encode complex data for storage (9999 char limit)
+    - ConvertFrom-Base64: Decode stored data
+    - Test-ADConnection: Validate LDAP connectivity
+    - Get-ADUserViaADSI: Query user information via LDAP://
+    
+.NOTES
+    All helper functions are embedded in this script (no external dependencies)
+    Script is completely self-contained for NinjaRMM execution
+#>
+```
+
+### Migration Tasks
+
+1. **Audit All Scripts:**
+   - Search for dot-sourcing (`. .\`)
+   - Search for script execution (`& .\`)
+   - Search for custom module imports
+   - Document findings
+
+2. **Identify Shared Functions:**
+   - List all helper functions used across scripts
+   - Document which scripts use which functions
+   - Create reference documentation (for developers, not execution)
+
+3. **Embed Functions:**
+   - Copy required functions into each script
+   - Place functions at top of script (before main logic)
+   - Test each script independently
+
+4. **Remove External References:**
+   - Delete all dot-sourcing statements
+   - Delete all external script calls
+   - Delete custom module imports
+
+5. **Validate:**
+   - Test each script in isolation
+   - Verify no external dependencies remain
+   - Confirm scripts run in NinjaRMM environment
 
 ---
 
@@ -413,12 +644,19 @@ Include `ConvertTo-UnixEpoch` and `ConvertFrom-UnixEpoch` functions in all scrip
 
 ### Additional Coding Standards
 
+**Helper Function Requirements:**
+- All helper functions MUST be embedded in the script that uses them
+- NEVER reference external PowerShell scripts or custom modules
+- Duplicate functions across scripts when necessary
+- Place helper functions at top of script before main logic
+- Document helper functions in script header .HELPER FUNCTIONS section
+- Native Windows modules (Storage, BitLocker, etc.) are allowed
+
 **Date/Time Field Usage:**
 - Always use Date or Date/Time custom fields for temporal data (not text)
-- Always convert DateTime to Unix Epoch seconds before storing
-- Always use UTC for consistency (`ToUniversalTime()`)
-- Always include `ConvertTo-UnixEpoch` helper function in scripts
-- Always validate DateTime is not null before conversion
+- Use inline DateTimeOffset methods (no helper functions needed)
+- Write: `$timestamp = [DateTimeOffset]::Now.ToUnixTimeSeconds()`
+- Read: `$dateTime = [DateTimeOffset]::FromUnixTimeSeconds([int64]$epoch).ToLocalTime().DateTime`
 - Always log human-readable dates for troubleshooting
 - Document field types in script header FIELDS UPDATED section
 - Include "Unix Epoch" in field documentation
@@ -427,6 +665,7 @@ Include `ConvertTo-UnixEpoch` and `ConvertFrom-UnixEpoch` functions in all scrip
 - Always use LDAP:// protocol for all Active Directory queries
 - Never use WinNT:// for AD queries (local accounts only)
 - Never use GC:// unless specifically needed for global catalog
+- Embed ADSI helper functions (Test-ADConnection, Get-ADUserViaADSI, etc.)
 - Set SearchScope explicitly to Subtree for domain-wide queries
 - Use specific LDAP filters with objectClass and objectCategory
 - Request only needed attributes via PropertiesToLoad
@@ -435,7 +674,7 @@ Include `ConvertTo-UnixEpoch` and `ConvertFrom-UnixEpoch` functions in all scrip
 **Base64 Encoding Usage:**
 - Always use Base64 encoding for complex data structures (arrays, hashtables, nested objects)
 - Always validate encoded data does not exceed 9999 characters
-- Always include `ConvertTo-Base64` and `ConvertFrom-Base64` helper functions
+- Always embed ConvertTo-Base64 and ConvertFrom-Base64 functions in scripts that need them
 - Log encoded data size for monitoring
 - Return null and log error if size limit exceeded
 
@@ -469,6 +708,7 @@ Include `ConvertTo-UnixEpoch` and `ConvertFrom-UnixEpoch` functions in all scrip
    - Implement ConvertTo-Base64 helper with 9999 char limit
    - Implement ConvertFrom-Base64 helper
    - Update Script_42, Script_10, Script_11 with Base64 encoding
+   - Ensure functions are embedded in each script
    - Test with complex data structures
    - Verify special character handling
 
@@ -478,15 +718,23 @@ Include `ConvertTo-UnixEpoch` and `ConvertFrom-UnixEpoch` functions in all scrip
    - Verify no hardcoded language-specific strings
    - Document language-neutral approaches
 
-5. **Pre-Phase E: Date/Time Field Standards** (NEW)
-   - Create ConvertTo-UnixEpoch helper function
-   - Create ConvertFrom-UnixEpoch helper function
+5. **Pre-Phase E: Date/Time Field Standards**
    - Audit all scripts storing dates as text
    - Create Date/Time custom fields in NinjaOne
-   - Update scripts to use Unix Epoch format
+   - Update scripts to use Unix Epoch format with DateTimeOffset
+   - Use inline conversion (no helper functions)
    - Test timezone handling and display
    - Verify German/English Windows compatibility
    - Document Unix Epoch requirement
+
+6. **Pre-Phase F: Helper Function Embedding Audit** (NEW)
+   - Search all scripts for external references (dot-sourcing, script calls)
+   - Identify scripts with external dependencies
+   - List all helper functions used across scripts
+   - Embed helper functions into scripts
+   - Remove all external references
+   - Test each script independently
+   - Document which functions each script uses
 
 [Continue with rest of execution sequence]
 
@@ -502,8 +750,9 @@ Include `ConvertTo-UnixEpoch` and `ConvertFrom-UnixEpoch` functions in all scrip
 - No WinNT:// or GC:// protocols used for AD queries
 - RSAT module dependencies eliminated (native modules retained)
 - All complex data storage uses Base64 encoding
-- **All date/time data uses Date or Date/Time fields with Unix Epoch format**
-- **All scripts include ConvertTo-UnixEpoch helper function where needed**
+- All date/time data uses Date or Date/Time fields with Unix Epoch format
+- **All helper functions embedded in scripts (no external references)**
+- **No dot-sourcing or external script calls in any script**
 - All scripts tested and working on German Windows
 - All scripts tested and working on English Windows
 - No language-dependent code remains
@@ -513,6 +762,7 @@ Include `ConvertTo-UnixEpoch` and `ConvertFrom-UnixEpoch` functions in all scrip
 - All scripts use Write-Host exclusively
 - AD connectivity validated before LDAP queries
 - Scripts use native Windows modules appropriately
+- Each script is completely self-contained
 
 **Documentation Requirements:**
 - Every script has corresponding documentation
@@ -521,8 +771,10 @@ Include `ConvertTo-UnixEpoch` and `ConvertFrom-UnixEpoch` functions in all scrip
 - Native module usage documented (why kept)
 - RSAT module replacements documented
 - Base64 encoding documented with examples
-- **Unix Epoch date/time format documented with examples**
-- **DATE_TIME_FIELD_REPORT.md complete**
+- Unix Epoch date/time format documented with examples
+- **Helper function embedding requirement documented**
+- **HELPER_FUNCTION_AUDIT.md complete**
+- DATE_TIME_FIELD_REPORT.md complete
 - BASE64_ENCODING_REPORT.md complete
 - Language compatibility documented for each script
 - LANGUAGE_COMPATIBILITY_REPORT.md complete
@@ -539,11 +791,12 @@ Include `ConvertTo-UnixEpoch` and `ConvertFrom-UnixEpoch` functions in all scrip
 - All code examples tested and working
 - All code examples use Write-Host only
 - All ADSI examples use LDAP:// protocol only
-- **All date/time examples use Unix Epoch format**
+- All date/time examples use Unix Epoch format with DateTimeOffset
+- **All scripts verified to have no external dependencies**
 - Native Windows modules used where appropriate
 - RSAT dependencies eliminated
 - Base64 encoding tested with special characters
-- **Date/Time fields tested with timezone handling**
+- Date/Time fields tested with timezone handling
 - Script outputs identical on German and English Windows
 - Consistent formatting throughout
 - All cross-references accurate
@@ -554,7 +807,8 @@ Include `ConvertTo-UnixEpoch` and `ConvertFrom-UnixEpoch` functions in all scrip
 - ADSI LDAP:// functions tested on domain and workgroup systems
 - Language-neutral code verified on multiple Windows languages
 - Base64 encoding verified with umlauts and special characters
-- **Unix Epoch date conversion verified on multiple timezones**
+- Unix Epoch date conversion verified on multiple timezones
+- **Each script runs independently without external files**
 
 ---
 
@@ -571,6 +825,7 @@ Include `ConvertTo-UnixEpoch` and `ConvertFrom-UnixEpoch` functions in all scrip
 | 2026-02-03 | 1.6 | WAF Team | Refined Pre-Phase B (keep native modules, replace RSAT only) and added Pre-Phase C (Base64 encoding standard) |
 | 2026-02-03 | 1.7 | WAF Team | Standardized Pre-Phase A to use LDAP:// protocol exclusively for all ADSI queries |
 | 2026-02-03 | 1.8 | WAF Team | Added Pre-Phase E (Date/Time Field Standards with Unix Epoch format per NinjaOne guidelines) |
+| 2026-02-03 | 1.9 | WAF Team | Updated Pre-Phase E with simplified DateTimeOffset pattern and added Pre-Phase F (Helper Function Embedding Requirement) |
 
 ---
 

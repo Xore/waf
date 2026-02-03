@@ -189,7 +189,159 @@ ERROR PATHS: [Document error scenarios]
 
 ---
 
-## Phase 3: Diagram Updates
+## Phase 3: TBD and Incomplete Implementation Audit
+
+### Objective
+Identify and document all placeholder content, incomplete implementations, and future work items across the entire repository.
+
+### Task 3.1: Repository-Wide TBD Scan
+
+**Search Patterns:**
+- "TBD" (To Be Determined)
+- "Not yet implemented"
+- "TODO"
+- "FIXME"
+- "Not implemented"
+- "Coming soon"
+- "Placeholder"
+- "Future enhancement"
+- "[Pending]"
+- Empty sections with headers only
+
+**Scan Locations:**
+- All .ps1 script files
+- All .md documentation files
+- All README files
+- All configuration files
+- Code comments
+- Documentation sections
+
+### Task 3.2: Create TBD Inventory
+
+**Create:** `/docs/TBD_INVENTORY.md`
+
+**Structure:**
+```markdown
+# TBD and Incomplete Implementation Inventory
+
+## Summary Statistics
+- Total TBD Items Found: [count]
+- Scripts with TBD: [count]
+- Documentation with TBD: [count]
+- Priority Distribution: Critical/High/Medium/Low
+
+## TBD Items by Category
+
+### Scripts
+| Script Name | Line/Section | TBD Description | Priority | Status |
+|-------------|--------------|-----------------|----------|--------|
+| Script_XX | Line YY | Description | High | Open |
+
+### Documentation
+| Document | Section | TBD Description | Priority | Status |
+|----------|---------|-----------------|----------|--------|
+| File.md | Section | Description | Medium | Open |
+
+### Features Not Yet Implemented
+| Feature | Location | Description | Planned Version | Status |
+|---------|----------|-------------|-----------------|--------|
+| Feature 1 | File | Details | v2.0 | Planned |
+
+## Resolution Plan
+[For each TBD item, document resolution approach]
+```
+
+### Task 3.3: Document or Implement TBD Items
+
+For each identified TBD:
+
+**Option A: Implement Immediately**
+- Write the missing code/content
+- Test implementation
+- Update documentation
+- Remove TBD marker
+
+**Option B: Document for Future**
+- Create detailed specification
+- Add to backlog with priority
+- Document workarounds if needed
+- Replace "TBD" with reference to specification
+- Add estimated timeline
+
+**Option C: Mark as Deferred**
+- Document reason for deferral
+- Add to long-term roadmap
+- Provide alternative approaches
+- Update TBD to "Deferred: [reason]"
+
+### Task 3.4: Create Implementation Status Report
+
+**Create:** `/docs/IMPLEMENTATION_STATUS.md`
+
+**Content:**
+```markdown
+# Implementation Status Report
+
+## Framework Completeness
+
+### Fully Implemented Features
+- Feature 1: Description
+- Feature 2: Description
+
+### Partially Implemented Features
+- Feature 3: [70% complete] Description
+  - Completed: Parts A, B, C
+  - Remaining: Parts D, E
+  - Timeline: [Date]
+
+### Planned Features (Not Yet Started)
+- Feature 4: Description
+  - Priority: High
+  - Planned for: Version X.Y
+  - Dependencies: [List]
+
+### Deferred Features
+- Feature 5: Description
+  - Reason: [Explanation]
+  - Reconsider: Version Z or upon request
+
+## Script Implementation Matrix
+
+| Script | Core Logic | Error Handling | Documentation | Tests | Status |
+|--------|------------|----------------|---------------|-------|--------|
+| Script_01 | Complete | Complete | Complete | TBD | 90% |
+| Script_02 | Complete | Partial | Complete | TBD | 85% |
+```
+
+### Task 3.5: Update Code Comments
+
+Replace all TBD comments with one of:
+
+**A. Actual Implementation:**
+```powershell
+# Old: TBD: Add error handling
+# New: [Error handling implemented - catches XYZ exceptions]
+```
+
+**B. Detailed Specification:**
+```powershell
+# Old: TBD: Add validation
+# New: FUTURE: Input validation planned for v2.0
+#      Spec: Validate fields X, Y, Z against pattern ABC
+#      See: /docs/specifications/input_validation.md
+```
+
+**C. Documented Decision:**
+```powershell
+# Old: TBD: Implement caching
+# New: DECISION: Caching deferred due to minimal performance impact
+#      Rationale: Current execution time <100ms acceptable
+#      Reconsider: If execution exceeds 500ms in production
+```
+
+---
+
+## Phase 4: Diagram Updates
 
 ### Objective
 Update all existing diagrams to reflect text field changes and complete documentation.
@@ -227,12 +379,12 @@ Update all existing diagrams to reflect text field changes and complete document
 
 ---
 
-## Phase 4: Comprehensive Documentation Suite
+## Phase 5: Comprehensive Documentation Suite
 
 ### Objective
 Create complete reference materials for the entire framework.
 
-### Task 4.1: Quick Reference Documents
+### Task 5.1: Quick Reference Documents
 
 #### 1. Field Quick Reference
 **Location:** `/docs/reference/Field_Quick_Reference.md`
@@ -252,6 +404,7 @@ Create complete reference materials for the entire framework.
 - **Used By:** Script_01_Apache_Web_Server_Monitor
 - **Values:** Running, Stopped, Not Installed, Error
 - **Related Fields:** apache_version, apache_uptime
+- **Implementation Status:** Complete
 ```
 
 #### 2. Script Quick Reference
@@ -263,6 +416,7 @@ Create complete reference materials for the entire framework.
 - Field count per script
 - Execution frequency recommendations
 - Resource requirements
+- Implementation status
 
 #### 3. Condition Quick Reference
 **Location:** `/docs/reference/Condition_Quick_Reference.md`
@@ -273,7 +427,7 @@ Create complete reference materials for the entire framework.
 - Cross-reference to scripts
 - Decision tree summary
 
-### Task 4.2: Training Documents
+### Task 5.2: Training Documents
 
 Create in `/docs/training/`:
 
@@ -322,12 +476,13 @@ Create in `/docs/training/`:
 - Version control practices
 - Documentation requirements
 
-### Task 4.3: README Files
+### Task 5.3: README Files
 
 #### 1. Main README.md (Repository Root)
 **Content:**
 - Project overview
 - Key features
+- Implementation status summary
 - Quick start guide
 - Link to all documentation
 - License information
@@ -363,7 +518,9 @@ Create in `/docs/training/`:
 - Contribution guidelines
 - Documentation standards
 
-### Task 4.4: Index Documents
+### Task 5.4: Index Documents (Created AFTER Phase 3 Complete)
+
+**CRITICAL:** Index creation must occur AFTER TBD audit is complete to ensure accurate status reporting.
 
 #### 1. Master Index
 **Location:** `/docs/00_MASTER_INDEX.md`
@@ -373,6 +530,8 @@ Create in `/docs/training/`:
 - All files with descriptions
 - Full navigation tree
 - Quick links to key documents
+- Implementation status for each component
+- No TBD items in index itself
 
 #### 2. Script Index
 **Location:** `/docs/reference/Script_Index.md`
@@ -381,6 +540,7 @@ Create in `/docs/training/`:
 - Scripts categorized by function
 - Scripts categorized by role
 - Scripts by complexity level
+- Scripts by implementation status
 - Alphabetical listing
 - Dependency matrix
 
@@ -393,6 +553,7 @@ Create in `/docs/training/`:
 - Cross-reference to scripts
 - Field relationship map
 - Data type reference
+- Implementation status per field
 
 #### 4. Condition Index
 **Location:** `/docs/reference/Condition_Index.md`
@@ -403,15 +564,16 @@ Create in `/docs/training/`:
 - Usage frequency
 - Performance impact
 - Testing requirements
+- Documentation status
 
 ---
 
-## Phase 5: Quality Assurance
+## Phase 6: Quality Assurance
 
 ### Objective
 Verify completeness and accuracy of all changes.
 
-### Task 5.1: Documentation Completeness Check
+### Task 6.1: Documentation Completeness Check
 
 **Verification Checklist:**
 - [ ] Every script has corresponding .md file
@@ -422,8 +584,10 @@ Verify completeness and accuracy of all changes.
 - [ ] No broken links in documentation
 - [ ] All code examples tested
 - [ ] All tables properly formatted
+- [ ] No TBD items without documentation or implementation plan
+- [ ] All incomplete features documented in IMPLEMENTATION_STATUS.md
 
-### Task 5.2: Field Type Validation
+### Task 6.2: Field Type Validation
 
 **Verification Checklist:**
 - [ ] No dropdown references remain in any script
@@ -434,7 +598,17 @@ Verify completeness and accuracy of all changes.
 - [ ] Field validation comments added where needed
 - [ ] No breaking changes to existing functionality
 
-### Task 5.3: Documentation Standards Check
+### Task 6.3: TBD Resolution Verification
+
+**Verification Checklist:**
+- [ ] All TBD items cataloged in TBD_INVENTORY.md
+- [ ] Each TBD has resolution plan (Implement/Document/Defer)
+- [ ] Deferred items have documented rationale
+- [ ] Future features have specifications
+- [ ] No undocumented placeholders remain
+- [ ] IMPLEMENTATION_STATUS.md is complete and accurate
+
+### Task 6.4: Documentation Standards Check
 
 **All documentation must have:**
 - [ ] Proper markdown formatting
@@ -446,8 +620,9 @@ Verify completeness and accuracy of all changes.
 - [ ] No spelling errors
 - [ ] Version information
 - [ ] Last updated date
+- [ ] Implementation status where applicable
 
-### Task 5.4: Script Testing
+### Task 6.5: Script Testing
 
 **For each modified script:**
 - [ ] Syntax validation passed
@@ -460,7 +635,7 @@ Verify completeness and accuracy of all changes.
 
 ---
 
-## Phase 6: Final Deliverables
+## Phase 7: Final Deliverables
 
 ### Create Completion Documents
 
@@ -481,6 +656,7 @@ Verify completeness and accuracy of all changes.
 - 100% coverage verification
 - Complete file inventory
 - Quality metrics
+- TBD resolution summary
 - Compliance checklist
 - Sign-off information
 
@@ -494,6 +670,7 @@ Verify completeness and accuracy of all changes.
 - Data flow diagrams
 - Integration points
 - Security architecture
+- Implementation status visualization
 
 #### 4. Implementation Guide
 **Location:** `/docs/IMPLEMENTATION_GUIDE.md`
@@ -517,30 +694,34 @@ Verify completeness and accuracy of all changes.
 2. Create tracking spreadsheet for all tasks
 3. Set up testing environment
 
-**Week 2: Core Changes**
+**Week 2: Core Changes and TBD Audit**
 4. Phase 1: Field Conversion (update all scripts)
-5. Script testing and validation
-6. Create backup of all modified files
+5. Phase 3: TBD and Incomplete Implementation Audit (CRITICAL)
+6. Create TBD_INVENTORY.md and IMPLEMENTATION_STATUS.md
+7. Script testing and validation
 
-**Week 3: Documentation Creation**
-7. Phase 2.2: Create Missing Documentation (fill gaps)
-8. Phase 2.3: Document Conditions (detail logic)
-9. Initial review of created documentation
+**Week 3: Documentation Creation and TBD Resolution**
+8. Phase 2.2: Create Missing Documentation (fill gaps)
+9. Phase 2.3: Document Conditions (detail logic)
+10. Phase 3.3: Document or implement all TBD items
+11. Initial review of created documentation
 
 **Week 4: Visual and Reference Materials**
-10. Phase 3: Update Diagrams (visual representation)
-11. Phase 4.1-4.2: Quick References and Training Docs
-12. Phase 4.3-4.4: README files and Indexes
+12. Phase 4: Update Diagrams (visual representation)
+13. Phase 5.1-5.2: Quick References and Training Docs
+14. Phase 5.3: README files
+15. Verify all TBD items resolved before proceeding
 
-**Week 5: Quality Assurance**
-13. Phase 5: Complete QA checks
-14. Fix identified issues
-15. Second round of testing
+**Week 5: Index Creation and Quality Assurance**
+16. Phase 5.4: Create All Index Documents (AFTER TBD resolution)
+17. Phase 6: Complete QA checks
+18. Fix identified issues
+19. Second round of testing
 
 **Week 6: Finalization**
-16. Phase 6: Create final deliverables
-17. Final review and approval
-18. Repository cleanup and organization
+20. Phase 7: Create final deliverables
+21. Final review and approval
+22. Repository cleanup and organization
 
 ---
 
@@ -561,6 +742,7 @@ Verify completeness and accuracy of all changes.
 - Complete index and reference suite exists
 - 100% documentation coverage verified
 - All quality checks passed
+- Zero unresolved TBD items (all documented, implemented, or deferred with rationale)
 
 **Quality Requirements:**
 - No broken links in any documentation
@@ -568,6 +750,8 @@ Verify completeness and accuracy of all changes.
 - Consistent formatting throughout
 - Professional presentation quality
 - All cross-references accurate
+- Implementation status clearly documented
+- TBD_INVENTORY.md shows 100% resolution
 
 ---
 
@@ -579,12 +763,13 @@ Verify completeness and accuracy of all changes.
 |-------|----------------|------------|
 | Phase 1: Field Conversion | 4-6 hours | Medium |
 | Phase 2: Documentation Audit & Creation | 6-8 hours | High |
-| Phase 3: Diagram Updates | 2-3 hours | Medium |
-| Phase 4: Comprehensive Suite | 4-6 hours | Medium |
-| Phase 5: Quality Assurance | 2-3 hours | Low |
-| Phase 6: Final Deliverables | 1-2 hours | Low |
+| Phase 3: TBD Audit and Resolution | 4-6 hours | High |
+| Phase 4: Diagram Updates | 2-3 hours | Medium |
+| Phase 5: Comprehensive Suite | 5-7 hours | Medium |
+| Phase 6: Quality Assurance | 3-4 hours | Medium |
+| Phase 7: Final Deliverables | 1-2 hours | Low |
 
-**Total Estimated Effort:** 20-28 hours
+**Total Estimated Effort:** 25-36 hours
 
 ### Required Tools
 
@@ -594,6 +779,7 @@ Verify completeness and accuracy of all changes.
 - Diagram creation tool (Draw.io, Mermaid, etc.)
 - NinjaOne test instance
 - Documentation review tools
+- Text search tools (grep, ripgrep, or IDE search)
 
 ---
 
@@ -617,6 +803,11 @@ Verify completeness and accuracy of all changes.
    - Mitigation: Automated completeness checks
    - Validation: Multiple review passes
 
+5. **Hidden TBD Items Risk**
+   - Mitigation: Comprehensive search using multiple patterns
+   - Validation: Manual review of all files
+   - Control: TBD_INVENTORY.md as single source of truth
+
 ---
 
 ## Change Log
@@ -624,6 +815,7 @@ Verify completeness and accuracy of all changes.
 | Date | Version | Author | Changes |
 |------|---------|--------|---------|
 | 2026-02-03 | 1.0 | WAF Team | Initial action plan created |
+| 2026-02-03 | 1.1 | WAF Team | Added Phase 3 for TBD audit, moved index creation to after TBD resolution |
 
 ---
 

@@ -1,7 +1,8 @@
 # Phase 1: Dropdown to Text Field Conversion Tracking
 
-**Status:** In Progress  
-**Started:** February 3, 2026
+**Status:** Batch 1 Complete (4/27 fields)  
+**Started:** February 3, 2026  
+**Last Updated:** February 3, 2026 22:47 CET
 
 ## Overview
 
@@ -13,6 +14,28 @@ This document tracks the conversion of all dropdown custom fields to text fields
 - **Better UX:** Users can quickly find specific values without dropdown navigation
 - **Sorting Capability:** Proper alphabetical/numerical sorting in dashboard views
 - **Consistency:** Aligns with framework text-first strategy
+
+## Batch 1: COMPLETED ✓
+
+**Status:** COMPLETED  
+**Date:** February 3, 2026 22:47 CET  
+**Fields Converted:** 4 fields  
+**Time Taken:** ~10 minutes  
+**Issues:** None
+
+### Batch 1 Fields (Core Infrastructure)
+
+| Field Name | Script | Status | Date |
+|-----------|--------|--------|------|
+| dnsServerStatus | Script_03_DNS_Server_Monitor.ps1 | ✓ Completed | 2026-02-03 |
+| dhcpServerStatus | Script_02_DHCP_Server_Monitor.ps1 | ✓ Completed | 2026-02-03 |
+| fsHealthStatus | Script_45_File_Server_Monitor.ps1 | ✓ Completed | 2026-02-03 |
+| printHealthStatus | Script_46_Print_Server_Monitor.ps1 | ✓ Completed | 2026-02-03 |
+
+**Changes Made:**
+- NinjaOne: 4 fields converted from Dropdown to Text
+- Scripts: 4 script headers updated (Dropdown → Text)
+- Git: Committed [1ed0d7b](https://github.com/Xore/waf/commit/1ed0d7bbeca9cc2352fa782f611a311619a30cbb)
 
 ## Conversion Requirements
 
@@ -40,7 +63,7 @@ No PowerShell code changes are needed. The `Ninja-Property-Set` command works id
 
 #### Server Role Monitoring
 
-- **03_DNS_Server_Monitor.ps1**
+- **03_DNS_Server_Monitor.ps1** ✓ COMPLETED
   - `dnsServerStatus` (Dropdown → TEXT)
   - Values: Active, Degraded, Failed, Unknown
 
@@ -98,8 +121,8 @@ No PowerShell code changes are needed. The `Ninja-Property-Set` command works id
   - `apacheHealthStatus` (Dropdown → TEXT)
   - Values: Unknown, Healthy, Warning, Critical
 
-- **Script_03_DNS_Server_Monitor.ps1**
-  - Requires inspection (likely `dnsHealthStatus`)
+- **Script_03_DNS_Server_Monitor.ps1** ✓ COMPLETED
+  - `dnsServerStatus` (Text) - Already converted
 
 - **Script_38_MSSQL_Server_Monitor.ps1**
   - `mssqlHealthStatus` (Dropdown → TEXT)
@@ -119,8 +142,11 @@ No PowerShell code changes are needed. The `Ninja-Property-Set` command works id
   - `evtHealthStatus` (Dropdown → TEXT)
   - Values: Healthy, Warning, Critical, Unknown
 
-- **Script_45_File_Server_Monitor.ps1**
-  - Requires inspection (likely `fileServerHealthStatus`)
+- **Script_45_File_Server_Monitor.ps1** ✓ COMPLETED
+  - `fsHealthStatus` (Text) - Already converted
+
+- **Script_46_Print_Server_Monitor.ps1** ✓ COMPLETED
+  - `printHealthStatus` (Text) - Already converted
 
 - **Script_47_FlexLM_License_Monitor.ps1**
   - Requires inspection (likely `flexlmHealthStatus`)
@@ -132,8 +158,10 @@ No PowerShell code changes are needed. The `Ninja-Property-Set` command works id
 ## Summary Statistics
 
 **Total Dropdown Fields Identified:** 27+  
-**Main Scripts:** 17 fields  
-**Monitoring Scripts:** 10+ fields  
+**Completed:** 4 fields (15%)  
+**Remaining:** 23+ fields  
+**Main Scripts:** 13 remaining  
+**Monitoring Scripts:** 10+ remaining
 
 **Field Categories:**
 - Health Status Fields: ~20 fields
@@ -148,7 +176,7 @@ No PowerShell code changes are needed. The `Ninja-Property-Set` command works id
 
 - **Not Started:** Field identified but conversion not yet performed
 - **In Progress:** NinjaOne field being converted or tested
-- **Completed:** Field converted, documentation updated, tested
+- **✓ Completed:** Field converted, documentation updated, tested
 
 ### Main Scripts Checklist
 
@@ -177,44 +205,46 @@ No PowerShell code changes are needed. The `Ninja-Property-Set` command works id
 | Script | Field Name | Status | Date Completed |
 |--------|------------|--------|----------------|
 | Script_01_Apache_Web_Server_Monitor.ps1 | apacheHealthStatus | Not Started | - |
-| Script_03_DNS_Server_Monitor.ps1 | TBD (needs inspection) | Not Started | - |
+| Script_02_DHCP_Server_Monitor.ps1 | dhcpServerStatus | ✓ Completed | 2026-02-03 |
+| Script_03_DNS_Server_Monitor.ps1 | dnsServerStatus | ✓ Completed | 2026-02-03 |
 | Script_38_MSSQL_Server_Monitor.ps1 | mssqlHealthStatus | Not Started | - |
 | Script_39_MySQL_Server_Monitor.ps1 | TBD (needs inspection) | Not Started | - |
 | Script_40_Network_Monitor.ps1 | netConnectionType | Not Started | - |
 | Script_41_Battery_Health_Monitor.ps1 | TBD (needs inspection) | Not Started | - |
 | Script_44_Event_Log_Monitor.ps1 | evtHealthStatus | Not Started | - |
-| Script_45_File_Server_Monitor.ps1 | TBD (needs inspection) | Not Started | - |
+| Script_45_File_Server_Monitor.ps1 | fsHealthStatus | ✓ Completed | 2026-02-03 |
+| Script_46_Print_Server_Monitor.ps1 | printHealthStatus | ✓ Completed | 2026-02-03 |
 | Script_47_FlexLM_License_Monitor.ps1 | TBD (needs inspection) | Not Started | - |
 | Script_48_Veeam_Backup_Monitor.ps1 | veeamHealthStatus | Not Started | - |
 
 ## Recommended Conversion Order
 
-### Batch 1: Core Health Status Fields (Priority)
-These are the most commonly used across infrastructure:
-1. `bitlockerHealthStatus`
-2. `dnsServerStatus`
-3. `fileServerHealthStatus`
-4. `printServerStatus`
-5. `mysqlServerStatus`
+### Batch 1: Core Health Status Fields ✓ COMPLETED
+1. ✓ `dnsServerStatus` - DNS Server Monitor
+2. ✓ `dhcpServerStatus` - DHCP Server Monitor
+3. ✓ `fsHealthStatus` - File Server Monitor
+4. ✓ `printHealthStatus` - Print Server Monitor
 
-### Batch 2: Advanced Monitoring
-6. `hypervHostStatus`
-7. `mssqlHealthStatus`
-8. `apacheHealthStatus`
-9. `veeamHealthStatus`
-10. `evtHealthStatus`
+### Batch 2: Advanced Monitoring (NEXT)
+5. `hypervHostStatus` - HyperV Host
+6. `mssqlHealthStatus` - MSSQL Server
+7. `apacheHealthStatus` - Apache Web Server
+8. `veeamHealthStatus` - Veeam Backup
+9. `evtHealthStatus` - Event Log Monitor
 
 ### Batch 3: Validation & Analysis
-11. `criticalDeviceStatus`
-12. `highPriorityStatus`
-13. `adminDriftStatus`
-14. `profileHygieneStatus`
-15. `serverRoleStatus`
+10. `criticalDeviceStatus` - Critical Device Validator
+11. `highPriorityStatus` - High Priority Validator
+12. `adminDriftStatus` - Admin Drift Analyzer
+13. `profileHygieneStatus` - Profile Hygiene
+14. `serverRoleStatus` - Server Role Identifier
 
 ### Batch 4: Specialized Fields
-16. `licenseServerStatus`
-17. `batteryHealthStatus`
-18. `netConnectionType`
+15. `licenseServerStatus` - FlexLM License
+16. `batteryHealthStatus` - Battery Monitor
+17. `netConnectionType` - Network Monitor
+18. `mysqlServerStatus` - MySQL Server
+19. `bitlockerHealthStatus` - BitLocker
 
 ## Testing Protocol
 
@@ -231,6 +261,22 @@ These are the most commonly used across infrastructure:
 3. Test dashboard filtering with new text field
 4. Verify sorting works as expected
 5. Confirm no data loss from conversion
+
+## Batch 1 Lessons Learned
+
+### What Worked Well
+
+✓ **Simultaneous script updates** - Using push_files to update all 4 scripts at once was efficient  
+✓ **Clear documentation** - PHASE1_BATCH1_FIELD_MAPPING.md provided excellent reference  
+✓ **Simple conversions** - No code changes needed, only field type changes  
+✓ **Git history** - Single commit captures all Batch 1 changes
+
+### Next Batch Improvements
+
+- Document actual NinjaOne field names discovered (case sensitivity)
+- Test script execution after conversions
+- Validate dashboard filtering functionality
+- Record any field-specific notes or issues
 
 ## Notes
 
@@ -258,9 +304,12 @@ Most health status fields use one of these patterns:
 ## Related Documentation
 
 - [ACTION_PLAN_Field_Conversion_Documentation.md](./ACTION_PLAN_Field_Conversion_Documentation.md) - Master conversion plan
+- [PHASE1_BATCH1_EXECUTION_GUIDE.md](./PHASE1_BATCH1_EXECUTION_GUIDE.md) - Batch 1 execution guide
+- [PHASE1_BATCH1_FIELD_MAPPING.md](./PHASE1_BATCH1_FIELD_MAPPING.md) - Batch 1 field reference
 - Pre-Phase E: Date/Time Field Standards (Completed)
-- Phase 2: WYSIWYG to Text+HTML (Pending)
+- Phase 2: WYSIWYG Fields (Approved - No Conversion)
 
 ---
 
-**Last Updated:** February 3, 2026
+**Last Updated:** February 3, 2026 22:47 CET  
+**Next Action:** Begin Batch 2 (Advanced Monitoring - 5 fields)

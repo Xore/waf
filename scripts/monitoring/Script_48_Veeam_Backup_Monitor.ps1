@@ -19,7 +19,7 @@
     - VEEAMLastBackupTime (DateTime)
     - VEEAMJobSummary (WYSIWYG)
     - VEEAMBackupServerName (Text)
-    - VEEAMHealthStatus (Dropdown)
+    - VEEAMHealthStatus (Text)
 
 .EXECUTION
     Frequency: Every 4 hours

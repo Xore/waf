@@ -14,7 +14,7 @@
     - APACHERequestsPerSec (Integer)
     - APACHEErrorCount24h (Integer)
     - APACHEWorkerProcesses (Integer)
-    - APACHEHealthStatus (Dropdown)
+    - APACHEHealthStatus (Text)
 
 .EXECUTION
     Frequency: Every 4 hours

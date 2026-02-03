@@ -15,7 +15,7 @@
     - MSSQLFailedJobsCount (Integer)
     - MSSQLLastBackup (DateTime)
     - MSSQLTransactionLogSizeMB (Integer)
-    - MSSQLHealthStatus (Dropdown)
+    - MSSQLHealthStatus (Text)
 
 .EXECUTION
     Frequency: Every 4 hours

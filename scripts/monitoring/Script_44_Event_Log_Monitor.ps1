@@ -14,7 +14,7 @@
     - EVTSecurityEvents24h (Integer)
     - EVTTopErrorSource (Text)
     - EVTEventLogSummary (WYSIWYG)
-    - EVTHealthStatus (Dropdown)
+    - EVTHealthStatus (Text)
 
 .EXECUTION
     Frequency: Daily (full scan), Every 4 hours (recent events)

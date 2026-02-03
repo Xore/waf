@@ -15,7 +15,7 @@
     - FSConnectedUsers (Integer)
     - FSQuotaViolations (Integer)
     - FSAccessErrors24h (Integer)
-    - FSHealthStatus (Dropdown)
+    - FSHealthStatus (Text)
 
 .EXECUTION
     Frequency: Daily (config), Every 4 hours (usage)

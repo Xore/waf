@@ -13,7 +13,7 @@
     - DHCPActiveLeasesTotal (Integer)
     - DHCPScopeUtilizationPercent (Integer)
     - DHCPFailoverStatus (Text)
-    - DHCPServerStatus (Dropdown)
+    - DHCPServerStatus (Text)
     - DHCPLastAuthTime (DateTime)
     - DHCPConflictCount (Integer)
     - DHCPScopeSummary (WYSIWYG)

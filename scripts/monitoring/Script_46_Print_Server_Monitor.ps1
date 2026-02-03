@@ -15,7 +15,7 @@
     - PRINTPrinterErrors (Integer)
     - PRINTOfflinePrinters (Integer)
     - PRINTPrinterSummary (WYSIWYG)
-    - PRINTHealthStatus (Dropdown)
+    - PRINTHealthStatus (Text)
 
 .EXECUTION
     Frequency: Daily (config), Every 4 hours (status)

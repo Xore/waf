@@ -14,7 +14,7 @@
     - DNSRecursionEnabled (Checkbox)
     - DNSCacheHitRate (Integer)
     - DNSFailedQueryCount (Integer)
-    - DNSServerStatus (Dropdown)
+    - DNSServerStatus (Text)
     - DNSZoneSummary (WYSIWYG)
     - DNSForwarders (Text)
 

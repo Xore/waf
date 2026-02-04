@@ -1,44 +1,53 @@
 <#
 .SYNOPSIS
-    Script 42: Active Directory Monitor
-    NinjaRMM Custom Field Framework v3.2
+    Active Directory Monitor - Domain Integration and Health Tracking
 
 .DESCRIPTION
     Monitors Active Directory domain membership, domain controller connectivity, secure channel
     health, computer account status, user account details, and group memberships using native
     ADSI LDAP:// queries. No RSAT required. Updates 12 AD fields with Base64 encoded group data.
-
-.FIELDS UPDATED
-    - ADDomainJoined (Text: "true"/"false")
-    - ADDomainName (Text)
-    - ADDomainController (Text)
-    - ADSiteName (Text)
-    - ADComputerOU (Text)
-    - ADComputerGroupsEncoded (Text: Base64 encoded array, max 9999 chars)
-    - ADLastLogonUser (Text)
-    - ADUserFirstName (Text)
-    - ADUserLastName (Text)
-    - ADUserGroupsEncoded (Text: Base64 encoded array, max 9999 chars)
-    - ADPasswordLastSet (Date/Time: Unix Epoch seconds since 1970-01-01 UTC)
-    - ADTrustRelationshipHealthy (Text: "true"/"false")
-
-.EXECUTION
-    Frequency: Every 4 hours (critical), Daily (informational)
-    Runtime: ~10-15 seconds (faster without module loading)
-    Requires: Domain-joined computer, network connectivity to DC
+    
+    Provides comprehensive domain integration monitoring including trust relationship validation,
+    computer and user account queries, and group membership tracking. Uses native Windows LDAP
+    capabilities for maximum compatibility without requiring Remote Server Administration Tools.
 
 .NOTES
-    File: Script_42_Active_Directory_Monitor.ps1
-    Author: Windows Automation Framework
-    Version: 3.2
-    Created: February 3, 2026
-    Updated: February 3, 2026
-    Category: Domain Integration
-    Dependencies: None (uses native ADSI LDAP:// queries)
-
+    Frequency: Every 4 hours (critical), Daily (informational)
+    Runtime: ~10-15 seconds
+    Timeout: 120 seconds
+    Context: SYSTEM
+    
+    Fields Updated:
+    - ADDomainJoined (Text: "true"/"false")
+    - ADDomainName (Text: domain name or workgroup)
+    - ADDomainController (Text: DC hostname)
+    - ADSiteName (Text: AD site name)
+    - ADComputerOU (Text: computer distinguished name)
+    - ADComputerGroupsEncoded (Text: Base64 encoded group array, max 9999 chars)
+    - ADLastLogonUser (Text: username in domain\user format)
+    - ADUserFirstName (Text: given name)
+    - ADUserLastName (Text: surname)
+    - ADUserGroupsEncoded (Text: Base64 encoded group array, max 9999 chars)
+    - ADPasswordLastSet (DateTime: Unix Epoch seconds since 1970-01-01 UTC)
+    - ADTrustRelationshipHealthy (Text: "true"/"false")
+    
+    Dependencies:
+    - None (uses native ADSI LDAP:// queries)
+    - Requires domain-joined computer for full functionality
+    - Network connectivity to domain controller required
+    
+    Framework Version: 4.0
+    Last Updated: February 4, 2026
+    
 .MIGRATION NOTES
+    v3.2 -> v4.0 Changes:
+    - Updated to Framework 4.0 standards
+    - Enhanced .NOTES section with complete field documentation
+    - Added timeout specification
+    - Improved .DESCRIPTION with integration details
+    
     v3.1 -> v3.2 Changes:
-    - Converted ADPasswordLastSet from text to Date/Time field (Unix Epoch format)
+    - Converted ADPasswordLastSet from text to DateTime field (Unix Epoch format)
     - Uses inline DateTimeOffset conversion (no helper functions needed)
     - Maintains human-readable logging for troubleshooting
     - NinjaOne handles timezone display automatically
@@ -53,12 +62,6 @@
     - Added language-neutral implementation
     - Improved error handling and connection validation
     - Reduced runtime by 50% (no module loading)
-
-.RELATED DOCUMENTATION
-    - docs/core/18_AD_Active_Directory.md
-    - docs/ACTION_PLAN_Field_Conversion_Documentation.md (v1.9)
-    - docs/DATE_TIME_FIELD_AUDIT.md
-    - docs/PROGRESS_TRACKING.md
 #>
 
 [CmdletBinding()]
@@ -305,7 +308,7 @@ function Get-ADUserViaADSI {
 # Main Script
 
 try {
-    Write-Host "Starting Active Directory Monitor (Script 42 v3.2)..."
+    Write-Host "Starting Active Directory Monitor (Script 42 v4.0)..."
     Write-Host "INFO: Using native ADSI LDAP:// queries (no RSAT required)"
     $ErrorActionPreference = 'Stop'
     

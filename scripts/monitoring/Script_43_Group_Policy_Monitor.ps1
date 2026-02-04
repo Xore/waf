@@ -1,54 +1,57 @@
 <#
 .SYNOPSIS
-    Script 43: Group Policy Monitor
-    NinjaRMM Custom Field Framework v1.1
+    Group Policy Monitor - GPO Application Status and Error Detection
 
 .DESCRIPTION
     Monitors Group Policy application status, tracks applied GPOs, detects processing errors,
-    and provides HTML summary of all applied policies. Updates 6 GPO fields.
-
-.FIELDS UPDATED
-    - GPOApplied (Text: "true"/"false")
-    - GPOLastApplied (Date/Time: Unix Epoch seconds since 1970-01-01 UTC)
-    - GPOCount (Integer)
-    - GPOErrorsPresent (Text: "true"/"false")
-    - GPOLastError (Text)
-    - GPOAppliedList (WYSIWYG)
-
-.EXECUTION
-    Frequency: Daily
-    Runtime: ~30 seconds
-    Requires: Domain-joined computer, Group Policy applied
+    and provides HTML summary of all applied policies. Parses gpresult XML output to provide
+    comprehensive GPO monitoring and maintains historical error tracking.
+    
+    Provides detailed visibility into Group Policy deployment including GPO names, paths,
+    application timestamps, and error detection from event logs. Supports both domain-joined
+    and workgroup computers with graceful handling of non-domain environments.
 
 .NOTES
-    File: Script_43_Group_Policy_Monitor.ps1
-    Author: Windows Automation Framework
-    Version: 1.1
-    Created: February 3, 2026
-    Updated: February 3, 2026
-    Category: Domain Integration
-    Dependencies: gpresult.exe
-
+    Frequency: Daily
+    Runtime: ~30 seconds
+    Timeout: 120 seconds
+    Context: SYSTEM
+    
+    Fields Updated:
+    - GPOApplied (Text: "true"/"false")
+    - GPOLastApplied (DateTime: Unix Epoch seconds since 1970-01-01 UTC)
+    - GPOCount (Integer: number of applied computer GPOs)
+    - GPOErrorsPresent (Text: "true"/"false")
+    - GPOLastError (Text: error message, max 500 chars)
+    - GPOAppliedList (WYSIWYG: HTML formatted table of all applied GPOs)
+    
+    Dependencies:
+    - gpresult.exe (built-in Windows tool)
+    - Requires domain-joined computer for full functionality
+    
+    Framework Version: 4.0
+    Last Updated: February 4, 2026
+    
 .MIGRATION NOTES
+    v1.1 -> v4.0 Changes:
+    - Updated to Framework 4.0 standards
+    - Enhanced .NOTES section with complete field documentation
+    - Added timeout specification
+    - Improved .DESCRIPTION with functionality details
+    
     v1.0 -> v1.1 Changes:
-    - Converted GPOLastApplied from text to Date/Time field (Unix Epoch format)
+    - Converted GPOLastApplied from text to DateTime field (Unix Epoch format)
     - Uses inline DateTimeOffset conversion (no helper functions needed)
     - Maintains human-readable logging for troubleshooting
     - NinjaOne handles timezone display automatically
     - Applies to both gpresult and registry fallback methods
-
-.RELATED DOCUMENTATION
-    - docs/core/17_GPO_Group_Policy.md
-    - docs/DATE_TIME_FIELD_AUDIT.md
-    - docs/DATE_TIME_FIELD_MAPPING.md
-    - docs/ACTION_PLAN_Field_Conversion_Documentation.md (v1.9)
 #>
 
 [CmdletBinding()]
 param()
 
 try {
-    Write-Host "Starting Group Policy Monitor (Script 43 v1.1)..."
+    Write-Host "Starting Group Policy Monitor (Script 43 v4.0)..."
     $ErrorActionPreference = 'Stop'
     
     # Initialize variables

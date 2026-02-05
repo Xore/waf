@@ -1,50 +1,127 @@
 <#
 .SYNOPSIS
-    Script 40: Network Monitor
-    NinjaRMM Custom Field Framework v3.0
+    Network Monitor - Network Connectivity and Configuration Monitoring
 
 .DESCRIPTION
     Monitors network connectivity, adapter configuration, bandwidth utilization, and packet loss.
-    Tracks connection type, IP addresses, DNS/gateway configuration. Updates 10 NET fields.
-
-.FIELDS UPDATED
-    - NETConnected (Checkbox)
-    - NETConnectionType (Text)
-    - NETAdapterSpeed (Integer)
-    - NETPublicIP (Text)
-    - NETPrivateIP (Text)
-    - NETDefaultGateway (Text)
-    - NETDNSServers (Text)
-    - NETDHCPEnabled (Checkbox)
-    - NETBandwidthUsageMbps (Integer)
-    - NETPacketLossPercent (Integer)
-
-.EXECUTION
-    Frequency: Every 4 hours
-    Runtime: ~20 seconds
-    Requires: Windows networking stack
+    Tracks connection type (Wired/WiFi/VPN/Cellular), IP addresses, DNS/gateway configuration,
+    DHCP status, and network performance metrics. Essential for network troubleshooting and
+    capacity planning.
+    
+    Critical for detecting network disconnections, identifying connectivity issues before they
+    impact users, monitoring bandwidth consumption, and validating network configuration.
+    Foundational for remote device management and network infrastructure monitoring.
+    
+    Monitoring Scope:
+    
+    Network Adapter Detection:
+    - Queries Get-NetAdapter for active adapters
+    - Filters by Status = 'Up'
+    - Counts total active adapters
+    - Gracefully handles disconnected state
+    
+    Primary Adapter Selection:
+    - Prioritization order:
+      1. Ethernet (Gigabit, Intel, Realtek)
+      2. WiFi (Wireless, 802.11)
+      3. Any other active adapter
+    - Uses most reliable connection type
+    
+    Connection Type Detection:
+    - WiFi: Wireless/802.11 in description
+    - VPN: TAP, Cisco AnyConnect, OpenVPN
+    - Cellular: Mobile, LTE, 4G, 5G
+    - Wired: Default for physical Ethernet
+    
+    Adapter Speed:
+    - Reads LinkSpeed property
+    - Converts to Mbps for consistency
+    - Common speeds: 1000 Mbps (Gigabit), 100 Mbps (Fast Ethernet)
+    
+    IP Configuration:
+    - Queries Get-NetIPConfiguration by interface index
+    - IPv4 private address from local network
+    - Default gateway (router IP)
+    - DNS servers (comma-separated list)
+    
+    DHCP Status:
+    - Checks Get-NetIPInterface for IPv4 DHCP setting
+    - Enabled: Dynamic IP from DHCP server
+    - Disabled: Static IP configuration
+    
+    Public IP Detection:
+    - Queries api.ipify.org external service
+    - Retrieves Internet-facing IP address
+    - 5-second timeout for reliability
+    - Useful for remote access and NAT detection
+    
+    Bandwidth Utilization:
+    - Queries performance counter: Bytes Total/sec
+    - Converts bytes to Mbps for readability
+    - Real-time network throughput
+    - Capacity planning metric
+    
+    Packet Loss Testing:
+    - Pings default gateway 10 times
+    - Calculates loss percentage
+    - High loss indicates network problems
+    - Quality metric for VoIP/video
+    
+    Health Implications:
+    - Connected: Network available
+    - Disconnected: No active adapters
+    - High packet loss: Network quality issues
+    - Low bandwidth: Capacity concerns
 
 .NOTES
-    File: Script_40_Network_Monitor.ps1
-    Author: Windows Automation Framework
-    Version: 1.0
-    Created: February 3, 2026
-    Category: Network Monitoring
-    Dependencies: Get-NetAdapter, Get-NetIPConfiguration
-
-.RELATED DOCUMENTATION
-    - docs/core/15_NET_Network_Monitoring.md
-    - docs/ACTION_PLAN_Missing_Scripts.md (Phase 2)
+    Frequency: Every 4 hours
+    Runtime: ~20 seconds
+    Timeout: 90 seconds
+    Context: SYSTEM
+    
+    Fields Updated:
+    - NETConnected (Checkbox)
+    - NETConnectionType (Text: Wired, WiFi, VPN, Cellular, Disconnected)
+    - NETAdapterSpeed (Integer: Mbps)
+    - NETPublicIP (Text: Internet-facing IP)
+    - NETPrivateIP (Text: Local network IP)
+    - NETDefaultGateway (Text: Router IP)
+    - NETDNSServers (Text: Comma-separated list, max 200 chars)
+    - NETDHCPEnabled (Checkbox)
+    - NETBandwidthUsageMbps (Integer: Real-time throughput)
+    - NETPacketLossPercent (Integer: Packet loss to gateway)
+    
+    Dependencies:
+    - Get-NetAdapter cmdlet (Windows 8+)
+    - Get-NetIPConfiguration cmdlet
+    - Get-NetIPInterface cmdlet
+    - Performance counter access
+    - Internet access for public IP (optional)
+    
+    Connection Types:
+    - Wired: Physical Ethernet cable
+    - WiFi: Wireless 802.11a/b/g/n/ac/ax
+    - VPN: Virtual private network tunnel
+    - Cellular: Mobile broadband (LTE/5G)
+    - Disconnected: No active adapters
+    
+    Common Issues:
+    - No adapters found: Check physical connections
+    - Public IP failed: Firewall blocks api.ipify.org
+    - High packet loss: Check cables, router, interference
+    - Zero bandwidth: Performance counter access denied
+    
+    Framework Version: 4.0
+    Last Updated: February 5, 2026
 #>
 
 [CmdletBinding()]
 param()
 
 try {
-    Write-Host "Starting Network Monitor (Script 40)..."
+    Write-Output "Starting Network Monitor (v4.0)..."
     $ErrorActionPreference = 'Stop'
     
-    # Initialize variables
     $connected = $false
     $connectionType = "Disconnected"
     $adapterSpeed = 0
@@ -56,14 +133,12 @@ try {
     $bandwidthUsage = 0
     $packetLoss = 0
     
-    # Get active network adapters
-    Write-Host "Detecting active network adapters..."
+    Write-Output "INFO: Detecting active network adapters..."
     $adapters = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' }
     
     if ($adapters.Count -eq 0) {
-        Write-Host "No active network adapters found."
+        Write-Output "INFO: No active network adapters found"
         
-        # Update fields for disconnected state
         Ninja-Property-Set netConnected $false
         Ninja-Property-Set netConnectionType "Disconnected"
         Ninja-Property-Set netAdapterSpeed 0
@@ -75,32 +150,27 @@ try {
         Ninja-Property-Set netBandwidthUsageMbps 0
         Ninja-Property-Set netPacketLossPercent 0
         
-        Write-Host "Network Monitor complete (disconnected)."
+        Write-Output "SUCCESS: Network monitoring complete (disconnected)"
         exit 0
     }
     
     $connected = $true
-    Write-Host "Found $($adapters.Count) active adapter(s)."
+    Write-Output "INFO: Found $($adapters.Count) active adapter(s)"
     
-    # Prioritize adapter selection: Ethernet > WiFi > Other
     $primaryAdapter = $null
     
-    # Try Ethernet first
     $primaryAdapter = $adapters | Where-Object { $_.InterfaceDescription -match 'Ethernet|Gigabit|Intel|Realtek' } | Select-Object -First 1
     
-    # Fallback to WiFi
     if ($null -eq $primaryAdapter) {
         $primaryAdapter = $adapters | Where-Object { $_.InterfaceDescription -match 'Wireless|WiFi|802.11' } | Select-Object -First 1
     }
     
-    # Fallback to any active adapter
     if ($null -eq $primaryAdapter) {
         $primaryAdapter = $adapters | Select-Object -First 1
     }
     
-    Write-Host "Primary adapter: $($primaryAdapter.Name) - $($primaryAdapter.InterfaceDescription)"
+    Write-Output "INFO: Primary adapter: $($primaryAdapter.Name) - $($primaryAdapter.InterfaceDescription)"
     
-    # Determine connection type
     if ($primaryAdapter.InterfaceDescription -match 'Wireless|WiFi|802.11') {
         $connectionType = "WiFi"
     } elseif ($primaryAdapter.InterfaceDescription -match 'VPN|TAP|Cisco AnyConnect|OpenVPN') {
@@ -111,95 +181,83 @@ try {
         $connectionType = "Wired"
     }
     
-    Write-Host "Connection Type: $connectionType"
+    Write-Output "INFO: Connection type: $connectionType"
     
-    # Get adapter speed (convert to Mbps)
     $adapterSpeed = [Math]::Round($primaryAdapter.LinkSpeed -replace '[^0-9]', '' -as [int64] / 1MB)
-    Write-Host "Adapter Speed: $adapterSpeed Mbps"
+    Write-Output "INFO: Adapter speed: $adapterSpeed Mbps"
     
-    # Get IP configuration
+    Write-Output "INFO: Retrieving IP configuration..."
     $ipConfig = Get-NetIPConfiguration -InterfaceIndex $primaryAdapter.InterfaceIndex -ErrorAction SilentlyContinue
     
     if ($ipConfig) {
-        # Get private IP (IPv4)
         $ipv4 = $ipConfig.IPv4Address.IPAddress
         if ($ipv4) {
             $privateIP = $ipv4
-            Write-Host "Private IP: $privateIP"
+            Write-Output "INFO: Private IP: $privateIP"
         }
         
-        # Get default gateway
         $gateway = $ipConfig.IPv4DefaultGateway.NextHop
         if ($gateway) {
             $defaultGateway = $gateway
-            Write-Host "Default Gateway: $defaultGateway"
+            Write-Output "INFO: Default gateway: $defaultGateway"
         }
         
-        # Get DNS servers
         $dns = $ipConfig.DNSServer.ServerAddresses
         if ($dns) {
             $dnsServers = $dns -join ', '
             if ($dnsServers.Length -gt 200) {
                 $dnsServers = $dnsServers.Substring(0, 197) + "..."
             }
-            Write-Host "DNS Servers: $dnsServers"
+            Write-Output "INFO: DNS servers: $dnsServers"
         }
     }
     
-    # Check DHCP status
     $dhcpEnabled = (Get-NetIPInterface -InterfaceIndex $primaryAdapter.InterfaceIndex -AddressFamily IPv4).Dhcp -eq 'Enabled'
-    Write-Host "DHCP Enabled: $dhcpEnabled"
+    Write-Output "INFO: DHCP enabled: $dhcpEnabled"
     
-    # Get public IP address
+    Write-Output "INFO: Retrieving public IP address..."
     try {
-        Write-Host "Retrieving public IP address..."
         $publicIPResponse = Invoke-RestMethod -Uri 'https://api.ipify.org?format=text' -TimeoutSec 5 -ErrorAction Stop
         $publicIP = $publicIPResponse.Trim()
-        Write-Host "Public IP: $publicIP"
+        Write-Output "INFO: Public IP: $publicIP"
     } catch {
-        Write-Warning "Failed to retrieve public IP: $_"
+        Write-Output "WARNING: Failed to retrieve public IP: $_"
         $publicIP = "Unable to retrieve"
     }
     
-    # Get bandwidth usage from performance counters
+    Write-Output "INFO: Measuring bandwidth utilization..."
     try {
-        Write-Host "Measuring bandwidth utilization..."
         $interfaceName = $primaryAdapter.InterfaceDescription
-        
-        # Get current bytes sent/received
         $counterPath = "\Network Interface($interfaceName)\Bytes Total/sec"
         $bytesPerSec = (Get-Counter -Counter $counterPath -ErrorAction SilentlyContinue).CounterSamples.CookedValue
         
-        # Convert to Mbps
         $bandwidthUsage = [Math]::Round($bytesPerSec * 8 / 1MB, 2)
-        Write-Host "Bandwidth Usage: $bandwidthUsage Mbps"
+        Write-Output "INFO: Bandwidth usage: $bandwidthUsage Mbps"
     } catch {
-        Write-Warning "Failed to measure bandwidth: $_"
+        Write-Output "WARNING: Failed to measure bandwidth: $_"
         $bandwidthUsage = 0
     }
     
-    # Test packet loss to gateway
     if ($defaultGateway -ne "Unknown" -and $defaultGateway -ne "N/A") {
+        Write-Output "INFO: Testing packet loss to gateway..."
         try {
-            Write-Host "Testing packet loss to gateway..."
             $pingResults = Test-Connection -ComputerName $defaultGateway -Count 10 -ErrorAction SilentlyContinue
             
             if ($pingResults) {
                 $successfulPings = $pingResults.Count
                 $packetLoss = [Math]::Round((1 - ($successfulPings / 10)) * 100)
-                Write-Host "Packet Loss: $packetLoss%"
+                Write-Output "INFO: Packet loss: $packetLoss%"
             } else {
-                Write-Warning "All pings to gateway failed."
+                Write-Output "WARNING: All pings to gateway failed"
                 $packetLoss = 100
             }
         } catch {
-            Write-Warning "Failed to test packet loss: $_"
+            Write-Output "WARNING: Failed to test packet loss: $_"
             $packetLoss = 0
         }
     }
     
-    # Update NinjaRMM custom fields
-    Write-Host "Updating NinjaRMM custom fields..."
+    Write-Output "INFO: Updating NinjaRMM custom fields..."
     
     Ninja-Property-Set netConnected $connected
     Ninja-Property-Set netConnectionType $connectionType
@@ -212,13 +270,26 @@ try {
     Ninja-Property-Set netBandwidthUsageMbps $bandwidthUsage
     Ninja-Property-Set netPacketLossPercent $packetLoss
     
-    Write-Host "Network Monitor complete. Connected: $connected, Type: $connectionType"
+    Write-Output "SUCCESS: Network monitoring complete"
+    Write-Output "NETWORK METRICS:"
+    Write-Output "  - Connected: $connected"
+    Write-Output "  - Connection Type: $connectionType"
+    Write-Output "  - Adapter Speed: $adapterSpeed Mbps"
+    Write-Output "  - Private IP: $privateIP"
+    Write-Output "  - Public IP: $publicIP"
+    Write-Output "  - Gateway: $defaultGateway"
+    Write-Output "  - DNS: $dnsServers"
+    Write-Output "  - DHCP: $dhcpEnabled"
+    Write-Output "  - Bandwidth Usage: $bandwidthUsage Mbps"
+    Write-Output "  - Packet Loss: $packetLoss%"
+    
+    exit 0
     
 } catch {
     $errorMessage = $_.Exception.Message
-    Write-Error "Network Monitor failed: $errorMessage"
+    Write-Output "ERROR: Network Monitor failed: $errorMessage"
+    Write-Output "$($_.ScriptStackTrace)"
     
-    # Set error state in fields
     Ninja-Property-Set netConnected $false
     Ninja-Property-Set netConnectionType "Disconnected"
     

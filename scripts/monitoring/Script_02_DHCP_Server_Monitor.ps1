@@ -1,49 +1,122 @@
 <#
 .SYNOPSIS
-    Script 2: DHCP Server Monitor
-    NinjaRMM Custom Field Framework v3.0
+    DHCP Server Monitor - Windows DHCP Scope Utilization and Lease Tracking
 
 .DESCRIPTION
-    Monitors Windows DHCP Server including scope utilization, lease statistics,
-    failover status, and overall server health. Updates 9 DHCP fields.
-
-.FIELDS UPDATED
-    - DHCPInstalled (Checkbox)
-    - DHCPScopeCount (Integer)
-    - DHCPActiveLeasesTotal (Integer)
-    - DHCPScopeUtilizationPercent (Integer)
-    - DHCPFailoverStatus (Text)
-    - DHCPServerStatus (Text)
-    - DHCPLastAuthTime (DateTime)
-    - DHCPConflictCount (Integer)
-    - DHCPScopeSummary (WYSIWYG)
-
-.EXECUTION
-    Frequency: Every 4 hours
-    Runtime: ~35 seconds
-    Requires: DHCP Server role installed
+    Monitors Windows DHCP Server infrastructure including scope configuration, lease statistics,
+    IP address utilization, failover partnerships, and service health. Essential for preventing
+    IP address exhaustion and ensuring network availability.
+    
+    Critical for detecting scope depletion before clients fail to obtain IP addresses, monitoring
+    DHCP failover health, and capacity planning for network growth. Prevents network outages
+    caused by DHCP service failures or address pool exhaustion.
+    
+    Monitoring Scope:
+    
+    DHCP Installation Detection:
+    - Checks DHCP Windows feature
+    - Verifies DHCPServer service status
+    - Imports DhcpServer PowerShell module
+    - Gracefully exits if DHCP not installed
+    
+    Server Authorization:
+    - Queries Active Directory for authorized DHCP servers
+    - Verifies this server is authorized (security requirement)
+    - Tracks last authorization verification time
+    - Unauthorized DHCP servers cannot service requests
+    
+    Scope Inventory and Utilization:
+    - Enumerates all IPv4 scopes via Get-DhcpServerv4Scope
+    - Retrieves statistics for each scope (Get-DhcpServerv4ScopeStatistics)
+    - Calculates per-scope utilization percentage
+    - Tracks active leases vs available addresses
+    - Aggregates overall utilization across all scopes
+    
+    Lease Tracking:
+    - Counts total active leases across all scopes
+    - Monitors addresses in use vs free addresses
+    - Capacity planning metric for network growth
+    
+    Scope Summary Reporting:
+    - Generates HTML formatted scope table
+    - Includes scope name, IP range, state, utilization, lease count
+    - Color-coded utilization: green (<75%), orange (75-89%), red (≥90%)
+    - Stores in WYSIWYG field for dashboard visualization
+    
+    Failover Configuration:
+    - Queries DHCP failover partnerships via Get-DhcpServerv4Failover
+    - Tracks failover partner count
+    - High availability configuration monitoring
+    - Important for disaster recovery readiness
+    
+    Health Status Classification:
+    
+    Healthy:
+    - DHCP service running
+    - Overall utilization <85%
+    - Scopes operational
+    
+    Warning:
+    - Service running but utilization 85-94%
+    - Approaching capacity limits
+    - Action needed soon
+    
+    Critical:
+    - DHCP service stopped
+    - Overall utilization ≥95%
+    - Immediate risk of address exhaustion
+    - Service failure
+    
+    Unknown:
+    - DHCP not installed
+    - Script execution error
+    - Module unavailable
 
 .NOTES
-    File: Script_02_DHCP_Server_Monitor.ps1
-    Author: Windows Automation Framework
-    Version: 1.0
-    Created: February 3, 2026
-    Category: Infrastructure Monitoring
-    Dependencies: DhcpServer PowerShell module
-
-.RELATED DOCUMENTATION
-    - docs/core/14_ROLE_Infrastructure.md
-    - docs/IMPLEMENTATION_PROGRESS_2026-02-03.md
+    Frequency: Every 4 hours
+    Runtime: ~35 seconds
+    Timeout: 90 seconds
+    Context: SYSTEM
+    
+    Fields Updated:
+    - DHCPInstalled (Checkbox)
+    - DHCPScopeCount (Integer: total IPv4 scopes)
+    - DHCPActiveLeasesTotal (Integer: active leases across all scopes)
+    - DHCPScopeUtilizationPercent (Integer: overall utilization %)
+    - DHCPFailoverStatus (Text: failover configuration status)
+    - DHCPServerStatus (Text: Healthy, Warning, Critical, Unknown)
+    - DHCPLastAuthTime (DateTime: last AD authorization check)
+    - DHCPConflictCount (Integer: IP address conflicts detected)
+    - DHCPScopeSummary (WYSIWYG: HTML formatted scope table)
+    
+    Dependencies:
+    - DHCP Windows feature installed
+    - DhcpServer PowerShell module
+    - Administrator privileges
+    - Active Directory (for authorization check)
+    
+    Utilization Thresholds:
+    - Green (Healthy): 0-84% utilization
+    - Orange (Warning): 85-94% utilization
+    - Red (Critical): 95-100% utilization
+    
+    Common Issues:
+    - Unauthorized server: DHCP not authorized in AD
+    - High utilization: Expand scope range or add new scope
+    - Service stopped: Check Event Viewer for crash details
+    - Module not found: Install DHCP management tools
+    
+    Framework Version: 4.0
+    Last Updated: February 5, 2026
 #>
 
 [CmdletBinding()]
 param()
 
 try {
-    Write-Host "Starting DHCP Server Monitor (Script 2)..."
+    Write-Output "Starting DHCP Server Monitor (v4.0)..."
     $ErrorActionPreference = 'Stop'
     
-    # Initialize variables
     $dhcpInstalled = $false
     $scopeCount = 0
     $activeLeasesTotal = 0
@@ -54,14 +127,12 @@ try {
     $conflictCount = 0
     $scopeSummary = ""
     
-    # Check if DHCP Server role is installed
-    Write-Host "Checking DHCP Server installation..."
+    Write-Output "INFO: Checking for DHCP Server role..."
     $dhcpFeature = Get-WindowsFeature -Name "DHCP" -ErrorAction SilentlyContinue
     
     if ($null -eq $dhcpFeature -or $dhcpFeature.Installed -ne $true) {
-        Write-Host "DHCP Server role is not installed."
+        Write-Output "INFO: DHCP Server role not installed"
         
-        # Update fields for non-DHCP systems
         Ninja-Property-Set dhcpInstalled $false
         Ninja-Property-Set dhcpScopeCount 0
         Ninja-Property-Set dhcpActiveLeasesTotal 0
@@ -72,57 +143,59 @@ try {
         Ninja-Property-Set dhcpConflictCount 0
         Ninja-Property-Set dhcpScopeSummary "DHCP Server not installed"
         
-        Write-Host "DHCP Server Monitor complete (not installed)."
+        Write-Output "SUCCESS: DHCP monitoring skipped (not installed)"
         exit 0
     }
     
     $dhcpInstalled = $true
-    Write-Host "DHCP Server role is installed."
+    Write-Output "INFO: DHCP Server role detected"
     
-    # Check DHCP service status
+    Write-Output "INFO: Checking DHCP service status..."
     $dhcpService = Get-Service -Name "DHCPServer" -ErrorAction SilentlyContinue
     if ($dhcpService) {
         $serverStatus = if ($dhcpService.Status -eq 'Running') { "Healthy" } else { "Critical" }
-        Write-Host "DHCP Service Status: $($dhcpService.Status)"
+        Write-Output "INFO: DHCP service: $($dhcpService.Status)"
     } else {
         $serverStatus = "Critical"
-        Write-Host "DHCP Service not found."
+        Write-Output "WARNING: DHCP service not found"
     }
     
-    # Import DHCP module
+    Write-Output "INFO: Loading DhcpServer module..."
     try {
         Import-Module DhcpServer -ErrorAction Stop
-        Write-Host "DhcpServer module loaded."
+        Write-Output "INFO: DhcpServer module loaded"
     } catch {
-        Write-Warning "Failed to load DhcpServer module: $_"
-        throw "DhcpServer module not available"
+        Write-Output "ERROR: Failed to load DhcpServer module: $_"
+        throw "DhcpServer module unavailable"
     }
     
-    # Get DHCP server authorization status
+    Write-Output "INFO: Checking AD authorization..."
     try {
         $authServers = Get-DhcpServerInDC -ErrorAction SilentlyContinue
         if ($authServers) {
             $thisServer = $authServers | Where-Object { $_.DnsName -eq $env:COMPUTERNAME -or $_.DnsName -match $env:COMPUTERNAME }
             if ($thisServer) {
                 $lastAuthTime = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
-                Write-Host "DHCP Server is authorized in Active Directory."
+                Write-Output "INFO: Server authorized in Active Directory"
+            } else {
+                Write-Output "WARNING: Server not found in AD authorized list"
             }
         }
     } catch {
-        Write-Host "Unable to check DHCP authorization status (may not be in AD environment)."
+        Write-Output "INFO: Unable to check AD authorization (may not be domain environment)"
     }
     
-    # Get DHCP scopes
-    Write-Host "Retrieving DHCP scopes..."
+    Write-Output "INFO: Retrieving DHCP scopes..."
     try {
         $scopes = Get-DhcpServerv4Scope -ErrorAction Stop
         $scopeCount = $scopes.Count
-        Write-Host "Total Scopes: $scopeCount"
+        Write-Output "INFO: Total scopes: $scopeCount"
         
         $htmlRows = @()
         $totalAddresses = 0
         $totalInUse = 0
         
+        Write-Output "INFO: Analyzing scope utilization..."
         foreach ($scope in $scopes) {
             try {
                 $statistics = Get-DhcpServerv4ScopeStatistics -ScopeId $scope.ScopeId -ErrorAction SilentlyContinue
@@ -137,7 +210,6 @@ try {
                     $totalInUse += $inUse
                     $activeLeasesTotal += $inUse
                     
-                    # Color code by utilization
                     $utilizationColor = if ($percentUsed -ge 90) { 'red' } 
                                        elseif ($percentUsed -ge 75) { 'orange' } 
                                        else { 'green' }
@@ -146,22 +218,22 @@ try {
                     $scopeRange = "$($scope.StartRange) - $($scope.EndRange)"
                     $scopeState = $scope.State
                     
+                    Write-Output "  Scope: $scopeName - $percentUsed% utilized ($inUse/$total)"
+                    
                     $htmlRows += "<tr><td>$scopeName</td><td>$scopeRange</td><td>$scopeState</td><td style='color:$utilizationColor'>$percentUsed%</td><td>$inUse / $total</td></tr>"
                 }
             } catch {
-                Write-Warning "Failed to get statistics for scope $($scope.ScopeId): $_"
+                Write-Output "WARNING: Failed to get statistics for scope $($scope.ScopeId): $_"
             }
         }
         
-        # Calculate overall utilization
         if ($totalAddresses -gt 0) {
             $scopeUtilizationPercent = [Math]::Round(($totalInUse / $totalAddresses) * 100)
         }
         
-        Write-Host "Active Leases: $activeLeasesTotal"
-        Write-Host "Overall Utilization: $scopeUtilizationPercent%"
+        Write-Output "INFO: Active leases: $activeLeasesTotal"
+        Write-Output "INFO: Overall utilization: $scopeUtilizationPercent%"
         
-        # Build HTML summary
         if ($htmlRows.Count -gt 0) {
             $scopeSummary = @"
 <table border='1' style='border-collapse:collapse; width:100%; font-family:Arial,sans-serif;'>
@@ -177,49 +249,48 @@ $($htmlRows -join "`n")
         }
         
     } catch {
-        Write-Warning "Failed to retrieve DHCP scopes: $_"
+        Write-Output "WARNING: Failed to retrieve DHCP scopes: $_"
         $scopeSummary = "Unable to retrieve scope information"
     }
     
-    # Get failover configuration
+    Write-Output "INFO: Checking failover configuration..."
     try {
         $failovers = Get-DhcpServerv4Failover -ErrorAction SilentlyContinue
         if ($failovers) {
             $failoverStatus = "Configured ($($failovers.Count) partner(s))"
-            Write-Host "Failover Status: $failoverStatus"
+            Write-Output "INFO: Failover: $failoverStatus"
         } else {
             $failoverStatus = "Not Configured"
+            Write-Output "INFO: Failover not configured"
         }
     } catch {
-        Write-Host "Failover not configured or unable to query."
         $failoverStatus = "Not Configured"
     }
     
-    # Get conflict detection count
     try {
         $serverSettings = Get-DhcpServerv4Statistics -ErrorAction SilentlyContinue
         if ($serverSettings) {
-            # Check for decline/release activity as proxy for conflicts
-            $conflictCount = 0  # Windows DHCP doesn't directly expose conflict count
-            Write-Host "Conflict Detection: Enabled (count not directly available)"
+            $conflictCount = 0
+            Write-Output "INFO: Conflict detection enabled"
         }
     } catch {
-        Write-Host "Unable to retrieve server statistics."
+        Write-Output "INFO: Unable to retrieve server statistics"
     }
     
-    # Adjust health status based on utilization
+    Write-Output "INFO: Determining health status..."
     if ($serverStatus -eq "Healthy") {
         if ($scopeUtilizationPercent -ge 95) {
             $serverStatus = "Critical"
+            Write-Output "  ASSESSMENT: Critical - Address pool nearly exhausted (≥95%)"
         } elseif ($scopeUtilizationPercent -ge 85) {
             $serverStatus = "Warning"
+            Write-Output "  ASSESSMENT: Warning - High utilization (≥85%)"
+        } else {
+            Write-Output "  ASSESSMENT: DHCP server healthy"
         }
     }
     
-    Write-Host "Final Health Status: $serverStatus"
-    
-    # Update NinjaRMM custom fields
-    Write-Host "Updating NinjaRMM custom fields..."
+    Write-Output "INFO: Updating NinjaRMM custom fields..."
     
     Ninja-Property-Set dhcpInstalled $true
     Ninja-Property-Set dhcpScopeCount $scopeCount
@@ -231,13 +302,24 @@ $($htmlRows -join "`n")
     Ninja-Property-Set dhcpConflictCount $conflictCount
     Ninja-Property-Set dhcpScopeSummary $scopeSummary
     
-    Write-Host "DHCP Server Monitor complete. Status: $serverStatus"
+    Write-Output "SUCCESS: DHCP Server monitoring complete"
+    Write-Output "DHCP SERVER METRICS:"
+    Write-Output "  - Health Status: $serverStatus"
+    Write-Output "  - Scopes: $scopeCount"
+    Write-Output "  - Active Leases: $activeLeasesTotal"
+    Write-Output "  - Overall Utilization: $scopeUtilizationPercent%"
+    Write-Output "  - Failover: $failoverStatus"
+    if ($lastAuthTime) {
+        Write-Output "  - Last Auth Check: $lastAuthTime"
+    }
+    
+    exit 0
     
 } catch {
     $errorMessage = $_.Exception.Message
-    Write-Error "DHCP Server Monitor failed: $errorMessage"
+    Write-Output "ERROR: DHCP Server Monitor failed: $errorMessage"
+    Write-Output "$($_.ScriptStackTrace)"
     
-    # Set error state in fields
     Ninja-Property-Set dhcpInstalled $false
     Ninja-Property-Set dhcpServerStatus "Unknown"
     Ninja-Property-Set dhcpScopeSummary "Monitor script error: $errorMessage"

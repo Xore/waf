@@ -1,52 +1,144 @@
 <#
 .SYNOPSIS
-    Script 41: Battery Health Monitor
-    NinjaRMM Custom Field Framework v3.0
+    Battery Health Monitor - Laptop/Mobile Device Battery Health and Lifecycle Tracking
 
 .DESCRIPTION
-    Monitors battery health for laptops and mobile devices including capacity, degradation,
-    cycle count, charge status, and replacement recommendations. Updates 10 BAT fields.
-    Automatically skips execution on desktop systems without batteries.
-
-.FIELDS UPDATED
-    - BATBatteryPresent (Checkbox)
-    - BATDesignCapacityMWh (Integer)
-    - BATFullChargeCapacityMWh (Integer)
-    - BATHealthPercent (Integer)
-    - BATCycleCount (Integer)
-    - BATChemistry (Text)
-    - BATEstimatedRuntime (Integer)
-    - BATChargeStatus (Text)
-    - BATLastFullCharge (DateTime)
-    - BATReplacementRecommended (Checkbox)
-
-.EXECUTION
-    Frequency: Daily (full metrics), Every 4 hours (status/runtime)
-    Runtime: ~15 seconds
-    Requires: Battery present (laptops/tablets)
+    Monitors battery health for laptops, tablets, and mobile devices including capacity
+    degradation, charge cycles, chemistry, runtime estimation, and replacement recommendations.
+    Essential for managing laptop fleet lifecycle and preventing unexpected battery failures.
+    
+    Critical for identifying batteries requiring replacement before they fail in the field,
+    tracking warranty status based on cycle counts, and ensuring mobile workforce productivity.
+    Automatically skips execution on desktop systems without batteries to avoid unnecessary
+    resource consumption.
+    
+    Monitoring Scope:
+    
+    Battery Presence Detection:
+    - Queries Win32_Battery WMI class
+    - Detects laptops, tablets, 2-in-1 devices
+    - Gracefully exits on desktops without batteries
+    - Prevents false positives on desktop systems
+    
+    Battery Chemistry Identification:
+    - Maps WMI chemistry codes to types:
+      - 6: Lithium-Ion (most common laptops)
+      - 8: Lithium-Polymer (thin/light devices)
+      - 4: Nickel Cadmium (legacy)
+      - 5: Nickel Metal Hydride (legacy)
+    - Determines battery technology and characteristics
+    
+    Capacity Monitoring:
+    - Design Capacity: Original manufacturer specification (mWh)
+    - Full Charge Capacity: Current maximum charge (mWh)
+    - Degradation tracking over battery lifetime
+    
+    Battery Health Calculation:
+    - Health % = (Full Charge Capacity / Design Capacity) * 100
+    - Typical new battery: 95-100%
+    - Healthy battery: 80-100%
+    - Worn battery: 60-80%
+    - Failed battery: <60%
+    
+    Charge Status Monitoring:
+    - Maps battery status codes:
+      - 1: Discharging (on battery power)
+      - 2: Charging (plugged in, not full)
+      - 3: Full (100% charged)
+      - 4: Low (approaching critical)
+      - 5: Critical (imminent shutdown)
+    
+    Runtime Estimation:
+    - Reads EstimatedRunTime from WMI
+    - Returns minutes of battery life remaining
+    - Special value 71582788: AC power/charging
+    - Critical metric for mobile workers
+    
+    Cycle Count Tracking:
+    - Primary: Parses powercfg /batteryreport XML
+    - Fallback: Checks battery registry keys
+    - Cycle = full discharge + recharge
+    - Typical laptop battery rated for 300-1000 cycles
+    
+    Last Full Charge Timestamp:
+    - Extracted from battery report XML
+    - Tracks charging behavior patterns
+    - Useful for troubleshooting charging issues
+    
+    Replacement Recommendation Logic:
+    - Health <70%: Significant capacity loss
+    - Cycle count >800: Exceeded typical lifespan
+    - Runtime <60min when full: Insufficient for mobile use
+    - Windows battery warning (Event ID 105): OS-detected failure
+    
+    Health Status Implications:
+    - Replacement Recommended: Purchase new battery
+    - Healthy: No action needed
+    - Monitored continuously for degradation trends
 
 .NOTES
-    File: Script_41_Battery_Health_Monitor.ps1
-    Author: Windows Automation Framework
-    Version: 1.0
-    Created: February 3, 2026
-    Category: Hardware Monitoring
-    Dependencies: Win32_Battery WMI class
-    Device Targeting: Laptops, tablets, 2-in-1 devices only
-
-.RELATED DOCUMENTATION
-    - docs/core/13_BAT_Battery_Health.md
-    - docs/ACTION_PLAN_Missing_Scripts.md (Phase 2)
+    Frequency: Daily (full metrics), Every 4 hours (status/runtime)
+    Runtime: ~15 seconds
+    Timeout: 60 seconds
+    Context: SYSTEM
+    
+    Fields Updated:
+    - BATBatteryPresent (Checkbox)
+    - BATDesignCapacityMWh (Integer: Original capacity mWh)
+    - BATFullChargeCapacityMWh (Integer: Current max capacity mWh)
+    - BATHealthPercent (Integer: Capacity health %)
+    - BATCycleCount (Integer: Charge/discharge cycles)
+    - BATChemistry (Text: Battery technology type)
+    - BATEstimatedRuntime (Integer: Minutes remaining)
+    - BATChargeStatus (Text: Charging, Discharging, Full, Low, Critical)
+    - BATLastFullCharge (DateTime: Last 100% charge timestamp)
+    - BATReplacementRecommended (Checkbox: Needs replacement)
+    
+    Dependencies:
+    - Win32_Battery WMI class
+    - powercfg.exe (battery report generation)
+    - Battery present in system
+    
+    Device Targeting:
+    - Laptops: Primary use case
+    - Tablets: Surface, iPad-like devices
+    - 2-in-1 devices: Convertible laptops
+    - Mobile workstations: Dell Precision, HP ZBook
+    
+    Battery Chemistry Types:
+    - Lithium-Ion: Most common, good energy density
+    - Lithium-Polymer: Thin devices, flexible form factor
+    - Nickel Cadmium: Legacy, memory effect
+    - Nickel Metal Hydride: Legacy, better than NiCd
+    
+    Typical Battery Lifespans:
+    - Consumer laptops: 300-500 cycles (2-3 years)
+    - Business laptops: 500-800 cycles (3-5 years)
+    - Premium laptops: 800-1000 cycles (5+ years)
+    
+    Replacement Criteria:
+    - Health <70%: Capacity too low for productive use
+    - Cycles >800: Approaching end of rated lifespan
+    - Runtime <60min: Insufficient for meetings/travel
+    - Windows warning: OS detected battery failure
+    
+    Common Issues:
+    - No battery found: Normal for desktops
+    - Cycle count 0: Registry data missing or new battery
+    - Runtime 71582788: Currently on AC power
+    - Health >100%: Calibration issue or measurement error
+    
+    Framework Version: 4.0
+    Last Updated: February 5, 2026
 #>
 
 [CmdletBinding()]
 param()
 
 try {
-    Write-Host "Starting Battery Health Monitor (Script 41)..."
+    Write-Output "Starting Battery Health Monitor (v4.0)..."
     $ErrorActionPreference = 'Stop'
     
-    # Initialize variables
     $batteryPresent = $false
     $designCapacity = 0
     $fullChargeCapacity = 0
@@ -58,14 +150,12 @@ try {
     $lastFullCharge = ""
     $replacementRecommended = $false
     
-    # Check if battery is present
-    Write-Host "Checking for battery..."
+    Write-Output "INFO: Checking for battery..."
     $battery = Get-CimInstance -ClassName Win32_Battery -ErrorAction SilentlyContinue
     
     if ($null -eq $battery) {
-        Write-Host "No battery detected. This is likely a desktop system."
+        Write-Output "INFO: No battery detected (likely desktop system)"
         
-        # Update fields for no-battery state
         Ninja-Property-Set batBatteryPresent $false
         Ninja-Property-Set batDesignCapacityMWh 0
         Ninja-Property-Set batFullChargeCapacityMWh 0
@@ -77,14 +167,13 @@ try {
         Ninja-Property-Set batLastFullCharge ""
         Ninja-Property-Set batReplacementRecommended $false
         
-        Write-Host "Battery Health Monitor complete (no battery)."
+        Write-Output "SUCCESS: Battery monitoring skipped (no battery)"
         exit 0
     }
     
     $batteryPresent = $true
-    Write-Host "Battery detected: $($battery.Name)"
+    Write-Output "INFO: Battery detected: $($battery.Name)"
     
-    # Get battery chemistry
     $chemistryCode = $battery.Chemistry
     $chemistry = switch ($chemistryCode) {
         1 { "Other" }
@@ -97,25 +186,20 @@ try {
         8 { "Lithium-Polymer" }
         default { "Unknown" }
     }
-    Write-Host "Battery Chemistry: $chemistry"
+    Write-Output "INFO: Battery chemistry: $chemistry"
     
-    # Get design capacity (in mWh)
     $designCapacity = $battery.DesignCapacity
-    Write-Host "Design Capacity: $designCapacity mWh"
+    Write-Output "INFO: Design capacity: $designCapacity mWh"
     
-    # Get full charge capacity (in mWh)
     $fullChargeCapacity = $battery.FullChargeCapacity
-    Write-Host "Full Charge Capacity: $fullChargeCapacity mWh"
+    Write-Output "INFO: Full charge capacity: $fullChargeCapacity mWh"
     
-    # Calculate battery health percentage
     if ($designCapacity -gt 0 -and $fullChargeCapacity -gt 0) {
         $healthPercent = [Math]::Round(($fullChargeCapacity / $designCapacity) * 100)
-        # Cap at 100%
         if ($healthPercent -gt 100) { $healthPercent = 100 }
-        Write-Host "Battery Health: $healthPercent%"
+        Write-Output "INFO: Battery health: $healthPercent%"
     }
     
-    # Get charge status
     $batteryStatusCode = $battery.BatteryStatus
     $chargeStatus = switch ($batteryStatusCode) {
         1 { "Discharging" }
@@ -131,52 +215,45 @@ try {
         11 { "Discharging" }
         default { "Unknown" }
     }
-    Write-Host "Charge Status: $chargeStatus"
+    Write-Output "INFO: Charge status: $chargeStatus"
     
-    # Get estimated runtime (in minutes)
     $estimatedRuntimeMinutes = $battery.EstimatedRunTime
     if ($estimatedRuntimeMinutes -eq 71582788) {
-        # Battery is charging or on AC power
         $estimatedRuntime = 0
+        Write-Output "INFO: Estimated runtime: N/A (on AC power)"
     } else {
         $estimatedRuntime = $estimatedRuntimeMinutes
+        Write-Output "INFO: Estimated runtime: $estimatedRuntime minutes"
     }
-    Write-Host "Estimated Runtime: $estimatedRuntime minutes"
     
-    # Get cycle count from battery report
+    Write-Output "INFO: Generating battery report for cycle count..."
     try {
-        Write-Host "Generating battery report for cycle count..."
         $reportPath = "$env:TEMP\battery-report.xml"
         
-        # Generate battery report
         $null = powercfg /batteryreport /xml /output $reportPath 2>&1
         
         if (Test-Path $reportPath) {
             [xml]$reportXml = Get-Content $reportPath
             
-            # Extract cycle count
             $cycleCountNode = $reportXml.SelectSingleNode("//CycleCount")
             if ($cycleCountNode) {
                 $cycleCount = [int]$cycleCountNode.InnerText
-                Write-Host "Cycle Count: $cycleCount"
+                Write-Output "INFO: Cycle count: $cycleCount"
             }
             
-            # Extract last full charge timestamp
             $lastFullChargeNode = $reportXml.SelectSingleNode("//History/LastFullCharge")
             if ($lastFullChargeNode) {
                 $lastFullChargeDate = [DateTime]::Parse($lastFullChargeNode.InnerText)
                 $lastFullCharge = $lastFullChargeDate.ToString("yyyy-MM-dd HH:mm:ss")
-                Write-Host "Last Full Charge: $lastFullCharge"
+                Write-Output "INFO: Last full charge: $lastFullCharge"
             }
             
-            # Clean up report file
             Remove-Item $reportPath -Force -ErrorAction SilentlyContinue
         }
     } catch {
-        Write-Warning "Failed to get cycle count from battery report: $_"
+        Write-Output "WARNING: Failed to get cycle count from battery report: $_"
     }
     
-    # If cycle count not found from report, check registry
     if ($cycleCount -eq 0) {
         try {
             $batteryKeys = Get-ChildItem "HKLM:\SYSTEM\CurrentControlSet\Control\Class\{72631e54-78a4-11d0-bcf7-00aa00b7b32a}" -ErrorAction SilentlyContinue
@@ -184,48 +261,46 @@ try {
                 $cycleCountValue = (Get-ItemProperty -Path $key.PSPath -Name "CycleCount" -ErrorAction SilentlyContinue).CycleCount
                 if ($cycleCountValue) {
                     $cycleCount = $cycleCountValue
-                    Write-Host "Cycle Count (from registry): $cycleCount"
+                    Write-Output "INFO: Cycle count (from registry): $cycleCount"
                     break
                 }
             }
         } catch {
-            Write-Warning "Failed to get cycle count from registry: $_"
+            Write-Output "WARNING: Failed to get cycle count from registry: $_"
         }
     }
     
-    # Determine if replacement is recommended
+    Write-Output "INFO: Evaluating replacement recommendation..."
     $replacementRecommended = $false
     
     if ($healthPercent -lt 70) {
         $replacementRecommended = $true
-        Write-Host "Replacement recommended: Health below 70%"
+        Write-Output "  CRITERIA: Health below 70% ($healthPercent%)"
     } elseif ($cycleCount -gt 800) {
         $replacementRecommended = $true
-        Write-Host "Replacement recommended: Cycle count exceeds 800"
+        Write-Output "  CRITERIA: Cycle count exceeds 800 ($cycleCount)"
     } elseif ($estimatedRuntime -lt 60 -and $chargeStatus -eq "Full") {
         $replacementRecommended = $true
-        Write-Host "Replacement recommended: Runtime under 60 minutes when full"
+        Write-Output "  CRITERIA: Runtime under 60 minutes when full ($estimatedRuntime min)"
     }
     
-    # Check for Windows battery warning
     try {
         $batteryWarning = Get-WinEvent -FilterHashtable @{
             LogName = 'System'
             ProviderName = 'Microsoft-Windows-Kernel-Power'
-            Id = 105  # Battery replacement warning
+            Id = 105
             StartTime = (Get-Date).AddDays(-30)
         } -MaxEvents 1 -ErrorAction SilentlyContinue
         
         if ($batteryWarning) {
             $replacementRecommended = $true
-            Write-Host "Replacement recommended: Windows battery warning detected"
+            Write-Output "  CRITERIA: Windows battery warning detected"
         }
     } catch {
-        # No warning found, continue
+        # No warning found
     }
     
-    # Update NinjaRMM custom fields
-    Write-Host "Updating NinjaRMM custom fields..."
+    Write-Output "INFO: Updating NinjaRMM custom fields..."
     
     Ninja-Property-Set batBatteryPresent $true
     Ninja-Property-Set batDesignCapacityMWh $designCapacity
@@ -238,13 +313,24 @@ try {
     Ninja-Property-Set batLastFullCharge $lastFullCharge
     Ninja-Property-Set batReplacementRecommended $replacementRecommended
     
-    Write-Host "Battery Health Monitor complete. Health: $healthPercent%, Replacement: $replacementRecommended"
+    Write-Output "SUCCESS: Battery Health monitoring complete"
+    Write-Output "BATTERY HEALTH METRICS:"
+    Write-Output "  - Chemistry: $chemistry"
+    Write-Output "  - Health: $healthPercent%"
+    Write-Output "  - Design Capacity: $designCapacity mWh"
+    Write-Output "  - Full Charge Capacity: $fullChargeCapacity mWh"
+    Write-Output "  - Cycle Count: $cycleCount"
+    Write-Output "  - Charge Status: $chargeStatus"
+    Write-Output "  - Runtime: $estimatedRuntime minutes"
+    Write-Output "  - Replacement Recommended: $replacementRecommended"
+    
+    exit 0
     
 } catch {
     $errorMessage = $_.Exception.Message
-    Write-Error "Battery Health Monitor failed: $errorMessage"
+    Write-Output "ERROR: Battery Health Monitor failed: $errorMessage"
+    Write-Output "$($_.ScriptStackTrace)"
     
-    # Set error state in fields
     Ninja-Property-Set batBatteryPresent $false
     Ninja-Property-Set batChemistry "Error"
     

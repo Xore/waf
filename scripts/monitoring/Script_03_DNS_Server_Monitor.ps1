@@ -1,49 +1,139 @@
 <#
 .SYNOPSIS
-    Script 3: DNS Server Monitor
-    NinjaRMM Custom Field Framework v3.0
+    DNS Server Monitor - Windows DNS Zone Health and Query Performance Monitoring
 
 .DESCRIPTION
-    Monitors Windows DNS Server including zone health, query statistics, recursion status,
-    and overall server health. Updates 9 DNS fields.
-
-.FIELDS UPDATED
-    - DNSInstalled (Checkbox)
-    - DNSZoneCount (Integer)
-    - DNSQueriesPerSec (Integer)
-    - DNSRecursionEnabled (Checkbox)
-    - DNSCacheHitRate (Integer)
-    - DNSFailedQueryCount (Integer)
-    - DNSServerStatus (Text)
-    - DNSZoneSummary (WYSIWYG)
-    - DNSForwarders (Text)
-
-.EXECUTION
-    Frequency: Every 4 hours
-    Runtime: ~35 seconds
-    Requires: DNS Server role installed
+    Monitors Windows DNS Server infrastructure including zone configuration, query performance,
+    cache efficiency, recursion settings, forwarders, and service health. Essential for ensuring
+    name resolution availability and detecting DNS misconfigurations.
+    
+    Critical for preventing DNS outages that impact all network services, monitoring zone transfer
+    health, cache performance, and query load. DNS is foundational - failures cascade to all
+    dependent services (web, email, authentication, etc.).
+    
+    Monitoring Scope:
+    
+    DNS Installation Detection:
+    - Checks DNS Windows feature
+    - Verifies DNS service status
+    - Imports DnsServer PowerShell module
+    - Gracefully exits if DNS not installed
+    
+    Server Configuration:
+    - Queries DNS server settings via Get-DnsServer
+    - Checks recursion status (enabled/disabled)
+    - Lists configured forwarders for external resolution
+    - Recursion control for security and performance
+    
+    Zone Inventory:
+    - Enumerates all DNS zones via Get-DnsServerZone
+    - Filters out auto-created zones (cache, TrustAnchors)
+    - Tracks zone type: Primary, Secondary, Stub
+    - Monitors dynamic update settings: None, Secure, NonsecureAndSecure
+    - Checks AD integration status
+    
+    Zone Summary Reporting:
+    - Generates HTML formatted zone table
+    - Includes zone name, type, dynamic updates, AD integration
+    - Color-coded zone types: green (Primary), blue (Secondary), gray (Stub)
+    - Stores in WYSIWYG field for dashboard visualization
+    
+    Query Performance Tracking:
+    - Queries performance counter: DNS\Total Query Received/sec
+    - Real-time query rate monitoring
+    - Capacity planning for DNS load
+    - High query rates may indicate DDoS or misconfiguration
+    
+    Cache Performance:
+    - Retrieves cache statistics from Get-DnsServerStatistics
+    - Calculates cache hit rate percentage
+    - High hit rates (>80%) indicate efficient caching
+    - Low hit rates suggest forwarder issues or unique queries
+    
+    Failed Query Tracking:
+    - Counts failed queries from server statistics
+    - Indicates zone misconfigurations or missing records
+    - High failure rates suggest DNS resolution issues
+    
+    Server Diagnostics:
+    - Runs Test-DnsServer for automated health checks
+    - Detects zone transfer failures
+    - Identifies forwarder connectivity issues
+    - Discovers configuration problems
+    
+    Health Status Classification:
+    
+    Healthy:
+    - DNS service running
+    - No diagnostic failures detected
+    - Zones operational
+    
+    Warning:
+    - Service running but Test-DnsServer reports issues
+    - Zone transfer problems
+    - Forwarder connectivity degraded
+    
+    Critical:
+    - DNS service stopped
+    - Service failure
+    - Complete resolution outage
+    
+    Unknown:
+    - DNS not installed
+    - Script execution error
+    - Module unavailable
 
 .NOTES
-    File: Script_03_DNS_Server_Monitor.ps1
-    Author: Windows Automation Framework
-    Version: 1.0
-    Created: February 3, 2026
-    Category: Infrastructure Monitoring
-    Dependencies: DnsServer PowerShell module
-
-.RELATED DOCUMENTATION
-    - docs/core/14_ROLE_Infrastructure.md
-    - docs/IMPLEMENTATION_PROGRESS_2026-02-03.md
+    Frequency: Every 4 hours
+    Runtime: ~35 seconds
+    Timeout: 90 seconds
+    Context: SYSTEM
+    
+    Fields Updated:
+    - DNSInstalled (Checkbox)
+    - DNSZoneCount (Integer: total zones including auto-created)
+    - DNSQueriesPerSec (Integer: current query rate)
+    - DNSRecursionEnabled (Checkbox: recursion status)
+    - DNSCacheHitRate (Integer: cache efficiency %)
+    - DNSFailedQueryCount (Integer: failed query total)
+    - DNSServerStatus (Text: Healthy, Warning, Critical, Unknown)
+    - DNSZoneSummary (WYSIWYG: HTML formatted zone table)
+    - DNSForwarders (Text: comma-separated forwarder IPs)
+    
+    Dependencies:
+    - DNS Windows feature installed
+    - DnsServer PowerShell module
+    - Administrator privileges
+    - Performance counter access
+    
+    Common Zone Types:
+    - Primary: Authoritative, read/write
+    - Secondary: Read-only copy via zone transfer
+    - Stub: Contains only NS records for delegation
+    
+    Dynamic Update Modes:
+    - None: Static zone, manual updates only
+    - Secure: DHCP/AD integrated updates (recommended)
+    - NonsecureAndSecure: Allows any client updates (risky)
+    
+    Common Issues:
+    - Service stopped: Check Event Viewer for crash details
+    - Zone transfer failed: Verify secondary server connectivity
+    - Forwarder timeout: Check firewall rules, external DNS
+    - Low cache hit: Review forwarder configuration
+    - High failed queries: Check zone records and delegation
+    
+    Framework Version: 4.0
+    Last Updated: February 5, 2026
 #>
 
 [CmdletBinding()]
 param()
 
 try {
-    Write-Host "Starting DNS Server Monitor (Script 3)..."
+    Write-Output "Starting DNS Server Monitor (v4.0)..."
     $ErrorActionPreference = 'Stop'
     
-    # Initialize variables
     $dnsInstalled = $false
     $zoneCount = 0
     $queriesPerSec = 0
@@ -54,14 +144,12 @@ try {
     $zoneSummary = ""
     $forwarders = "None"
     
-    # Check if DNS Server role is installed
-    Write-Host "Checking DNS Server installation..."
+    Write-Output "INFO: Checking for DNS Server role..."
     $dnsFeature = Get-WindowsFeature -Name "DNS" -ErrorAction SilentlyContinue
     
     if ($null -eq $dnsFeature -or $dnsFeature.Installed -ne $true) {
-        Write-Host "DNS Server role is not installed."
+        Write-Output "INFO: DNS Server role not installed"
         
-        # Update fields for non-DNS systems
         Ninja-Property-Set dnsInstalled $false
         Ninja-Property-Set dnsZoneCount 0
         Ninja-Property-Set dnsQueriesPerSec 0
@@ -72,60 +160,57 @@ try {
         Ninja-Property-Set dnsZoneSummary "DNS Server not installed"
         Ninja-Property-Set dnsForwarders "None"
         
-        Write-Host "DNS Server Monitor complete (not installed)."
+        Write-Output "SUCCESS: DNS monitoring skipped (not installed)"
         exit 0
     }
     
     $dnsInstalled = $true
-    Write-Host "DNS Server role is installed."
+    Write-Output "INFO: DNS Server role detected"
     
-    # Check DNS service status
+    Write-Output "INFO: Checking DNS service status..."
     $dnsService = Get-Service -Name "DNS" -ErrorAction SilentlyContinue
     if ($dnsService) {
         $serverStatus = if ($dnsService.Status -eq 'Running') { "Healthy" } else { "Critical" }
-        Write-Host "DNS Service Status: $($dnsService.Status)"
+        Write-Output "INFO: DNS service: $($dnsService.Status)"
     } else {
         $serverStatus = "Critical"
-        Write-Host "DNS Service not found."
+        Write-Output "WARNING: DNS service not found"
     }
     
-    # Import DNS module
+    Write-Output "INFO: Loading DnsServer module..."
     try {
         Import-Module DnsServer -ErrorAction Stop
-        Write-Host "DnsServer module loaded."
+        Write-Output "INFO: DnsServer module loaded"
     } catch {
-        Write-Warning "Failed to load DnsServer module: $_"
-        throw "DnsServer module not available"
+        Write-Output "ERROR: Failed to load DnsServer module: $_"
+        throw "DnsServer module unavailable"
     }
     
-    # Get DNS server configuration
+    Write-Output "INFO: Retrieving DNS server configuration..."
     try {
         $dnsServerSettings = Get-DnsServer -ErrorAction Stop
         
-        # Check recursion status
         $recursionEnabled = -not $dnsServerSettings.ServerSetting.DisableRecursion
-        Write-Host "Recursion Enabled: $recursionEnabled"
+        Write-Output "INFO: Recursion enabled: $recursionEnabled"
         
-        # Get forwarders
         if ($dnsServerSettings.ServerSetting.Forwarders) {
             $forwarderList = $dnsServerSettings.ServerSetting.Forwarders -join ", "
             $forwarders = $forwarderList
-            Write-Host "Forwarders: $forwarders"
+            Write-Output "INFO: Forwarders: $forwarders"
         } else {
             $forwarders = "None"
-            Write-Host "No forwarders configured."
+            Write-Output "INFO: No forwarders configured"
         }
         
     } catch {
-        Write-Warning "Failed to get DNS server settings: $_"
+        Write-Output "WARNING: Failed to get DNS server settings: $_"
     }
     
-    # Get DNS zones
-    Write-Host "Retrieving DNS zones..."
+    Write-Output "INFO: Enumerating DNS zones..."
     try {
         $zones = Get-DnsServerZone -ErrorAction Stop
         $zoneCount = $zones.Count
-        Write-Host "Total Zones: $zoneCount"
+        Write-Output "INFO: Total zones: $zoneCount"
         
         $htmlRows = @()
         
@@ -136,7 +221,6 @@ try {
                 $isDynamic = $zone.DynamicUpdate
                 $isSigned = $zone.IsDsIntegrated
                 
-                # Color code by zone type
                 $typeColor = switch ($zoneType) {
                     'Primary' { 'green' }
                     'Secondary' { 'blue' }
@@ -148,13 +232,14 @@ try {
                               elseif ($isDynamic -eq 'NonsecureAndSecure') { "Yes" } 
                               else { "No" }
                 
+                Write-Output "  Zone: $zoneName ($zoneType)"
+                
                 $htmlRows += "<tr><td>$zoneName</td><td style='color:$typeColor'>$zoneType</td><td>$dynamicText</td><td>$isSigned</td></tr>"
             } catch {
-                Write-Warning "Failed to process zone $zoneName: $_"
+                Write-Output "WARNING: Failed to process zone $zoneName: $_"
             }
         }
         
-        # Build HTML summary
         if ($htmlRows.Count -gt 0) {
             $zoneSummary = @"
 <table border='1' style='border-collapse:collapse; width:100%; font-family:Arial,sans-serif;'>
@@ -170,20 +255,18 @@ $($htmlRows -join "`n")
         }
         
     } catch {
-        Write-Warning "Failed to retrieve DNS zones: $_"
+        Write-Output "WARNING: Failed to retrieve DNS zones: $_"
         $zoneSummary = "Unable to retrieve zone information"
     }
     
-    # Get DNS statistics
+    Write-Output "INFO: Retrieving DNS statistics..."
     try {
         $statistics = Get-DnsServerStatistics -ErrorAction SilentlyContinue
         
         if ($statistics) {
-            # Queries per second (approximate from recent activity)
             $totalQueries = $statistics.TotalQueries
-            $queriesPerSec = 0  # Would need time-based sampling for accurate rate
+            Write-Output "INFO: Total queries: $totalQueries"
             
-            # Cache statistics
             if ($statistics.CacheStatistics) {
                 $cacheHits = $statistics.CacheStatistics.TotalHits
                 $cacheMisses = $statistics.CacheStatistics.TotalMisses
@@ -191,51 +274,50 @@ $($htmlRows -join "`n")
                 
                 if ($totalCache -gt 0) {
                     $cacheHitRate = [Math]::Round(($cacheHits / $totalCache) * 100)
-                    Write-Host "Cache Hit Rate: $cacheHitRate%"
+                    Write-Output "INFO: Cache hit rate: $cacheHitRate%"
                 }
             }
             
-            # Failed queries
             if ($statistics.QueryStatistics) {
                 $failedQueryCount = $statistics.QueryStatistics.Failure
-                Write-Host "Failed Queries: $failedQueryCount"
+                Write-Output "INFO: Failed queries: $failedQueryCount"
             }
-            
-            Write-Host "Total Queries: $totalQueries"
         }
     } catch {
-        Write-Warning "Failed to retrieve DNS statistics: $_"
+        Write-Output "WARNING: Failed to retrieve DNS statistics: $_"
     }
     
-    # Alternative statistics from performance counters
+    Write-Output "INFO: Querying performance counters..."
     try {
         $queryCounter = Get-Counter "\DNS\Total Query Received/sec" -ErrorAction SilentlyContinue
         if ($queryCounter) {
             $queriesPerSec = [Math]::Round($queryCounter.CounterSamples[0].CookedValue)
-            Write-Host "Queries/sec (from counter): $queriesPerSec"
+            Write-Output "INFO: Query rate: $queriesPerSec/sec"
         }
     } catch {
-        Write-Host "Performance counters not accessible."
+        Write-Output "INFO: Performance counters not accessible"
     }
     
-    # Check for zone transfer issues or other problems
+    Write-Output "INFO: Running DNS diagnostics..."
     try {
         $serverDiagnostics = Test-DnsServer -ErrorAction SilentlyContinue
         if ($serverDiagnostics) {
             $failedTests = $serverDiagnostics | Where-Object { $_.Result -eq 'Failure' }
             if ($failedTests) {
                 $serverStatus = "Warning"
-                Write-Host "DNS diagnostics detected issues."
+                Write-Output "  WARNING: DNS diagnostics detected issues"
+                foreach ($test in $failedTests) {
+                    Write-Output "    - $($test.Name): $($test.Result)"
+                }
+            } else {
+                Write-Output "  All diagnostic tests passed"
             }
         }
     } catch {
-        Write-Host "DNS diagnostics not available."
+        Write-Output "INFO: DNS diagnostics not available"
     }
     
-    Write-Host "Final Health Status: $serverStatus"
-    
-    # Update NinjaRMM custom fields
-    Write-Host "Updating NinjaRMM custom fields..."
+    Write-Output "INFO: Updating NinjaRMM custom fields..."
     
     Ninja-Property-Set dnsInstalled $true
     Ninja-Property-Set dnsZoneCount $zoneCount
@@ -247,13 +329,23 @@ $($htmlRows -join "`n")
     Ninja-Property-Set dnsZoneSummary $zoneSummary
     Ninja-Property-Set dnsForwarders $forwarders
     
-    Write-Host "DNS Server Monitor complete. Status: $serverStatus"
+    Write-Output "SUCCESS: DNS Server monitoring complete"
+    Write-Output "DNS SERVER METRICS:"
+    Write-Output "  - Health Status: $serverStatus"
+    Write-Output "  - Zones: $zoneCount"
+    Write-Output "  - Query Rate: $queriesPerSec/sec"
+    Write-Output "  - Cache Hit Rate: $cacheHitRate%"
+    Write-Output "  - Failed Queries: $failedQueryCount"
+    Write-Output "  - Recursion: $recursionEnabled"
+    Write-Output "  - Forwarders: $forwarders"
+    
+    exit 0
     
 } catch {
     $errorMessage = $_.Exception.Message
-    Write-Error "DNS Server Monitor failed: $errorMessage"
+    Write-Output "ERROR: DNS Server Monitor failed: $errorMessage"
+    Write-Output "$($_.ScriptStackTrace)"
     
-    # Set error state in fields
     Ninja-Property-Set dnsInstalled $false
     Ninja-Property-Set dnsServerStatus "Unknown"
     Ninja-Property-Set dnsZoneSummary "Monitor script error: $errorMessage"

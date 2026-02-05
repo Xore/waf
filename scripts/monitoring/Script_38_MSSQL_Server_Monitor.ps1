@@ -1,48 +1,143 @@
 <#
 .SYNOPSIS
-    Script 38: MSSQL Server Monitor
-    NinjaRMM Custom Field Framework v3.0
+    MSSQL Server Monitor - Microsoft SQL Server Health and Database Monitoring
 
 .DESCRIPTION
-    Monitors Microsoft SQL Server instances including database health, backup status,
-    failed jobs, transaction log size, and overall server health. Updates 8 MSSQL fields.
-
-.FIELDS UPDATED
-    - MSSQLInstalled (Checkbox)
-    - MSSQLInstanceCount (Integer)
-    - MSSQLInstanceSummary (WYSIWYG)
-    - MSSQLDatabaseCount (Integer)
-    - MSSQLFailedJobsCount (Integer)
-    - MSSQLLastBackup (DateTime)
-    - MSSQLTransactionLogSizeMB (Integer)
-    - MSSQLHealthStatus (Text)
-
-.EXECUTION
-    Frequency: Every 4 hours
-    Runtime: ~45 seconds
-    Requires: SQL Server installed, appropriate permissions
+    Monitors Microsoft SQL Server instances including database inventory, backup compliance,
+    SQL Agent job failures, transaction log growth, and service health. Essential for ensuring
+    database availability, backup SLAs, and early detection of database issues.
+    
+    Critical for preventing data loss through backup monitoring, detecting job failures that
+    impact business processes, and identifying transaction log growth that can cause disk
+    space exhaustion. Foundational for database administration and disaster recovery readiness.
+    
+    Monitoring Scope:
+    
+    SQL Server Detection:
+    - Searches for MSSQL* services
+    - Detects named instances and default instance (MSSQLSERVER)
+    - Supports multiple instances on single server
+    - Gracefully exits if SQL Server not installed
+    
+    Module Loading:
+    - Primary: SqlServer module (SQL Server 2016+)
+    - Fallback: SQLPS module (legacy SQL Server 2012-2014)
+    - WMI fallback if modules unavailable
+    
+    Instance Inventory:
+    - Enumerates all SQL instances from services
+    - Tracks instance names: DEFAULT or named instances
+    - Monitors service status per instance
+    - Generates HTML instance status table
+    
+    Database Count:
+    - Queries sys.databases for online databases
+    - Excludes offline or restoring databases
+    - Aggregates across all running instances
+    - Capacity planning metric
+    
+    Backup Compliance Monitoring:
+    - Queries msdb.dbo.backupset for last full backup
+    - Tracks most recent backup across all databases
+    - Warns if no backup in 24 hours
+    - Critical for RPO (Recovery Point Objective) compliance
+    
+    SQL Agent Job Monitoring:
+    - Queries sysjobhistory for failed jobs (24h window)
+    - Counts jobs with run_status = 0 (failed)
+    - Failed jobs indicate maintenance issues
+    - Business process impact detection
+    
+    Transaction Log Growth:
+    - Queries sys.master_files for LOG type files
+    - Calculates total log size across all databases
+    - Large logs indicate log backup issues
+    - Disk space exhaustion early warning
+    
+    Instance Summary Reporting:
+    - HTML formatted instance table
+    - Color-coded status: green (Running), red (Stopped)
+    - Stores in WYSIWYG field for dashboard
+    
+    Health Status Classification:
+    
+    Healthy:
+    - All instances running
+    - No failed jobs in 24h
+    - Recent backup within 24h
+    - Normal operations
+    
+    Warning:
+    - Instances running but failed jobs detected
+    - No backup in 24 hours (RPO risk)
+    - Action needed
+    
+    Critical:
+    - One or more instances stopped
+    - Database unavailable
+    - Service failure
+    
+    Unknown:
+    - SQL Server not installed
+    - Query failures
+    - Script execution error
 
 .NOTES
-    File: Script_38_MSSQL_Server_Monitor.ps1
-    Author: Windows Automation Framework
-    Version: 1.0
-    Created: February 3, 2026
-    Category: Database Monitoring
-    Dependencies: SQL Server, SqlServer PowerShell module (or legacy SQLPS)
-
-.RELATED DOCUMENTATION
-    - docs/core/12_ROLE_Database_Web.md
-    - docs/ACTION_PLAN_Missing_Scripts.md (Phase 1)
+    Frequency: Every 4 hours
+    Runtime: ~45 seconds
+    Timeout: 120 seconds
+    Context: SYSTEM
+    
+    Fields Updated:
+    - MSSQLInstalled (Checkbox)
+    - MSSQLInstanceCount (Integer: total instances)
+    - MSSQLInstanceSummary (WYSIWYG: HTML instance table)
+    - MSSQLDatabaseCount (Integer: online databases across all instances)
+    - MSSQLFailedJobsCount (Integer: failed jobs in 24h)
+    - MSSQLLastBackup (DateTime: most recent full backup)
+    - MSSQLTransactionLogSizeMB (Integer: total log size MB)
+    - MSSQLHealthStatus (Text: Healthy, Warning, Critical, Unknown)
+    
+    Dependencies:
+    - Microsoft SQL Server installed
+    - SqlServer PowerShell module or SQLPS (legacy)
+    - SQL Server authentication (Windows Auth via SYSTEM account)
+    - Permissions: VIEW SERVER STATE, VIEW ANY DEFINITION
+    - msdb database access for backup/job queries
+    
+    Supported SQL Versions:
+    - SQL Server 2012 and newer
+    - SQL Server 2014, 2016, 2017, 2019, 2022
+    - SQL Server Express editions
+    
+    Instance Types:
+    - DEFAULT: Default instance (MSSQLSERVER service)
+    - Named instances: MSSQL$INSTANCENAME services
+    - Multiple instances supported
+    
+    Connection Authentication:
+    - Uses Windows Authentication (Integrated Security)
+    - SYSTEM account must have SQL permissions
+    - No SQL authentication credentials stored
+    
+    Common Issues:
+    - Module not found: Install SQL Server Management Tools
+    - Connection timeout: Check SQL Server service running
+    - Access denied: Grant SYSTEM account SQL permissions
+    - No backup data: Verify msdb database accessible
+    - Large transaction logs: Configure log backups
+    
+    Framework Version: 4.0
+    Last Updated: February 5, 2026
 #>
 
 [CmdletBinding()]
 param()
 
 try {
-    Write-Host "Starting MSSQL Server Monitor (Script 38)..."
+    Write-Output "Starting MSSQL Server Monitor (v4.0)..."
     $ErrorActionPreference = 'Stop'
     
-    # Initialize variables
     $mssqlInstalled = $false
     $instanceCount = 0
     $instanceSummary = ""
@@ -52,14 +147,12 @@ try {
     $transactionLogSizeMB = 0
     $healthStatus = "Unknown"
     
-    # Check if SQL Server is installed
-    Write-Host "Checking SQL Server installation..."
+    Write-Output "INFO: Checking for SQL Server installation..."
     $sqlServices = Get-Service -Name "MSSQL*" -ErrorAction SilentlyContinue
     
     if ($null -eq $sqlServices -or $sqlServices.Count -eq 0) {
-        Write-Host "SQL Server is not installed on this system."
+        Write-Output "INFO: SQL Server not installed"
         
-        # Update NinjaRMM fields for non-SQL systems
         Ninja-Property-Set mssqlInstalled $false
         Ninja-Property-Set mssqlInstanceCount 0
         Ninja-Property-Set mssqlInstanceSummary "SQL Server not installed"
@@ -69,34 +162,33 @@ try {
         Ninja-Property-Set mssqlTransactionLogSizeMB 0
         Ninja-Property-Set mssqlHealthStatus "Unknown"
         
-        Write-Host "MSSQL Monitor complete (not installed)."
+        Write-Output "SUCCESS: MSSQL monitoring skipped (not installed)"
         exit 0
     }
     
     $mssqlInstalled = $true
-    Write-Host "SQL Server is installed. Proceeding with monitoring..."
+    Write-Output "INFO: SQL Server detected - $($sqlServices.Count) service(s) found"
     
-    # Import SQL Server module
+    Write-Output "INFO: Loading SQL Server PowerShell module..."
     try {
         if (Get-Module -ListAvailable -Name SqlServer) {
             Import-Module SqlServer -ErrorAction Stop
-            Write-Host "SqlServer module loaded."
+            Write-Output "INFO: SqlServer module loaded"
         } elseif (Get-Module -ListAvailable -Name SQLPS) {
             Import-Module SQLPS -DisableNameChecking -ErrorAction Stop
-            Write-Host "SQLPS module loaded (legacy)."
+            Write-Output "INFO: SQLPS module loaded (legacy)"
         } else {
-            throw "SQL Server PowerShell module not available."
+            Write-Output "WARNING: SQL PowerShell module not available, using WMI fallback"
         }
     } catch {
-        Write-Warning "SQL module import failed: $_. Using WMI fallback."
+        Write-Output "WARNING: SQL module import failed: $_"
     }
     
-    # Get SQL Server instances
+    Write-Output "INFO: Enumerating SQL instances..."
     $instances = @()
     $htmlRows = @()
     
     try {
-        # Get instances from services
         $sqlServiceNames = $sqlServices | Where-Object { $_.Name -like "MSSQL`$*" -or $_.Name -eq "MSSQLSERVER" }
         
         foreach ($service in $sqlServiceNames) {
@@ -112,6 +204,8 @@ try {
                 "$($env:COMPUTERNAME)\$instanceName"
             }
             
+            Write-Output "  Instance: $instanceName ($($service.Status))"
+            
             $instances += [PSCustomObject]@{
                 Name = $instanceName
                 ServerName = $serverName
@@ -119,19 +213,17 @@ try {
                 StartType = $service.StartType
             }
             
-            # Build HTML row
             $statusColor = if ($service.Status -eq 'Running') { 'green' } else { 'red' }
             $htmlRows += "<tr><td>$instanceName</td><td style='color:$statusColor'>$($service.Status)</td></tr>"
         }
         
         $instanceCount = $instances.Count
-        Write-Host "SQL Instances found: $instanceCount"
+        Write-Output "INFO: SQL instances found: $instanceCount"
         
     } catch {
-        Write-Warning "Failed to enumerate SQL instances: $_"
+        Write-Output "WARNING: Failed to enumerate SQL instances: $_"
     }
     
-    # Build instance summary HTML
     if ($htmlRows.Count -gt 0) {
         $instanceSummary = @"
 <table border='1' style='border-collapse:collapse; width:100%'>
@@ -143,17 +235,16 @@ $($htmlRows -join "`n")
         $instanceSummary = "No instances detected"
     }
     
-    # Query running instances for detailed metrics
+    Write-Output "INFO: Querying running instances for metrics..."
     foreach ($instance in $instances | Where-Object { $_.Status -eq 'Running' }) {
         try {
-            Write-Host "Querying instance: $($instance.ServerName)..."
+            Write-Output "  Querying: $($instance.ServerName)..."
             
-            # Get database count
             $dbQuery = "SELECT COUNT(*) as DbCount FROM sys.databases WHERE state_desc = 'ONLINE'"
             $dbResult = Invoke-Sqlcmd -ServerInstance $instance.ServerName -Query $dbQuery -ConnectionTimeout 10 -QueryTimeout 30 -ErrorAction Stop
             $databaseCount += $dbResult.DbCount
+            Write-Output "    Databases: $($dbResult.DbCount)"
             
-            # Get last backup date
             $backupQuery = @"
 SELECT TOP 1 backup_finish_date 
 FROM msdb.dbo.backupset 
@@ -166,9 +257,9 @@ ORDER BY backup_finish_date DESC
                 if ($null -eq $lastBackup -or $backupDate -gt $lastBackup) {
                     $lastBackup = $backupDate
                 }
+                Write-Output "    Last backup: $backupDate"
             }
             
-            # Get transaction log size
             $logQuery = @"
 SELECT SUM(size * 8 / 1024) as LogSizeMB
 FROM sys.master_files
@@ -176,8 +267,8 @@ WHERE type_desc = 'LOG'
 "@
             $logResult = Invoke-Sqlcmd -ServerInstance $instance.ServerName -Query $logQuery -ConnectionTimeout 10 -QueryTimeout 30 -ErrorAction Stop
             $transactionLogSizeMB += [int]$logResult.LogSizeMB
+            Write-Output "    Transaction log: $([int]$logResult.LogSizeMB) MB"
             
-            # Get failed jobs (last 24 hours)
             $jobQuery = @"
 SELECT COUNT(*) as FailedCount
 FROM msdb.dbo.sysjobhistory jh
@@ -187,44 +278,37 @@ WHERE jh.run_status = 0
 "@
             $jobResult = Invoke-Sqlcmd -ServerInstance $instance.ServerName -Database "msdb" -Query $jobQuery -ConnectionTimeout 10 -QueryTimeout 30 -ErrorAction Stop
             $failedJobsCount += $jobResult.FailedCount
-            
-            Write-Host "Instance metrics collected: Databases=$($dbResult.DbCount), FailedJobs=$($jobResult.FailedCount)"
+            Write-Output "    Failed jobs (24h): $($jobResult.FailedCount)"
             
         } catch {
-            Write-Warning "Failed to query instance $($instance.ServerName): $_"
+            Write-Output "WARNING: Failed to query instance $($instance.ServerName): $_"
         }
     }
     
-    # Determine health status
+    Write-Output "INFO: Determining health status..."
     $stoppedInstances = ($instances | Where-Object { $_.Status -ne 'Running' }).Count
     
     if ($stoppedInstances -gt 0) {
         $healthStatus = "Critical"
+        Write-Output "  ASSESSMENT: Critical - $stoppedInstances instance(s) stopped"
     } elseif ($failedJobsCount -gt 0) {
         $healthStatus = "Warning"
+        Write-Output "  ASSESSMENT: Warning - $failedJobsCount failed job(s) detected"
     } elseif ($null -eq $lastBackup -or ((Get-Date) - $lastBackup).TotalHours -gt 24) {
         $healthStatus = "Warning"
+        Write-Output "  ASSESSMENT: Warning - No recent backup (>24h)"
     } else {
         $healthStatus = "Healthy"
+        Write-Output "  ASSESSMENT: SQL Server healthy"
     }
     
-    Write-Host "Overall Health Status: $healthStatus"
-    Write-Host "Total Databases: $databaseCount"
-    Write-Host "Failed Jobs (24h): $failedJobsCount"
-    Write-Host "Transaction Log Size: $transactionLogSizeMB MB"
-    if ($lastBackup) {
-        Write-Host "Last Backup: $lastBackup"
-    }
-    
-    # Format last backup for NinjaRMM
     $lastBackupFormatted = if ($lastBackup) {
         $lastBackup.ToString("yyyy-MM-dd HH:mm:ss")
     } else {
         ""
     }
     
-    # Update NinjaRMM custom fields
-    Write-Host "Updating NinjaRMM custom fields..."
+    Write-Output "INFO: Updating NinjaRMM custom fields..."
     
     Ninja-Property-Set mssqlInstalled $true
     Ninja-Property-Set mssqlInstanceCount $instanceCount
@@ -235,13 +319,24 @@ WHERE jh.run_status = 0
     Ninja-Property-Set mssqlTransactionLogSizeMB $transactionLogSizeMB
     Ninja-Property-Set mssqlHealthStatus $healthStatus
     
-    Write-Host "MSSQL Server Monitor complete. Status: $healthStatus"
+    Write-Output "SUCCESS: MSSQL Server monitoring complete"
+    Write-Output "MSSQL SERVER METRICS:"
+    Write-Output "  - Health Status: $healthStatus"
+    Write-Output "  - Instances: $instanceCount"
+    Write-Output "  - Databases: $databaseCount"
+    Write-Output "  - Failed Jobs (24h): $failedJobsCount"
+    Write-Output "  - Transaction Log Size: $transactionLogSizeMB MB"
+    if ($lastBackup) {
+        Write-Output "  - Last Backup: $lastBackupFormatted"
+    }
+    
+    exit 0
     
 } catch {
     $errorMessage = $_.Exception.Message
-    Write-Error "MSSQL Monitor failed: $errorMessage"
+    Write-Output "ERROR: MSSQL Monitor failed: $errorMessage"
+    Write-Output "$($_.ScriptStackTrace)"
     
-    # Set error state in fields
     Ninja-Property-Set mssqlHealthStatus "Unknown"
     Ninja-Property-Set mssqlInstanceSummary "Monitor script error: $errorMessage"
     

@@ -1,48 +1,150 @@
 <#
 .SYNOPSIS
-    Script 46: Print Server Monitor
-    NinjaRMM Custom Field Framework v3.0
+    Print Server Monitor - Windows Print Server Queue and Printer Health Monitoring
 
 .DESCRIPTION
-    Monitors Print Server role including printer queues, stuck jobs, printer errors,
-    offline printers, and queue health. Updates 8 PRINT fields with HTML summary.
-
-.FIELDS UPDATED
-    - PRINTPrintServerRole (Checkbox)
-    - PRINTPrinterCount (Integer)
-    - PRINTQueueCount (Integer)
-    - PRINTStuckJobsCount (Integer)
-    - PRINTPrinterErrors (Integer)
-    - PRINTOfflinePrinters (Integer)
-    - PRINTPrinterSummary (WYSIWYG)
-    - PRINTHealthStatus (Text)
-
-.EXECUTION
-    Frequency: Daily (config), Every 4 hours (status)
-    Runtime: ~30 seconds
-    Requires: Print Server role installed
+    Monitors Windows Print Server infrastructure including printer inventory, print job queues,
+    stuck jobs, printer errors, offline printers, and spooler health. Essential for maintaining
+    print service availability and detecting queue backlogs.
+    
+    Critical for preventing print job backlogs that impact business operations, detecting offline
+    printers before users report issues, and identifying stuck jobs that block print queues.
+    Foundational for enterprise printing infrastructure management.
+    
+    Monitoring Scope:
+    
+    Print Server Role Detection:
+    - Checks Print-Server Windows feature
+    - Verifies printer management PowerShell cmdlets
+    - Gracefully exits if role not installed
+    
+    Printer Inventory:
+    - Enumerates all printers via Get-Printer
+    - Counts total configured printers
+    - Tracks printer status: Normal, Offline, Error, etc.
+    - Capacity and configuration management metric
+    
+    Offline Printer Detection:
+    - Identifies printers with Offline or Error status
+    - Offline printers cannot accept jobs
+    - Critical metric for service availability
+    
+    Printer Error Monitoring:
+    - Detects error conditions: PaperJam, PaperOut, TonerLow, DoorOpen
+    - Hardware issue early warning
+    - Prevents job failures
+    
+    Print Queue Analysis:
+    - Queries Get-PrintJob for all printers
+    - Counts total jobs across all queues
+    - Aggregates queue depth for capacity planning
+    
+    Stuck Job Detection:
+    - Identifies jobs with error states: Error, Paused, Blocked, UserIntervention
+    - Detects jobs older than 1 hour (time-based stuck detection)
+    - Stuck jobs block queue and prevent printing
+    - Critical metric for queue health
+    
+    Printer Summary Reporting:
+    - HTML formatted printer table
+    - Includes printer name, status, job count, driver name
+    - Color-coded status: green (Normal), orange (PaperJam/PaperOut), red (Offline/Error)
+    - Per-printer job count for load balancing
+    - Summary statistics at bottom
+    
+    Spooler Error Detection:
+    - Queries System event log for PrintService errors (24h)
+    - Provider: Microsoft-Windows-PrintService
+    - Severity: Critical (Level 1) and Error (Level 2)
+    - Detects spooler crashes, driver failures
+    
+    Health Status Classification:
+    
+    Healthy:
+    - All printers online
+    - No stuck jobs
+    - No printer errors
+    - Normal operations
+    
+    Warning:
+    - Printer errors detected (paper jams, toner low)
+    - Some stuck jobs (1-5)
+    - Action recommended
+    
+    Critical:
+    - Offline printers (service unavailable)
+    - Many stuck jobs (>5)
+    - Queue blocked
+    
+    Unknown:
+    - Print Server role not installed
+    - Script execution error
+    - Query failures
 
 .NOTES
-    File: Script_46_Print_Server_Monitor.ps1
-    Author: Windows Automation Framework
-    Version: 1.0
-    Created: February 3, 2026
-    Category: Server Role Monitoring
-    Dependencies: Print Server role, Print Management PowerShell
-
-.RELATED DOCUMENTATION
-    - docs/core/16_ROLE_Additional.md
-    - docs/ACTION_PLAN_Missing_Scripts.md (Phase 4)
+    Frequency: Daily (config), Every 4 hours (status)
+    Runtime: ~30 seconds
+    Timeout: 90 seconds
+    Context: SYSTEM
+    
+    Fields Updated:
+    - PRINTPrintServerRole (Checkbox)
+    - PRINTPrinterCount (Integer: total configured printers)
+    - PRINTQueueCount (Integer: total jobs in all queues)
+    - PRINTStuckJobsCount (Integer: error/old jobs)
+    - PRINTPrinterErrors (Integer: printers with error conditions)
+    - PRINTOfflinePrinters (Integer: offline/unavailable printers)
+    - PRINTPrinterSummary (WYSIWYG: HTML formatted printer table)
+    - PRINTHealthStatus (Text: Healthy, Warning, Critical, Unknown)
+    
+    Dependencies:
+    - Print-Server Windows feature
+    - PrintManagement PowerShell module
+    - Administrator privileges
+    - Event log read access
+    
+    Printer Status Values:
+    - Normal: Operational
+    - Offline: Not reachable
+    - Error: General error state
+    - PaperJam: Paper jam detected
+    - PaperOut: Out of paper
+    - TonerLow: Low toner warning
+    - DoorOpen: Printer door open
+    
+    Job Status Values:
+    - Printing: Currently printing
+    - Paused: Manually paused
+    - Error: Print error
+    - Blocked: Queue blocked
+    - UserIntervention: Requires user action
+    
+    Stuck Job Criteria:
+    - JobStatus matches error/blocked states
+    - OR job submitted more than 1 hour ago
+    
+    Event Log Sources:
+    - Provider: Microsoft-Windows-PrintService
+    - LogName: System
+    - Spooler crashes, driver failures, queue errors
+    
+    Common Issues:
+    - Offline printers: Check network connectivity, printer power
+    - Stuck jobs: Clear queue manually or restart spooler
+    - Paper jams: Physical printer maintenance needed
+    - Driver errors: Update printer drivers
+    
+    Framework Version: 4.0
+    Last Updated: February 5, 2026
 #>
 
 [CmdletBinding()]
 param()
 
 try {
-    Write-Host "Starting Print Server Monitor (Script 46)..."
+    Write-Output "Starting Print Server Monitor (v4.0)..."
     $ErrorActionPreference = 'Stop'
     
-    # Initialize variables
     $printServerRole = $false
     $printerCount = 0
     $queueCount = 0
@@ -52,14 +154,12 @@ try {
     $printerSummary = ""
     $healthStatus = "Unknown"
     
-    # Check if Print Server role is installed
-    Write-Host "Checking Print Server role..."
+    Write-Output "INFO: Checking for Print Server role..."
     $printRole = Get-WindowsFeature -Name "Print-Server" -ErrorAction SilentlyContinue
     
     if ($null -eq $printRole -or -not $printRole.Installed) {
-        Write-Host "Print Server role is not installed."
+        Write-Output "INFO: Print Server role not installed"
         
-        # Update fields for non-print servers
         Ninja-Property-Set printPrintServerRole $false
         Ninja-Property-Set printPrinterCount 0
         Ninja-Property-Set printQueueCount 0
@@ -69,36 +169,32 @@ try {
         Ninja-Property-Set printPrinterSummary "Print Server role not installed"
         Ninja-Property-Set printHealthStatus "Unknown"
         
-        Write-Host "Print Server Monitor complete (role not installed)."
+        Write-Output "SUCCESS: Print Server monitoring skipped (role not installed)"
         exit 0
     }
     
     $printServerRole = $true
-    Write-Host "Print Server role is installed."
+    Write-Output "INFO: Print Server role detected"
     
-    # Get printers
-    Write-Host "Enumerating printers..."
+    Write-Output "INFO: Enumerating printers..."
     try {
         $printers = Get-Printer -ErrorAction Stop
         $printerCount = $printers.Count
-        Write-Host "Printer Count: $printerCount"
+        Write-Output "INFO: Printers configured: $printerCount"
         
-        # Count offline printers
         $offlinePrinters = ($printers | Where-Object { $_.PrinterStatus -eq 'Offline' -or $_.PrinterStatus -eq 'Error' }).Count
-        Write-Host "Offline Printers: $offlinePrinters"
+        Write-Output "INFO: Offline printers: $offlinePrinters"
         
-        # Count printers with errors
         $printerErrors = ($printers | Where-Object { 
             $_.PrinterStatus -match 'Error|PaperJam|PaperOut|TonerLow|DoorOpen' 
         }).Count
-        Write-Host "Printers with Errors: $printerErrors"
+        Write-Output "INFO: Printers with errors: $printerErrors"
         
     } catch {
-        Write-Warning "Failed to enumerate printers: $_"
+        Write-Output "WARNING: Failed to enumerate printers: $_"
     }
     
-    # Get print queues (jobs)
-    Write-Host "Checking print queues..."
+    Write-Output "INFO: Analyzing print queues..."
     try {
         $allJobs = @()
         foreach ($printer in $printers) {
@@ -109,22 +205,20 @@ try {
         }
         
         $queueCount = $allJobs.Count
-        Write-Host "Total Jobs in Queue: $queueCount"
+        Write-Output "INFO: Total jobs in queue: $queueCount"
         
-        # Count stuck jobs (jobs older than 1 hour or in error state)
         $stuckJobs = $allJobs | Where-Object { 
             $_.JobStatus -match 'Error|Paused|Blocked|UserIntervention' -or 
             ((Get-Date) - $_.SubmittedTime).TotalHours -gt 1
         }
         $stuckJobsCount = if ($stuckJobs) { $stuckJobs.Count } else { 0 }
-        Write-Host "Stuck Jobs: $stuckJobsCount"
+        Write-Output "INFO: Stuck jobs: $stuckJobsCount"
         
     } catch {
-        Write-Warning "Failed to check print queues: $_"
+        Write-Output "WARNING: Failed to check print queues: $_"
     }
     
-    # Build printer summary HTML
-    Write-Host "Building printer summary..."
+    Write-Output "INFO: Building printer summary..."
     if ($printerCount -gt 0) {
         $htmlRows = @()
         foreach ($printer in $printers) {
@@ -132,10 +226,10 @@ try {
             $printerStatus = $printer.PrinterStatus
             $driverName = $printer.DriverName
             
-            # Get job count for this printer
             $jobsForPrinter = (Get-PrintJob -PrinterName $printer.Name -ErrorAction SilentlyContinue).Count
             
-            # Determine status color
+            Write-Output "  Printer: $printerName - Status: $printerStatus, Jobs: $jobsForPrinter"
+            
             $statusColor = switch ($printerStatus) {
                 'Normal' { 'green' }
                 'Offline' { 'red' }
@@ -163,38 +257,37 @@ Total Jobs: $queueCount | Stuck Jobs: $stuckJobsCount
         $printerSummary = "No printers configured on this server"
     }
     
-    # Check for print spooler errors in event log
-    Write-Host "Checking print spooler errors..."
+    Write-Output "INFO: Checking print spooler errors (24h)..."
     try {
         $startTime = (Get-Date).AddHours(-24)
         $spoolerErrors = Get-WinEvent -FilterHashtable @{
             LogName = 'System'
             ProviderName = 'Microsoft-Windows-PrintService'
-            Level = 1,2  # Critical and Error
+            Level = 1,2
             StartTime = $startTime
         } -MaxEvents 10 -ErrorAction SilentlyContinue
         
         if ($spoolerErrors) {
             $printerErrors += $spoolerErrors.Count
-            Write-Warning "Print spooler errors detected: $($spoolerErrors.Count)"
+            Write-Output "  WARNING: Spooler errors detected: $($spoolerErrors.Count)"
         }
     } catch {
-        # No errors found or event log not accessible
+        # No errors or event log not accessible
     }
     
-    # Determine health status
+    Write-Output "INFO: Determining health status..."
     if ($offlinePrinters -gt 0 -or $stuckJobsCount -gt 5) {
         $healthStatus = "Critical"
+        Write-Output "  ASSESSMENT: Critical - Offline printers or many stuck jobs"
     } elseif ($printerErrors -gt 0 -or $stuckJobsCount -gt 0) {
         $healthStatus = "Warning"
+        Write-Output "  ASSESSMENT: Warning - Printer errors or stuck jobs detected"
     } else {
         $healthStatus = "Healthy"
+        Write-Output "  ASSESSMENT: Print server healthy"
     }
     
-    Write-Host "Health Status: $healthStatus"
-    
-    # Update NinjaRMM custom fields
-    Write-Host "Updating NinjaRMM custom fields..."
+    Write-Output "INFO: Updating NinjaRMM custom fields..."
     
     Ninja-Property-Set printPrintServerRole $true
     Ninja-Property-Set printPrinterCount $printerCount
@@ -205,13 +298,22 @@ Total Jobs: $queueCount | Stuck Jobs: $stuckJobsCount
     Ninja-Property-Set printPrinterSummary $printerSummary
     Ninja-Property-Set printHealthStatus $healthStatus
     
-    Write-Host "Print Server Monitor complete. Status: $healthStatus"
+    Write-Output "SUCCESS: Print Server monitoring complete"
+    Write-Output "PRINT SERVER METRICS:"
+    Write-Output "  - Health Status: $healthStatus"
+    Write-Output "  - Printers: $printerCount"
+    Write-Output "  - Offline: $offlinePrinters"
+    Write-Output "  - Errors: $printerErrors"
+    Write-Output "  - Total Jobs: $queueCount"
+    Write-Output "  - Stuck Jobs: $stuckJobsCount"
+    
+    exit 0
     
 } catch {
     $errorMessage = $_.Exception.Message
-    Write-Error "Print Server Monitor failed: $errorMessage"
+    Write-Output "ERROR: Print Server Monitor failed: $errorMessage"
+    Write-Output "$($_.ScriptStackTrace)"
     
-    # Set error state in fields
     Ninja-Property-Set printPrintServerRole $false
     Ninja-Property-Set printHealthStatus "Unknown"
     Ninja-Property-Set printPrinterSummary "Monitor script error: $errorMessage"

@@ -1,51 +1,166 @@
 <#
 .SYNOPSIS
-    Script 47: FlexLM License Monitor
-    NinjaRMM Custom Field Framework v3.0
+    FlexLM License Monitor - FlexNet License Server Health and Utilization Monitoring
 
 .DESCRIPTION
-    Monitors FlexLM/FlexNet license server including vendor daemons, license utilization,
-    denied requests, daemon health, and expiration tracking. Updates 11 FLEXLM fields.
-
-.FIELDS UPDATED
-    - FLEXLMInstalled (Checkbox)
-    - FLEXLMVersion (Text)
-    - FLEXLMVendorDaemonCount (Integer)
-    - FLEXLMLicenseUtilization (Integer)
-    - FLEXLMDeniedRequests24h (Integer)
-    - FLEXLMDaemonStatus (Text)
-    - FLEXLMExpiringLicenses30d (Integer)
-    - FLEXLMServerUptime (Integer)
-    - FLEXLMLicenseServerName (Text)
-    - FLEXLMLicenseSummary (WYSIWYG)
-    - FLEXLMHealthStatus (Text)
-
-.EXECUTION
-    Frequency: Every 4 hours
-    Runtime: ~35 seconds
-    Requires: FlexLM/FlexNet installed, lmutil.exe available
+    Monitors FlexLM/FlexNet license servers including vendor daemon status, license pool
+    utilization, denied checkout requests, license expirations, and server health. Essential
+    for enterprise software licensing compliance and preventing license exhaustion.
+    
+    Critical for detecting license denials that block users from running software, tracking
+    license utilization for capacity planning, and identifying expiring licenses before they
+    cause software outages. Foundational for managing expensive engineering/CAD software licenses.
+    
+    Monitoring Scope:
+    
+    FlexLM Installation Detection:
+    - Searches for lmutil.exe in common paths:
+      - C:\Program Files\FlexLM\lmutil.exe
+      - C:\FlexLM\lmutil.exe
+      - C:\Autodesk\Network License Manager\lmutil.exe
+      - C:\Program Files\Flexera Software\FlexNet Manager\lmutil.exe
+    - Falls back to PATH environment variable
+    - Gracefully exits if lmutil not found
+    
+    License File Discovery:
+    - Searches common license file locations:
+      - C:\FlexLM\license.dat
+      - C:\Program Files\FlexLM\license.dat
+      - C:\Autodesk\Network License Manager\*.lic
+    - Checks LM_LICENSE_FILE environment variable
+    - Parses SERVER directive for license server hostname
+    
+    License Server Status:
+    - Executes lmutil lmstat -a command
+    - Queries all vendor daemons and license features
+    - Comprehensive license server health check
+    
+    Version Detection:
+    - Parses lmutil copyright header
+    - Identifies FlexLM/FlexNet version
+    - Compatibility and upgrade tracking
+    
+    Vendor Daemon Monitoring:
+    - Counts active vendor daemons (ISV servers)
+    - Each daemon manages specific vendor licenses
+    - Common vendors: Autodesk, ANSYS, MATLAB, SolidWorks
+    - Daemon failures prevent license checkouts
+    
+    Daemon Health Check:
+    - Parses daemon status: UP or DOWN
+    - UP = daemon running and serving licenses
+    - DOWN = daemon crashed, licenses unavailable
+    - Critical for service availability
+    
+    License Utilization Tracking:
+    - Parses "X OUT OF Y LICENSES IN USE" patterns
+    - Aggregates across all license features
+    - Calculates overall utilization percentage
+    - High utilization (>90%) risks checkout denials
+    
+    Denied Request Detection:
+    - Counts DENIED license checkout attempts
+    - Indicates insufficient license capacity
+    - Users blocked from running software
+    - Critical metric for license purchasing decisions
+    
+    License Expiration Monitoring:
+    - Parses license expiration dates
+    - Identifies licenses expiring within 30 days
+    - Prevents unexpected software outages
+    - Critical for license renewal planning
+    
+    Server Uptime Tracking:
+    - Parses license server uptime in days
+    - Converts to hours for consistency
+    - Long uptimes indicate stability
+    
+    Health Status Classification:
+    
+    Healthy:
+    - All daemons running (UP)
+    - Low utilization (<90%)
+    - No denied requests
+    - No expiring licenses
+    
+    Warning:
+    - High utilization (>90%)
+    - Denied requests detected (>10/24h)
+    - Licenses expiring within 30 days
+    - Action needed
+    
+    Critical:
+    - Vendor daemon down
+    - License server unreachable
+    - Service unavailable
+    
+    Unknown:
+    - FlexLM not installed
+    - lmutil not found
+    - Query failed
+    - Script execution error
 
 .NOTES
-    File: Script_47_FlexLM_License_Monitor.ps1
-    Author: Windows Automation Framework
-    Version: 1.0
-    Created: February 3, 2026
-    Category: Server Role Monitoring
-    Dependencies: FlexLM lmutil.exe
-
-.RELATED DOCUMENTATION
-    - docs/core/16_ROLE_Additional.md
-    - docs/ACTION_PLAN_Missing_Scripts.md (Phase 4)
+    Frequency: Every 4 hours
+    Runtime: ~35 seconds
+    Timeout: 90 seconds
+    Context: SYSTEM
+    
+    Fields Updated:
+    - FLEXLMInstalled (Checkbox)
+    - FLEXLMVersion (Text: FlexLM version)
+    - FLEXLMVendorDaemonCount (Integer: ISV daemon count)
+    - FLEXLMLicenseUtilization (Integer: overall utilization %)
+    - FLEXLMDeniedRequests24h (Integer: checkout denials)
+    - FLEXLMDaemonStatus (Text: Running, Stopped, Unknown, Error)
+    - FLEXLMExpiringLicenses30d (Integer: licenses expiring soon)
+    - FLEXLMServerUptime (Integer: uptime in hours)
+    - FLEXLMLicenseServerName (Text: license server hostname)
+    - FLEXLMLicenseSummary (WYSIWYG: HTML formatted summary)
+    - FLEXLMHealthStatus (Text: Healthy, Warning, Critical, Unknown)
+    
+    Dependencies:
+    - FlexLM/FlexNet Publisher installed
+    - lmutil.exe command-line utility
+    - License file (license.dat or .lic)
+    - Network access to license server port (default 27000-27009)
+    
+    FlexLM Architecture:
+    - lmgrd: Master license daemon
+    - Vendor daemons: ISV-specific servers (e.g., adskflex, ansyslmd)
+    - License file: Defines SERVER, VENDOR, FEATURE lines
+    
+    Common Vendors:
+    - Autodesk (AutoCAD, Revit, Inventor): adskflex
+    - ANSYS (simulation): ansyslmd
+    - MATLAB: MLM
+    - SolidWorks: sw_d
+    - Siemens NX: ugslmd
+    
+    License File Format:
+    - SERVER: License server hostname and port
+    - VENDOR: Vendor daemon name and path
+    - FEATURE: Licensed product, count, expiration
+    
+    Common Issues:
+    - lmutil not found: Install FlexLM tools or add to PATH
+    - License file missing: Check LM_LICENSE_FILE or default paths
+    - Daemon down: Check vendor daemon service/process
+    - Port blocked: Verify firewall allows 27000-27009
+    - Denied requests: Purchase additional licenses
+    - Expiring licenses: Contact vendor for renewal
+    
+    Framework Version: 4.0
+    Last Updated: February 5, 2026
 #>
 
 [CmdletBinding()]
 param()
 
 try {
-    Write-Host "Starting FlexLM License Monitor (Script 47)..."
+    Write-Output "Starting FlexLM License Monitor (v4.0)..."
     $ErrorActionPreference = 'Stop'
     
-    # Initialize variables
     $flexlmInstalled = $false
     $flexlmVersion = "Not Installed"
     $vendorDaemonCount = 0
@@ -58,8 +173,7 @@ try {
     $licenseSummary = ""
     $healthStatus = "Unknown"
     
-    # Search for lmutil.exe
-    Write-Host "Searching for FlexLM lmutil.exe..."
+    Write-Output "INFO: Searching for FlexLM lmutil.exe..."
     $lmutilPaths = @(
         "C:\Program Files\FlexLM\lmutil.exe",
         "C:\FlexLM\lmutil.exe",
@@ -73,23 +187,21 @@ try {
         $found = Get-ChildItem -Path $path -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($found) {
             $lmutilExe = $found.FullName
-            Write-Host "Found lmutil.exe: $lmutilExe"
+            Write-Output "INFO: Found lmutil.exe: $lmutilExe"
             break
         }
     }
     
-    # Try PATH
     if ($null -eq $lmutilExe) {
         $lmutilExe = (Get-Command lmutil.exe -ErrorAction SilentlyContinue).Source
         if ($lmutilExe) {
-            Write-Host "Found lmutil.exe in PATH: $lmutilExe"
+            Write-Output "INFO: Found lmutil.exe in PATH"
         }
     }
     
     if ($null -eq $lmutilExe) {
-        Write-Host "FlexLM is not installed (lmutil.exe not found)."
+        Write-Output "INFO: FlexLM not installed (lmutil.exe not found)"
         
-        # Update fields for non-FlexLM systems
         Ninja-Property-Set flexlmInstalled $false
         Ninja-Property-Set flexlmVersion "Not Installed"
         Ninja-Property-Set flexlmVendorDaemonCount 0
@@ -102,14 +214,13 @@ try {
         Ninja-Property-Set flexlmLicenseSummary "FlexLM not installed"
         Ninja-Property-Set flexlmHealthStatus "Unknown"
         
-        Write-Host "FlexLM License Monitor complete (not installed)."
+        Write-Output "SUCCESS: FlexLM monitoring skipped (not installed)"
         exit 0
     }
     
     $flexlmInstalled = $true
     
-    # Find license file
-    Write-Host "Searching for license file..."
+    Write-Output "INFO: Searching for license file..."
     $licenseFile = $null
     $licenseSearchPaths = @(
         "C:\FlexLM\license.dat",
@@ -121,35 +232,32 @@ try {
         $found = Get-ChildItem -Path $path -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($found) {
             $licenseFile = $found.FullName
-            Write-Host "Found license file: $licenseFile"
+            Write-Output "INFO: Found license file: $licenseFile"
             break
         }
     }
     
-    # Check environment variable
     if ($null -eq $licenseFile) {
         $envLicense = $env:LM_LICENSE_FILE
         if ($envLicense -and (Test-Path $envLicense)) {
             $licenseFile = $envLicense
-            Write-Host "Found license file from environment: $licenseFile"
+            Write-Output "INFO: Found license file from environment: $licenseFile"
         }
     }
     
     if ($null -eq $licenseFile) {
-        Write-Warning "License file not found. Using localhost as default."
+        Write-Output "WARNING: License file not found, using localhost as default"
         $licenseServerName = "localhost"
     } else {
-        # Parse license file for server name
         $licenseContent = Get-Content $licenseFile -ErrorAction SilentlyContinue
         $serverLine = $licenseContent | Where-Object { $_ -match '^SERVER\s+(\S+)' } | Select-Object -First 1
         if ($serverLine -match '^SERVER\s+(\S+)') {
             $licenseServerName = $matches[1]
-            Write-Host "License Server: $licenseServerName"
+            Write-Output "INFO: License server: $licenseServerName"
         }
     }
     
-    # Get license server status
-    Write-Host "Querying license server status..."
+    Write-Output "INFO: Querying license server status..."
     try {
         $statusArgs = @('lmstat', '-a')
         if ($licenseFile) {
@@ -158,18 +266,15 @@ try {
         
         $statusOutput = & $lmutilExe $statusArgs 2>&1 | Out-String
         
-        # Parse FlexLM version
         if ($statusOutput -match 'lmutil - Copyright.*v([0-9.]+)') {
             $flexlmVersion = "FlexLM v$($matches[1])"
-            Write-Host "FlexLM Version: $flexlmVersion"
+            Write-Output "INFO: Version: $flexlmVersion"
         }
         
-        # Count vendor daemons
         $vendorDaemons = ($statusOutput | Select-String 'Vendor daemon status').Count
         $vendorDaemonCount = $vendorDaemons
-        Write-Host "Vendor Daemons: $vendorDaemonCount"
+        Write-Output "INFO: Vendor daemons: $vendorDaemonCount"
         
-        # Check daemon status
         if ($statusOutput -match 'UP') {
             $daemonStatus = "Running"
         } elseif ($statusOutput -match 'DOWN') {
@@ -177,16 +282,14 @@ try {
         } else {
             $daemonStatus = "Unknown"
         }
-        Write-Host "Daemon Status: $daemonStatus"
+        Write-Output "INFO: Daemon status: $daemonStatus"
         
-        # Get server uptime (in hours)
         if ($statusOutput -match 'License server status:\s+(\d+)') {
             $uptimeDays = [int]$matches[1]
             $serverUptime = $uptimeDays * 24
-            Write-Host "Server Uptime: $serverUptime hours"
+            Write-Output "INFO: Server uptime: $serverUptime hours"
         }
         
-        # Calculate license utilization
         $inUseMatches = [regex]::Matches($statusOutput, '(\d+) OUT OF (\d+) LICENSES? IN USE')
         $totalInUse = 0
         $totalAvailable = 0
@@ -198,17 +301,15 @@ try {
         
         if ($totalAvailable -gt 0) {
             $licenseUtilization = [Math]::Round(($totalInUse / $totalAvailable) * 100)
-            Write-Host "License Utilization: $licenseUtilization%"
+            Write-Output "INFO: License utilization: $licenseUtilization% ($totalInUse/$totalAvailable)"
         }
         
-        # Check for denied requests
         $deniedMatches = [regex]::Matches($statusOutput, 'DENIED:(\d+)')
         foreach ($match in $deniedMatches) {
             $deniedRequests24h += [int]$match.Groups[1].Value
         }
-        Write-Host "Denied Requests: $deniedRequests24h"
+        Write-Output "INFO: Denied requests: $deniedRequests24h"
         
-        # Check for expiring licenses (30 days)
         $expirationMatches = [regex]::Matches($statusOutput, 'expires:\s+(\d+)-(\w+)-(\d+)')
         $thirtyDaysFromNow = (Get-Date).AddDays(30)
         
@@ -223,14 +324,13 @@ try {
                 # Unable to parse date, skip
             }
         }
-        Write-Host "Expiring Licenses (30d): $expiringLicenses30d"
+        Write-Output "INFO: Expiring licenses (30d): $expiringLicenses30d"
         
     } catch {
-        Write-Warning "Failed to query license server: $_"
+        Write-Output "WARNING: Failed to query license server: $_"
         $daemonStatus = "Error"
     }
     
-    # Build license summary HTML
     $licenseSummary = @"
 <div style='font-family:Arial,sans-serif;'>
 <p><strong>License Server:</strong> $licenseServerName</p>
@@ -244,21 +344,22 @@ try {
 </div>
 "@
     
-    # Determine health status
+    Write-Output "INFO: Determining health status..."
     if ($daemonStatus -ne "Running") {
         $healthStatus = "Critical"
+        Write-Output "  ASSESSMENT: Critical - Daemon not running"
     } elseif ($deniedRequests24h -gt 10 -or $expiringLicenses30d -gt 0) {
         $healthStatus = "Warning"
+        Write-Output "  ASSESSMENT: Warning - Denied requests or expiring licenses"
     } elseif ($licenseUtilization -gt 90) {
         $healthStatus = "Warning"
+        Write-Output "  ASSESSMENT: Warning - High license utilization"
     } else {
         $healthStatus = "Healthy"
+        Write-Output "  ASSESSMENT: FlexLM license server healthy"
     }
     
-    Write-Host "Health Status: $healthStatus"
-    
-    # Update NinjaRMM custom fields
-    Write-Host "Updating NinjaRMM custom fields..."
+    Write-Output "INFO: Updating NinjaRMM custom fields..."
     
     Ninja-Property-Set flexlmInstalled $true
     Ninja-Property-Set flexlmVersion $flexlmVersion
@@ -272,13 +373,24 @@ try {
     Ninja-Property-Set flexlmLicenseSummary $licenseSummary
     Ninja-Property-Set flexlmHealthStatus $healthStatus
     
-    Write-Host "FlexLM License Monitor complete. Status: $healthStatus"
+    Write-Output "SUCCESS: FlexLM License monitoring complete"
+    Write-Output "FLEXLM LICENSE METRICS:"
+    Write-Output "  - Health Status: $healthStatus"
+    Write-Output "  - License Server: $licenseServerName"
+    Write-Output "  - Version: $flexlmVersion"
+    Write-Output "  - Vendor Daemons: $vendorDaemonCount ($daemonStatus)"
+    Write-Output "  - Utilization: $licenseUtilization%"
+    Write-Output "  - Denied Requests: $deniedRequests24h"
+    Write-Output "  - Expiring (30d): $expiringLicenses30d"
+    Write-Output "  - Uptime: $serverUptime hours"
+    
+    exit 0
     
 } catch {
     $errorMessage = $_.Exception.Message
-    Write-Error "FlexLM License Monitor failed: $errorMessage"
+    Write-Output "ERROR: FlexLM License Monitor failed: $errorMessage"
+    Write-Output "$($_.ScriptStackTrace)"
     
-    # Set error state in fields
     Ninja-Property-Set flexlmInstalled $false
     Ninja-Property-Set flexlmHealthStatus "Unknown"
     Ninja-Property-Set flexlmLicenseSummary "Monitor script error: $errorMessage"

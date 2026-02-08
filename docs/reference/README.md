@@ -1,83 +1,135 @@
 # WAF Reference Documentation
 
-**Purpose:** Comprehensive reference materials for Windows Automation Framework  
-**Audience:** Administrators, Technicians, Developers  
+**Purpose:** Complete reference materials for Windows Automation Framework deployment and management  
 **Created:** February 8, 2026  
-**Status:** Reference Suite
+**Audience:** Administrators, technicians, deployment engineers
 
 ---
 
-## Reference Guides
+## Available Reference Documents
 
-### Quick Start
-**[Quick_Start_Guide.md](Quick_Start_Guide.md)** - 15-minute minimal deployment  
-Get started quickly with essential fields, core scripts, and basic dashboards.
+### Core References
 
-### Field Documentation
-**[Custom_Fields_Complete_Reference.md](Custom_Fields_Complete_Reference.md)** - All 277+ fields  
-Complete field specifications, value patterns, and usage examples.
+**[Complete Custom Fields Reference](Complete_Custom_Fields_Reference.md)**
+- All 277+ custom fields documented
+- Field types, purposes, and values
+- Populated by which scripts
+- Update frequencies and usage
 
-**[Field_Creation_Guide.md](Field_Creation_Guide.md)** - Step-by-step field setup  
-How to create and configure custom fields in NinjaOne.
+**[Dashboard Templates](Dashboard_Templates.md)**
+- 6 pre-configured dashboard layouts
+- Health Overview, Capacity Planning, Security Posture
+- Server Infrastructure, Patch Management, Executive Summary
 
-### Configuration Guides
-**[Dashboard_Templates.md](Dashboard_Templates.md)** - 5 dashboard templates  
-Pre-configured dashboard layouts for health, security, capacity, and patching.
+**[Alert Configuration Guide](Alert_Configuration_Guide.md)**
+- Recommended alert conditions
+- Threshold settings and priorities
+- Notification routing and escalation
 
-**[Alert_Configuration_Guide.md](Alert_Configuration_Guide.md)** - Alert templates  
-Condition templates, threshold recommendations, and escalation patterns.
+**[Deployment Guide](Deployment_Guide.md)**
+- Step-by-step deployment procedures
+- Field creation, script deployment, dashboard setup
+- Alert configuration and testing
 
-### Deployment
-**[Deployment_Guide.md](Deployment_Guide.md)** - End-to-end deployment  
-Complete deployment procedure from prerequisites to production rollout.
+### Quick References
+
+**[Field Quick Reference](Field_Quick_Reference.md)**
+- Top 50 most important fields
+- One-line descriptions and quick lookup
+
+**[Script Quick Reference](Script_Quick_Reference.md)**
+- All 45 scripts with purposes
+- Key fields populated and frequency
+
+**[Health Status Quick Reference](Health_Status_Quick_Reference.md)**
+- 4 status values explained
+- Common thresholds and decision logic
+
+### Support
+
+**[Troubleshooting Guide](Troubleshooting_Guide.md)**
+- Common issues and solutions
+- Error messages and diagnostics
+- Support procedures
 
 ---
 
-## Existing Reference Materials
+## How to Use This Documentation
 
-### Framework Summaries
-- **[01_Quick_Reference.md](01_Quick_Reference.md)** - Framework overview
-- **[02_Executive_Summary_Core.md](02_Executive_Summary_Core.md)** - Core monitoring
-- **[03_Executive_Summary_ML.md](03_Executive_Summary_ML.md)** - Machine learning features
-- **[04_Framework_Statistics.md](04_Framework_Statistics.md)** - Framework metrics
-- **[05_Native_Integration_Summary.md](05_Native_Integration_Summary.md)** - v4.0 native features
-- **[06_Framework_Diagrams.md](06_Framework_Diagrams.md)** - Visual documentation
+### For First-Time Deployment
+
+1. **Review [Deployment Guide](Deployment_Guide.md)** - Complete deployment procedure
+2. **Reference [Complete Custom Fields Reference](Complete_Custom_Fields_Reference.md)** - Create all fields
+3. **Apply [Dashboard Templates](Dashboard_Templates.md)** - Set up monitoring views
+4. **Configure [Alert Configuration Guide](Alert_Configuration_Guide.md)** - Enable alerting
+5. **Bookmark [Troubleshooting Guide](Troubleshooting_Guide.md)** - For issue resolution
+
+### For Daily Operations
+
+1. **Use [Field Quick Reference](Field_Quick_Reference.md)** - Quick field lookup
+2. **Use [Script Quick Reference](Script_Quick_Reference.md)** - Script purposes
+3. **Use [Health Status Quick Reference](Health_Status_Quick_Reference.md)** - Status interpretation
+4. **Consult [Dashboard Templates](Dashboard_Templates.md)** - Monitoring best practices
+
+### For Troubleshooting
+
+1. **Start with [Troubleshooting Guide](Troubleshooting_Guide.md)** - Common issues
+2. **Check [Complete Custom Fields Reference](Complete_Custom_Fields_Reference.md)** - Field details
+3. **Review [Script Quick Reference](Script_Quick_Reference.md)** - Script behavior
+4. **Verify [Alert Configuration Guide](Alert_Configuration_Guide.md)** - Alert settings
 
 ---
 
-## How to Use This Directory
+## Document Organization
 
-### For New Users
-1. Start with **Quick_Start_Guide.md** for rapid deployment
-2. Review **Dashboard_Templates.md** for dashboard setup
-3. Configure alerts using **Alert_Configuration_Guide.md**
+### By Depth
 
-### For Administrators
-1. **Custom_Fields_Complete_Reference.md** - Understand all fields
-2. **Field_Creation_Guide.md** - Create fields in NinjaOne
-3. **Deployment_Guide.md** - Follow deployment procedure
+**Quick References** - One-page summaries for quick lookup  
+**Core References** - Comprehensive documentation  
+**Guides** - Step-by-step procedures
 
-### For Developers
-1. **Custom_Fields_Complete_Reference.md** - Field specifications
-2. Review script documentation in `/docs/scripts/`
-3. Check coding standards in `/docs/WAF_CODING_STANDARDS.md`
+### By Audience
+
+**Administrators** - Deployment Guide, Complete Fields Reference, Alert Configuration  
+**Technicians** - Dashboard Templates, Quick References, Troubleshooting  
+**Deployment Engineers** - Deployment Guide, Complete References, Troubleshooting
 
 ---
 
 ## Related Documentation
 
 **Technical Foundation:**
-- [Diagrams Directory](../diagrams/) - Visual architecture
-- [WAF Coding Standards](../WAF_CODING_STANDARDS.md) - Development standards
-- [Pre-Phase Summaries](../) - Technical decisions
+- [../diagrams/](../diagrams/) - Visual documentation
+- [../WAF_CODING_STANDARDS.md](../WAF_CODING_STANDARDS.md) - Coding patterns
+- [../ALL_PRE_PHASES_COMPLETE.md](../ALL_PRE_PHASES_COMPLETE.md) - Technical decisions
 
-**Script Documentation:**
-- [Core Scripts](../core/) - Foundation scripts
-- [Advanced Scripts](../advanced/) - Extended monitoring
-- [Automation Scripts](../automation/) - Automation workflows
+**Project Documentation:**
+- [../../planning/](../../planning/) - Project planning and status
+- [../../README.md](../../README.md) - Main project documentation
 
 ---
 
-**Last Updated:** February 8, 2026  
-**Framework Version:** v4.0  
-**Total Reference Guides:** 6 (new) + 6 (existing)
+## Maintenance
+
+### When to Update
+
+**Custom Fields Reference** - When fields are added/changed  
+**Dashboard Templates** - When monitoring needs change  
+**Alert Configuration** - When thresholds need adjustment  
+**Deployment Guide** - When procedures change  
+**Quick References** - When priorities shift  
+**Troubleshooting** - When new issues discovered
+
+### How to Update
+
+1. Edit the relevant .md file
+2. Update version/date in document header
+3. Test procedures if changed
+4. Commit with descriptive message
+5. Update this README if structure changes
+
+---
+
+**Total Documents:** 9  
+**Status:** Complete  
+**Last Updated:** February 8, 2026

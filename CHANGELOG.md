@@ -2,6 +2,37 @@
 
 All notable changes to the Windows Automation Framework.
 
+## [4.1.0] - 2026-02-09
+
+### Added
+- Comprehensive script repository documentation (plaintext_scripts/README.md)
+- Complete script index catalog with 219+ scripts (plaintext_scripts/SCRIPT_INDEX.md)
+- Migration tracking documentation (plaintext_scripts/MIGRATION_PROGRESS.md)
+- Script categorization across 45 functional areas
+- Usage guidelines and best practices documentation
+- Integration documentation for NinjaRMM custom fields
+
+### Changed
+- All 219+ scripts migrated from .txt to .ps1 format
+- Standardized naming convention: Category-ActionDescription.ps1
+- Improved script discoverability and organization
+- Enhanced documentation structure in plaintext_scripts directory
+
+### Improved
+- Script naming consistency (100% compliance)
+- Repository organization and navigation
+- Documentation completeness for script repository
+- User onboarding for script deployment
+
+### Migration Details
+- **Total Scripts Migrated**: 219+
+- **Script Categories**: 45
+- **Documentation Created**: 29.2 KB (3 comprehensive markdown files)
+- **Naming Standard**: Category-ActionDescription.ps1
+- **Completion Date**: February 9, 2026
+
+---
+
 ## [4.0.0] - 2026-02-08
 
 ### Added
@@ -109,6 +140,20 @@ WAF follows [Semantic Versioning](https://semver.org/):
 
 ## Upgrade Guides
 
+### Upgrading to 4.1.0
+
+**Changes:**
+- All scripts now use .ps1 extension
+- New documentation in plaintext_scripts directory
+- Standardized naming convention implemented
+
+**Action Required:**
+- Update script references to use .ps1 extension
+- Review new README.md in plaintext_scripts/
+- Use SCRIPT_INDEX.md for script discovery
+
+**Breaking Changes:** None (script content unchanged)
+
 ### Upgrading to 4.0.0
 
 **Changes:**
@@ -152,3 +197,7 @@ This changelog is updated with each release following [Keep a Changelog](https:/
 - **Removed** - Removed features
 - **Fixed** - Bug fixes
 - **Security** - Security fixes
+
+---
+
+**Last Updated:** February 9, 2026, 11:00 PM CET

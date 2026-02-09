@@ -6,9 +6,17 @@
     Detailed description of the script's purpose, functionality, and behavior.
     Include information about what the script monitors, calculates, or reports.
     Mention any important dependencies or requirements.
+    
+    This script runs unattended without user interaction.
+    If restart capability exists, document the -AllowRestart parameter requirement.
 
 .PARAMETER ParameterName
     Description of the parameter (if the script accepts parameters)
+
+.PARAMETER AllowRestart
+    (Optional) Authorizes the script to restart the device if required.
+    Without this parameter, script will only flag restart requirement in fields.
+    Use with caution - only on maintenance windows or after user notification.
 
 .EXAMPLE
     Example usage of the script
@@ -17,6 +25,10 @@
 .EXAMPLE
     Additional example with parameters
     PS> .\ScriptName.ps1 -ParameterName "Value"
+    
+.EXAMPLE
+    Run with restart authorization (if applicable)
+    PS> .\ScriptName.ps1 -AllowRestart
 
 .NOTES
     Script Name:    ScriptName.ps1
@@ -30,6 +42,9 @@
     Typical Duration: ~XX seconds
     Timeout Setting: XXX seconds
     
+    User Interaction: NONE (fully automated, no prompts)
+    Restart Behavior: Never restarts unless -AllowRestart parameter provided
+    
     Fields Updated:
         - fieldName1 (description)
         - fieldName2 (description)
@@ -38,7 +53,7 @@
     Dependencies:
         - Windows PowerShell 5.1 or higher
         - Administrator privileges (SYSTEM context)
-        - NinjaRMM agent installed
+        - NinjaRMM Agent installed
         - [Any other required modules or features]
     
     Exit Codes:
@@ -59,7 +74,11 @@
 param(
     # Define parameters here if needed
     # [Parameter(Mandatory=$false)]
-    # [string]$ParameterName = "DefaultValue"
+    # [string]$ParameterName = "DefaultValue",
+    
+    # Add restart parameter if script may need to restart device
+    # [Parameter(Mandatory=$false)]
+    # [switch]$AllowRestart
 )
 
 #Requires -Version 5.1
@@ -87,7 +106,7 @@ $NinjaRMMCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
 # INITIALIZATION
 # ============================================================================
 
-# Start timing
+# Start timing - REQUIRED FOR ALL SCRIPTS
 $StartTime = Get-Date
 $ScriptName = $MyInvocation.MyCommand.Name
 
@@ -105,6 +124,13 @@ function Write-Log {
     <#
     .SYNOPSIS
         Writes structured log messages
+    .DESCRIPTION
+        Provides consistent logging with timestamps and severity levels.
+        Automatically tracks error and warning counts.
+    .PARAMETER Message
+        The message to log
+    .PARAMETER Level
+        Log level: DEBUG, INFO, WARN, ERROR
     #>
     [CmdletBinding()]
     param(
@@ -121,10 +147,20 @@ function Write-Log {
     
     # Output based on level
     switch ($Level) {
-        'DEBUG' { if ($LogLevel -eq 'DEBUG') { Write-Verbose $LogMessage } }
+        'DEBUG' { 
+            if ($LogLevel -eq 'DEBUG') { 
+                Write-Verbose $LogMessage 
+            } 
+        }
         'INFO'  { Write-Host $LogMessage -ForegroundColor Cyan }
-        'WARN'  { Write-Warning $LogMessage; $script:WarningCount++ }
-        'ERROR' { Write-Error $LogMessage; $script:ErrorCount++ }
+        'WARN'  { 
+            Write-Warning $LogMessage
+            $script:WarningCount++ 
+        }
+        'ERROR' { 
+            Write-Error $LogMessage -ErrorAction Continue
+            $script:ErrorCount++ 
+        }
     }
 }
 
@@ -132,6 +168,9 @@ function Test-Prerequisites {
     <#
     .SYNOPSIS
         Validates required prerequisites before script execution
+    .DESCRIPTION
+        Checks PowerShell version, administrator privileges, and NinjaRMM agent.
+        Returns $true if all prerequisites are met, $false otherwise.
     #>
     [CmdletBinding()]
     param()
@@ -143,19 +182,24 @@ function Test-Prerequisites {
         $PSVersionRequired = [Version]"5.1"
         $PSVersionCurrent = $PSVersionTable.PSVersion
         if ($PSVersionCurrent -lt $PSVersionRequired) {
-            throw "PowerShell version $PSVersionRequired or higher required. Current: $PSVersionCurrent"
+            Write-Log "PowerShell $PSVersionRequired+ required. Current: $PSVersionCurrent" -Level ERROR
+            return $false
         }
+        Write-Log "PowerShell version: $PSVersionCurrent" -Level DEBUG
         
         # Check if running as administrator
         $CurrentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
         if (-not $CurrentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-            throw "Script must be run with administrator privileges"
+            Write-Log "Script must be run with administrator privileges" -Level ERROR
+            return $false
         }
+        Write-Log "Running with administrator privileges" -Level DEBUG
         
-        # Check NinjaRMM CLI exists (for fallback)
-        if (-not (Test-Path $NinjaRMMCLI)) {
-            Write-Log "NinjaRMM CLI not found at: $NinjaRMMCLI" -Level WARN
-            Write-Log "Field setting fallback will not be available" -Level WARN
+        # Check if NinjaRMM CLI exists (for fallback method)
+        if (Test-Path $NinjaRMMCLI) {
+            Write-Log "NinjaRMM CLI found: $NinjaRMMCLI" -Level DEBUG
+        } else {
+            Write-Log "NinjaRMM CLI not found at: $NinjaRMMCLI (fallback unavailable)" -Level WARN
         }
         
         # Add additional prerequisite checks here
@@ -173,6 +217,15 @@ function Get-SafeValue {
     <#
     .SYNOPSIS
         Safely retrieves a value with error handling
+    .DESCRIPTION
+        Executes a script block and returns the result, or a default value if an error occurs.
+        Useful for handling operations that may fail without stopping script execution.
+    .PARAMETER ScriptBlock
+        The script block to execute
+    .PARAMETER DefaultValue
+        The value to return if execution fails (default: "N/A")
+    .EXAMPLE
+        $ComputerName = Get-SafeValue { $env:COMPUTERNAME } "Unknown"
     #>
     [CmdletBinding()]
     param(
@@ -310,6 +363,39 @@ try {
     # Example: Calculate metrics
     # $SomeMetric = Calculate-Something $SomeData
     
+    # Example: Check if restart required
+    # $RestartRequired = Test-RestartRequired
+    # if ($RestartRequired) {
+    #     $RestartReason = "Updates installed requiring reboot"
+    #     
+    #     if ($AllowRestart) {
+    #         Write-Log "Restart authorized via parameter" -Level WARN
+    #         Write-Log "Reason: $RestartReason" -Level WARN
+    #         Write-Log "Restarting in 60 seconds..." -Level WARN
+    #         
+    #         # Set fields before restart
+    #         Set-NinjaField -FieldName "opsRestartInitiated" -Value "Yes"
+    #         Set-NinjaField -FieldName "opsRestartReason" -Value $RestartReason
+    #         Set-NinjaField -FieldName "opsRestartTime" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+    #         
+    #         # Allow time for field sync
+    #         Start-Sleep -Seconds 5
+    #         
+    #         # Initiate restart
+    #         Restart-Computer -Force -ErrorAction Stop
+    #         
+    #     } else {
+    #         Write-Log "Restart required but NOT authorized" -Level WARN
+    #         Write-Log "Use -AllowRestart parameter to authorize restart" -Level WARN
+    #         Write-Log "Reason: $RestartReason" -Level WARN
+    #         
+    #         # Flag for administrator review
+    #         Set-NinjaField -FieldName "opsRestartRequired" -Value "Yes"
+    #         Set-NinjaField -FieldName "opsRestartReason" -Value $RestartReason
+    #         Set-NinjaField -FieldName "opsRestartDetectedDate" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+    #     }
+    # }
+    
     # Example: Set fields (with automatic fallback)
     # Set-NinjaField -FieldName "fieldName" -Value $SomeMetric
     
@@ -321,7 +407,7 @@ try {
     exit 1
     
 } finally {
-    # Calculate execution time
+    # Calculate execution time - REQUIRED FOR ALL SCRIPTS
     $EndTime = Get-Date
     $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
     

@@ -2,7 +2,7 @@
 
 **Document Type:** Development Standards  
 **Audience:** Script Developers, Contributors  
-**Version:** 1.0  
+**Version:** 1.1  
 **Last Updated:** February 9, 2026
 
 ---
@@ -13,6 +13,52 @@ This document establishes coding standards for all PowerShell scripts in the Win
 
 ---
 
+## Critical Requirements
+
+### MANDATORY: Execution Time Tracking
+
+**ALL scripts MUST track execution time**
+
+Every script must measure and log its execution duration:
+
+```powershell
+# At script start (REQUIRED)
+$StartTime = Get-Date
+
+# ... script logic ...
+
+# In finally block (REQUIRED)
+finally {
+    $EndTime = Get-Date
+    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+    Write-Log "Duration: $ExecutionTime seconds" -Level INFO
+}
+```
+
+**Why:** Execution time is critical for:
+- Performance monitoring
+- Timeout management
+- Optimization opportunities
+- SLA compliance
+
+### MANDATORY: Dual-Method Field Setting
+
+**ALL scripts MUST use Set-NinjaField with automatic CLI fallback**
+
+Never call `Ninja-Property-Set` directly. Always use the wrapper:
+
+```powershell
+# Required approach
+Set-NinjaField -FieldName "opsHealthScore" -Value $Score
+
+# NEVER do this
+Ninja-Property-Set "opsHealthScore" $Score
+```
+
+**Why:** The Set-NinjaField function automatically falls back to `ninjarmm-cli.exe` if `Ninja-Property-Set` fails, ensuring field updates work in all execution contexts.
+
+---
+
 ## Script Structure
 
 ### Standard Script Layout
@@ -20,14 +66,14 @@ This document establishes coding standards for all PowerShell scripts in the Win
 Every script must follow this structure:
 
 ```powershell
-1. Comment-based help (lines 1-50)
-2. CmdletBinding and parameters (lines 51-60)
-3. Requires statements (lines 61-63)
-4. Configuration section (lines 64-80)
-5. Initialization section (lines 81-100)
-6. Functions section (lines 101-300)
-7. Main execution block (lines 301+)
-8. Error handling and cleanup (finally block)
+1. Comment-based help (lines 1-60)
+2. CmdletBinding and parameters (lines 61-70)
+3. Requires statements (lines 71-73)
+4. Configuration section (lines 74-90)
+5. Initialization section (lines 91-110) - INCLUDES $StartTime
+6. Functions section (lines 111-400) - INCLUDES Set-NinjaField
+7. Main execution block (lines 401+)
+8. Finally block (cleanup + execution time) - REQUIRED
 ```
 
 ### Template Usage
@@ -63,7 +109,7 @@ Every script must include:
     
     Execution Context: SYSTEM (via NinjaRMM automation)
     Execution Frequency: Daily/Weekly/On-demand
-    Typical Duration: ~XX seconds
+    Typical Duration: ~XX seconds (REQUIRED - from actual measurements)
     Timeout Setting: XXX seconds
     
     Fields Updated:
@@ -73,6 +119,7 @@ Every script must include:
     Dependencies:
         - Windows PowerShell 5.1+
         - Administrator privileges
+        - NinjaRMM Agent installed
         - (other requirements)
     
     Exit Codes:
@@ -93,7 +140,7 @@ Every script must include:
 - DESCRIPTION should be 3-5 sentences
 - Document all NinjaRMM fields updated
 - List all dependencies explicitly
-- Include typical execution time
+- **REQUIRED: Include typical execution time from testing**
 - Document all exit codes used
 
 ---
@@ -125,6 +172,8 @@ $ComputerName
 $TotalMemoryGB
 $ServiceStatus
 $IsHealthy
+$StartTime  # REQUIRED
+$ExecutionTime  # REQUIRED
 
 # Bad
 $computername
@@ -142,6 +191,7 @@ $ishealthy
 function Get-DiskSpace { }
 function Test-ServiceHealth { }
 function Write-Log { }
+function Set-NinjaField { }  # REQUIRED in all scripts
 
 # Bad
 function getDiskSpace { }
@@ -180,7 +230,7 @@ function log { }
 ```powershell
 try {
     # Critical operation
-    $Result = Get-WmiObject Win32_OperatingSystem
+    $Result = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
     
 } catch {
     Write-Log "Failed to get OS information: $_" -Level ERROR
@@ -204,7 +254,7 @@ This ensures all errors are catchable.
 
 ```powershell
 try {
-    $Service = Get-Service $ServiceName
+    $Service = Get-Service $ServiceName -ErrorAction Stop
     
 } catch [Microsoft.PowerShell.Commands.ServiceCommandException] {
     Write-Log "Service not found: $ServiceName" -Level WARN
@@ -221,14 +271,14 @@ try {
 ```powershell
 # Good - Continue with partial data
 try {
-    $DiskC = Get-PSDrive C
+    $DiskC = Get-PSDrive C -ErrorAction Stop
 } catch {
     Write-Log "C: drive not accessible" -Level WARN
     $DiskC = $null
 }
 
 try {
-    $DiskD = Get-PSDrive D
+    $DiskD = Get-PSDrive D -ErrorAction Stop
 } catch {
     Write-Log "D: drive not accessible" -Level WARN
     $DiskD = $null
@@ -263,10 +313,10 @@ function Write-Log {
     $LogMessage = "[$Timestamp] [$Level] $Message"
     
     switch ($Level) {
-        'DEBUG' { Write-Verbose $LogMessage }
+        'DEBUG' { if ($LogLevel -eq 'DEBUG') { Write-Verbose $LogMessage } }
         'INFO'  { Write-Host $LogMessage -ForegroundColor Cyan }
-        'WARN'  { Write-Warning $LogMessage }
-        'ERROR' { Write-Error $LogMessage }
+        'WARN'  { Write-Warning $LogMessage; $script:WarningCount++ }
+        'ERROR' { Write-Error $LogMessage -ErrorAction Continue; $script:ErrorCount++ }
     }
 }
 ```
@@ -279,8 +329,9 @@ function Write-Log {
 # DEBUG - Detailed diagnostic information
 Write-Log "Processing device: $DeviceName" -Level DEBUG
 
-# INFO - General informational messages
+# INFO - General informational messages (including execution time)
 Write-Log "Starting health check..." -Level INFO
+Write-Log "Duration: $ExecutionTime seconds" -Level INFO  # REQUIRED
 
 # WARN - Warning conditions (non-critical)
 Write-Log "Service not found, using default" -Level WARN
@@ -294,7 +345,7 @@ Write-Log "Failed to connect to WMI" -Level ERROR
 **Required logging points:**
 
 ```powershell
-# 1. Script start
+# 1. Script start (REQUIRED)
 Write-Log "Starting: $ScriptName v$Version" -Level INFO
 
 # 2. Major steps
@@ -307,10 +358,10 @@ Write-Log "Total memory: $TotalMemory GB" -Level DEBUG
 Write-Log "Disk space below 20%" -Level WARN
 
 # 5. Errors
-Write-Log "Failed to query WMI: $_" -Level ERROR
+Write-Log "Failed to query CIM: $_" -Level ERROR
 
-# 6. Script completion
-Write-Log "Script completed in $Duration seconds" -Level INFO
+# 6. Script completion and execution time (REQUIRED)
+Write-Log "Script completed in $ExecutionTime seconds" -Level INFO
 ```
 
 ---
@@ -393,6 +444,18 @@ $Processes = Get-Process | Select-Object Name, CPU, WorkingSet
 
 # Bad
 $Processes = Get-Process  # Gets all properties
+```
+
+### Monitor Execution Time
+
+**Track performance in testing:**
+
+```powershell
+# During development, measure specific operations
+$OperationStart = Get-Date
+$Result = Invoke-ExpensiveOperation
+$OperationTime = ((Get-Date) - $OperationStart).TotalSeconds
+Write-Log "Operation completed in $OperationTime seconds" -Level DEBUG
 ```
 
 ---
@@ -511,7 +574,7 @@ function Get-DiskSpace {
         Retrieves disk space information for all logical drives
     
     .DESCRIPTION
-        Queries WMI for logical disk information and calculates
+        Queries CIM for logical disk information and calculates
         free space percentage. Excludes removable and network drives.
     
     .EXAMPLE
@@ -539,10 +602,49 @@ function Get-DiskSpace {
 
 ## Field Setting Standards
 
-### Always Validate Before Setting
+### REQUIRED: Use Set-NinjaField with CLI Fallback
+
+**NEVER call Ninja-Property-Set directly:**
+
+```powershell
+# REQUIRED approach - Always use this
+Set-NinjaField -FieldName "opsHealthScore" -Value $HealthScore
+
+# FORBIDDEN - Never do this
+Ninja-Property-Set "opsHealthScore" $HealthScore
+```
+
+### Set-NinjaField Implementation
+
+**Every script must include this function:**
 
 ```powershell
 function Set-NinjaField {
+    <#
+    .SYNOPSIS
+        Sets a NinjaRMM custom field value with automatic fallback to CLI
+    
+    .DESCRIPTION
+        Attempts to set a NinjaRMM custom field using the Ninja-Property-Set cmdlet.
+        If the cmdlet fails (e.g., not available in current context), automatically
+        falls back to using the NinjaRMM CLI executable.
+        
+        This dual approach ensures field setting works in all execution contexts:
+        - Ninja-Property-Set: Primary method (when running within NinjaRMM)
+        - ninjarmm-cli.exe: Fallback method (when cmdlet unavailable)
+    
+    .PARAMETER FieldName
+        The name of the custom field to set (case-sensitive)
+    
+    .PARAMETER Value
+        The value to set for the field. Null or empty values are skipped.
+    
+    .EXAMPLE
+        Set-NinjaField -FieldName "opsHealthScore" -Value 85
+    
+    .EXAMPLE
+        Set-NinjaField -FieldName "capDiskCFreeGB" -Value 125.5
+    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)]
@@ -553,33 +655,52 @@ function Set-NinjaField {
         $Value
     )
     
+    # Skip null or empty values
+    if ($null -eq $Value -or $Value -eq "") {
+        Write-Log "Skipping field '$FieldName' - no value provided" -Level DEBUG
+        return
+    }
+    
+    # Convert value to string
+    $ValueString = $Value.ToString()
+    
+    # Method 1: Try Ninja-Property-Set cmdlet (primary)
     try {
-        # Don't set null or empty values
-        if ($null -eq $Value -or $Value -eq "") {
-            Write-Log "Skipping field '$FieldName' - no value" -Level DEBUG
+        if (Get-Command Ninja-Property-Set -ErrorAction SilentlyContinue) {
+            Ninja-Property-Set $FieldName $ValueString -ErrorAction Stop
+            Write-Log "Field '$FieldName' = $ValueString" -Level DEBUG
             return
+        } else {
+            throw "Ninja-Property-Set cmdlet not available"
         }
-        
-        # Set the field
-        Ninja-Property-Set $FieldName $Value
-        Write-Log "Field '$FieldName' = $Value" -Level DEBUG
-        
     } catch {
-        Write-Log "Failed to set field '$FieldName': $_" -Level ERROR
+        Write-Log "Ninja-Property-Set failed for '$FieldName', using CLI fallback" -Level DEBUG
+        
+        # Method 2: Fall back to NinjaRMM CLI
+        try {
+            $NinjaCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
+            
+            if (-not (Test-Path $NinjaCLI)) {
+                throw "NinjaRMM CLI not found at: $NinjaCLI"
+            }
+            
+            # Execute: ninjarmm-cli.exe set <field-name> <value>
+            $CLIArgs = @("set", $FieldName, $ValueString)
+            $CLIResult = & $NinjaCLI $CLIArgs 2>&1
+            
+            if ($LASTEXITCODE -ne 0) {
+                throw "CLI exit code: $LASTEXITCODE, Output: $CLIResult"
+            }
+            
+            Write-Log "Field '$FieldName' = $ValueString (via CLI)" -Level DEBUG
+            $script:CLIFallbackCount++
+            
+        } catch {
+            Write-Log "Failed to set field '$FieldName' (both methods): $_" -Level ERROR
+            throw
+        }
     }
 }
-```
-
-### Use Wrapper Function
-
-**Never call Ninja-Property-Set directly:**
-
-```powershell
-# Good - Uses wrapper with error handling
-Set-NinjaField -FieldName "opsHealthScore" -Value $HealthScore
-
-# Bad - Direct call, no error handling
-Ninja-Property-Set "opsHealthScore" $HealthScore
 ```
 
 ### Handle Data Types Properly
@@ -606,9 +727,12 @@ Set-NinjaField -FieldName "capDiskCUsedPercent" -Value $DiskUsedPercent
 
 ## Script Execution Flow
 
-### Standard Flow
+### Standard Flow with Execution Time Tracking
 
 ```powershell
+# REQUIRED: Track start time
+$StartTime = Get-Date
+
 try {
     # 1. Log start
     Write-Log "Starting script..." -Level INFO
@@ -618,31 +742,40 @@ try {
         throw "Prerequisites not met"
     }
     
-    # 3. Initialize variables
-    $StartTime = Get-Date
-    
-    # 4. Gather data
+    # 3. Gather data
     $Data = Get-SystemData
     
-    # 5. Calculate metrics
+    # 4. Calculate metrics
     $Metrics = Calculate-Metrics $Data
     
-    # 6. Set fields
+    # 5. Set fields (using Set-NinjaField)
     Set-NinjaField -FieldName "field1" -Value $Metrics.Value1
     Set-NinjaField -FieldName "field2" -Value $Metrics.Value2
     
-    # 7. Log completion
+    # 6. Log completion
     Write-Log "Script completed successfully" -Level INFO
     
 } catch {
-    # 8. Handle errors
+    # 7. Handle errors
     Write-Log "Script failed: $_" -Level ERROR
     exit 1
     
 } finally {
-    # 9. Cleanup and summary
-    $Duration = ((Get-Date) - $StartTime).TotalSeconds
-    Write-Log "Execution time: $Duration seconds" -Level INFO
+    # 8. REQUIRED: Calculate and log execution time
+    $EndTime = Get-Date
+    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+    
+    Write-Log "========================================" -Level INFO
+    Write-Log "Execution Summary:" -Level INFO
+    Write-Log "  Duration: $ExecutionTime seconds" -Level INFO
+    Write-Log "  Errors: $script:ErrorCount" -Level INFO
+    Write-Log "  Warnings: $script:WarningCount" -Level INFO
+    
+    if ($script:CLIFallbackCount -gt 0) {
+        Write-Log "  CLI Fallbacks: $script:CLIFallbackCount" -Level INFO
+    }
+    
+    Write-Log "========================================" -Level INFO
 }
 ```
 
@@ -657,12 +790,29 @@ Before committing any script:
 ```markdown
 - [ ] Script runs without errors
 - [ ] All fields populate correctly
-- [ ] Execution time under target
+- [ ] Execution time logged in finally block
+- [ ] Execution time under target (documented in header)
 - [ ] Error handling works (test failure scenarios)
 - [ ] Logging is clear and helpful
 - [ ] Works on different Windows versions
 - [ ] Works with different hardware configurations
 - [ ] Handles missing data gracefully
+- [ ] Set-NinjaField fallback tested (if possible)
+```
+
+### Performance Testing
+
+```powershell
+# Test execution time multiple times
+for ($i = 1; $i -le 5; $i++) {
+    Write-Host "Run $i of 5"
+    Measure-Command { .\ScriptName.ps1 }
+}
+
+# Calculate average:
+# - Document in script header (Typical Duration)
+# - Ensure under timeout setting
+# - Compare to similar scripts
 ```
 
 ### Test Different Scenarios
@@ -674,6 +824,7 @@ Before committing any script:
 # - Timeout conditions
 # - Unusual hardware configurations
 # - Different Windows versions (10, 11, Server)
+# - Both field setting methods (if possible)
 ```
 
 ---
@@ -747,23 +898,37 @@ $ScriptVersion = "1.2.3"
 
 Detailed explanation if needed
 
+Changes:
+- Added execution time tracking
+- Implemented Set-NinjaField with CLI fallback
+- Improved error handling
+
 Fields affected:
 - fieldName1
 - fieldName2
-```
 
-**Examples:**
-
-```
-[Fix] Correct memory calculation in health check
-[Feature] Add SSD detection to disk monitoring
-[Perf] Optimize event log query performance
-[Docs] Update comment-based help
+Execution time: 15s (was 23s)
 ```
 
 ---
 
 ## Common Patterns
+
+### Execution Time Tracking Pattern
+
+```powershell
+# REQUIRED in all scripts
+$StartTime = Get-Date
+
+try {
+    # Script logic
+} catch {
+    # Error handling
+} finally {
+    $ExecutionTime = ((Get-Date) - $StartTime).TotalSeconds
+    Write-Log "Duration: $ExecutionTime seconds" -Level INFO
+}
+```
 
 ### Safe Value Retrieval
 
@@ -870,7 +1035,7 @@ try {
 
 # Good
 try {
-    Get-Service "MayNotExist"
+    Get-Service "MayNotExist" -ErrorAction Stop
 } catch {
     Write-Log "Service not found: $_" -Level WARN
     # Handle appropriately
@@ -887,29 +1052,33 @@ gci C:\ | ? { $_.Length -gt 1MB }
 Get-ChildItem C:\ | Where-Object { $_.Length -gt 1MB }
 ```
 
-### Don't Use Write-Host for Output
+### Don't Call Ninja-Property-Set Directly
 
 ```powershell
-# Bad - Write-Host breaks pipeline
-Write-Host "Computer name: $ComputerName"
+# Bad - No fallback, no error handling
+Ninja-Property-Set "fieldName" $Value
 
-# Good - Use Write-Log or Write-Output
-Write-Log "Computer name: $ComputerName" -Level INFO
+# Good - Uses wrapper with automatic fallback
+Set-NinjaField -FieldName "fieldName" -Value $Value
 ```
 
-### Don't Suppress All Errors
+### Don't Skip Execution Time Tracking
 
 ```powershell
-# Bad - Hides problems
-$ErrorActionPreference = 'SilentlyContinue'
-Get-Service "ServiceName"
-
-# Good - Handle errors explicitly
+# Bad - No execution time logging
 try {
-    $ErrorActionPreference = 'Stop'
-    Get-Service "ServiceName"
+    # Script logic
 } catch {
-    Write-Log "Error: $_" -Level ERROR
+    # Error handling
+}
+
+# Good - Execution time tracked and logged
+$StartTime = Get-Date
+try {
+    # Script logic
+} finally {
+    $ExecutionTime = ((Get-Date) - $StartTime).TotalSeconds
+    Write-Log "Duration: $ExecutionTime seconds" -Level INFO
 }
 ```
 
@@ -922,9 +1091,15 @@ Before submitting code:
 ```markdown
 ### Structure
 - [ ] Uses standard script template
-- [ ] Comment-based help complete
+- [ ] Comment-based help complete with execution time
 - [ ] Requires statements present
 - [ ] Standard sections in correct order
+
+### Critical Requirements
+- [ ] Execution time tracking implemented ($StartTime in init)
+- [ ] Execution time logged in finally block
+- [ ] Set-NinjaField function included with CLI fallback
+- [ ] No direct Ninja-Property-Set calls
 
 ### Naming
 - [ ] Script name follows convention
@@ -943,15 +1118,18 @@ Before submitting code:
 - [ ] Script start/end logged
 - [ ] Major steps logged
 - [ ] Appropriate log levels used
+- [ ] Execution time logged
 
 ### Performance
 - [ ] Uses CIM instead of WMI
 - [ ] Filters at source
 - [ ] Result sets limited
 - [ ] No expensive operations in loops
+- [ ] Execution time documented and acceptable
 
 ### Field Setting
-- [ ] Uses Set-NinjaField wrapper
+- [ ] Uses Set-NinjaField wrapper (NEVER direct calls)
+- [ ] Function includes CLI fallback logic
 - [ ] Values validated before setting
 - [ ] Data types handled properly
 - [ ] No null/empty values set
@@ -959,14 +1137,9 @@ Before submitting code:
 ### Testing
 - [ ] Tested on multiple systems
 - [ ] Error scenarios tested
-- [ ] Execution time acceptable
+- [ ] Execution time measured (5+ runs)
 - [ ] Fields populate correctly
-
-### Documentation
-- [ ] Inline comments for complex logic
-- [ ] Function help complete
-- [ ] Fields documented in header
-- [ ] Version number updated
+- [ ] Both field setting methods tested (if possible)
 ```
 
 ---
@@ -976,10 +1149,18 @@ Before submitting code:
 **Key Principles:**
 
 1. **Consistency** - Follow the template and standards
-2. **Reliability** - Handle errors gracefully
-3. **Performance** - Optimize queries and operations
+2. **Reliability** - Handle errors gracefully with dual-method field setting
+3. **Performance** - Track and optimize execution time
 4. **Maintainability** - Write clear, documented code
 5. **Security** - Follow security best practices
+
+**Critical Requirements:**
+
+- ✅ **Execution time tracking** - REQUIRED in all scripts
+- ✅ **Set-NinjaField with CLI fallback** - NEVER use Ninja-Property-Set directly
+- ✅ **Structured logging** - Including execution time in finally block
+- ✅ **Error handling** - Try-catch on all critical operations
+- ✅ **Performance optimization** - CIM, filtering, limited results
 
 **Quick Reference:**
 
@@ -989,11 +1170,13 @@ Before submitting code:
 - Structured logging always
 - CIM instead of WMI
 - Filter early and limit results
-- Validate before setting fields
+- **Track execution time ($StartTime in init, log in finally)**
+- **Use Set-NinjaField with CLI fallback (NEVER direct calls)**
 - Test thoroughly before committing
 
 ---
 
-**Document Version:** 1.0  
+**Document Version:** 1.1  
 **Last Updated:** February 9, 2026  
+**Changes:** Added critical requirements for execution time tracking and NinjaRMM CLI fallback  
 **Next Review:** Quarterly or when significant changes needed

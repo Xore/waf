@@ -2,7 +2,7 @@
 
 **Document Type:** Development Standards  
 **Audience:** Script Developers, Contributors  
-**Version:** 1.1  
+**Version:** 1.2  
 **Last Updated:** February 9, 2026
 
 ---
@@ -57,6 +57,77 @@ Ninja-Property-Set "opsHealthScore" $Score
 
 **Why:** The Set-NinjaField function automatically falls back to `ninjarmm-cli.exe` if `Ninja-Property-Set` fails, ensuring field updates work in all execution contexts.
 
+### MANDATORY: No User Interaction
+
+**ALL scripts MUST run unattended without user input**
+
+```powershell
+# FORBIDDEN - Never wait for user input
+Read-Host "Press Enter to continue"
+$UserChoice = Read-Host "Enter option (1-3)"
+Pause
+[Console]::ReadKey()
+
+# FORBIDDEN - No confirmation prompts
+Remove-Item $File -Confirm
+Stop-Service $ServiceName -Confirm
+
+# REQUIRED - Always use -Confirm:$false for automated operations
+Remove-Item $File -Confirm:$false -ErrorAction Stop
+Stop-Service $ServiceName -Confirm:$false -Force -ErrorAction Stop
+```
+
+**Why:** Scripts run via NinjaRMM automation in unattended mode. Any user interaction will cause the script to hang indefinitely until timeout.
+
+**Exceptions:** None. All operations must be fully automated.
+
+### MANDATORY: No Device Restarts Without Parameter
+
+**Scripts MUST NOT restart devices unless explicitly authorized via parameter**
+
+```powershell
+# FORBIDDEN - Never restart without parameter
+Restart-Computer
+Restart-Computer -Force
+Shutdown /r /t 0
+
+# REQUIRED - Only restart if parameter provided
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory=$false)]
+    [switch]$AllowRestart
+)
+
+if ($RequiresRestart) {
+    if ($AllowRestart) {
+        Write-Log "Restart authorized via parameter, initiating..." -Level WARN
+        Restart-Computer -Force
+    } else {
+        Write-Log "Restart required but not authorized (use -AllowRestart)" -Level WARN
+        Set-NinjaField -FieldName "opsRestartRequired" -Value "Yes"
+        # Exit without restarting
+    }
+}
+```
+
+**Why:** Unplanned device restarts disrupt users and can cause data loss. Restarts must be scheduled and coordinated.
+
+**Best Practice:** Set a field indicating restart required, alert administrators, and let them schedule the restart.
+
+### MANDATORY: No Interactive Debugging
+
+**Scripts MUST NOT use interactive debugging commands**
+
+```powershell
+# FORBIDDEN - Will hang script execution
+Set-PSBreakpoint
+Wait-Debugger
+$DebugPreference = 'Inquire'  # Will prompt user
+
+# REQUIRED - Use logging instead
+Write-Log "Debug checkpoint: Variable value = $Value" -Level DEBUG
+```
+
 ---
 
 ## Script Structure
@@ -99,6 +170,11 @@ Every script must include:
     - What calculations it performs
     - What fields it updates
     - Any important behavior notes
+    - If restart capability exists, document the parameter
+
+.PARAMETER AllowRestart
+    (If applicable) Authorizes the script to restart the device if required.
+    Without this parameter, script will only flag restart requirement.
 
 .NOTES
     Script Name:    (exact filename)
@@ -111,6 +187,9 @@ Every script must include:
     Execution Frequency: Daily/Weekly/On-demand
     Typical Duration: ~XX seconds (REQUIRED - from actual measurements)
     Timeout Setting: XXX seconds
+    
+    User Interaction: NONE (fully automated)
+    Restart Behavior: Never restarts unless -AllowRestart parameter provided
     
     Fields Updated:
         - fieldName1 (description)
@@ -141,6 +220,8 @@ Every script must include:
 - Document all NinjaRMM fields updated
 - List all dependencies explicitly
 - **REQUIRED: Include typical execution time from testing**
+- **REQUIRED: State "User Interaction: NONE"**
+- **REQUIRED: Document restart behavior**
 - Document all exit codes used
 
 ---
@@ -174,6 +255,7 @@ $ServiceStatus
 $IsHealthy
 $StartTime  # REQUIRED
 $ExecutionTime  # REQUIRED
+$AllowRestart  # For restart parameter
 
 # Bad
 $computername
@@ -211,6 +293,9 @@ function log { }
 [Parameter()]
 [int]$ThresholdPercent
 
+[Parameter()]
+[switch]$AllowRestart  # For restart authorization
+
 # Bad
 [Parameter()]
 [string]$comp
@@ -247,6 +332,21 @@ $ErrorActionPreference = 'Stop'
 ```
 
 This ensures all errors are catchable.
+
+### Suppress Confirmation Prompts
+
+**Always use -Confirm:$false for automated operations:**
+
+```powershell
+# Good - No user interaction
+Remove-Item $TempFile -Confirm:$false -Force -ErrorAction Stop
+Stop-Service $ServiceName -Confirm:$false -Force -ErrorAction Stop
+Restart-Service $ServiceName -Confirm:$false -Force -ErrorAction Stop
+
+# Bad - Will hang waiting for confirmation
+Remove-Item $TempFile
+Stop-Service $ServiceName
+```
 
 ### Specific Exception Handling
 
@@ -287,6 +387,117 @@ try {
 # Process what we got
 if ($DiskC) { Process-Disk $DiskC }
 if ($DiskD) { Process-Disk $DiskD }
+```
+
+---
+
+## Unattended Operation Standards
+
+### No User Input Commands
+
+**FORBIDDEN - Never use these:**
+
+```powershell
+# Interactive input
+Read-Host
+[Console]::ReadKey()
+[Console]::ReadLine()
+$Host.UI.ReadLine()
+
+# Pause commands
+Pause
+Start-Sleep -Seconds 999999  # Waiting for user
+cmd /c pause
+
+# Confirmation prompts
+-Confirm (without :$false)
+Write-Host "Press any key..."; $Host.UI.RawUI.ReadKey()
+```
+
+**REQUIRED - Alternatives:**
+
+```powershell
+# Instead of Read-Host for choices
+# Use parameters with default values
+[Parameter(Mandatory=$false)]
+[ValidateSet('Option1','Option2','Option3')]
+[string]$Mode = 'Option1'  # Default value
+
+# Instead of Pause
+# Use logging to track progress
+Write-Log "Processing complete" -Level INFO
+
+# Instead of confirmations
+# Always use -Confirm:$false
+Remove-Item $File -Confirm:$false -Force
+```
+
+### Device Restart Handling
+
+**REQUIRED Pattern:**
+
+```powershell
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory=$false)]
+    [switch]$AllowRestart
+)
+
+# ... script logic ...
+
+if ($RestartRequired) {
+    Write-Log "Device restart is required" -Level WARN
+    
+    if ($AllowRestart) {
+        Write-Log "Restart authorized via -AllowRestart parameter" -Level WARN
+        Write-Log "Initiating restart in 60 seconds..." -Level WARN
+        
+        # Give time for field updates to sync
+        Start-Sleep -Seconds 5
+        
+        # Perform restart
+        Restart-Computer -Force -ErrorAction Stop
+        
+    } else {
+        Write-Log "Restart NOT authorized. Use -AllowRestart to enable" -Level WARN
+        
+        # Flag for administrator review
+        Set-NinjaField -FieldName "opsRestartRequired" -Value "Yes"
+        Set-NinjaField -FieldName "opsRestartReason" -Value "$RestartReason"
+        Set-NinjaField -FieldName "opsRestartDetectedDate" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+        
+        # Create alert if available
+        Write-Log "Device requires restart: $RestartReason" -Level WARN
+        
+        # Exit without restarting
+        exit 0
+    }
+}
+```
+
+### Shutdown and Reboot Commands
+
+**FORBIDDEN without parameter:**
+
+```powershell
+# Never use these directly
+Restart-Computer
+Restart-Computer -Force
+Stop-Computer
+Stop-Computer -Force
+shutdown.exe /r
+shutdown.exe /s
+wmic os where Primary=TRUE reboot
+```
+
+**REQUIRED with parameter check:**
+
+```powershell
+if ($AllowRestart) {
+    Restart-Computer -Force
+} else {
+    Write-Log "Restart required but not authorized" -Level WARN
+}
 ```
 
 ---
@@ -333,8 +544,9 @@ Write-Log "Processing device: $DeviceName" -Level DEBUG
 Write-Log "Starting health check..." -Level INFO
 Write-Log "Duration: $ExecutionTime seconds" -Level INFO  # REQUIRED
 
-# WARN - Warning conditions (non-critical)
+# WARN - Warning conditions (non-critical, restart required, etc.)
 Write-Log "Service not found, using default" -Level WARN
+Write-Log "Restart required but not authorized" -Level WARN
 
 # ERROR - Error conditions (critical)
 Write-Log "Failed to connect to WMI" -Level ERROR
@@ -354,8 +566,9 @@ Write-Log "Gathering system information..." -Level INFO
 # 3. Important values (DEBUG level)
 Write-Log "Total memory: $TotalMemory GB" -Level DEBUG
 
-# 4. Warnings
+# 4. Warnings (including restart requirements)
 Write-Log "Disk space below 20%" -Level WARN
+Write-Log "Restart required: $Reason" -Level WARN
 
 # 5. Errors
 Write-Log "Failed to query CIM: $_" -Level ERROR
@@ -555,6 +768,11 @@ $MemoryGB = $Computer.TotalPhysicalMemory / 1024 / 1024 / 1024
 # Exclude system processes to avoid access denied errors
 $UserProcesses = Get-Process | Where-Object { $_.Id -gt 100 }
 
+# Restart not allowed without explicit parameter authorization
+if ($RestartRequired -and -not $AllowRestart) {
+    Write-Log "Restart required but not authorized" -Level WARN
+}
+
 # Bad - States the obvious
 # Get the computer name
 $ComputerName = $env:COMPUTERNAME
@@ -671,32 +889,27 @@ function Set-NinjaField {
             Write-Log "Field '$FieldName' = $ValueString" -Level DEBUG
             return
         } else {
-            throw "Ninja-Property-Set cmdlet not available"
+            throw "Cmdlet not available"
         }
     } catch {
-        Write-Log "Ninja-Property-Set failed for '$FieldName', using CLI fallback" -Level DEBUG
+        Write-Log "Using CLI fallback for '$FieldName'" -Level DEBUG
         
         # Method 2: Fall back to NinjaRMM CLI
         try {
             $NinjaCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
-            
             if (-not (Test-Path $NinjaCLI)) {
-                throw "NinjaRMM CLI not found at: $NinjaCLI"
+                throw "CLI not found: $NinjaCLI"
             }
             
-            # Execute: ninjarmm-cli.exe set <field-name> <value>
-            $CLIArgs = @("set", $FieldName, $ValueString)
-            $CLIResult = & $NinjaCLI $CLIArgs 2>&1
-            
+            $CLIResult = & $NinjaCLI set $FieldName $ValueString 2>&1
             if ($LASTEXITCODE -ne 0) {
-                throw "CLI exit code: $LASTEXITCODE, Output: $CLIResult"
+                throw "CLI failed: $CLIResult"
             }
             
-            Write-Log "Field '$FieldName' = $ValueString (via CLI)" -Level DEBUG
+            Write-Log "Field '$FieldName' = $ValueString (CLI)" -Level DEBUG
             $script:CLIFallbackCount++
-            
         } catch {
-            Write-Log "Failed to set field '$FieldName' (both methods): $_" -Level ERROR
+            Write-Log "Failed to set '$FieldName': $_" -Level ERROR
             throw
         }
     }
@@ -748,20 +961,33 @@ try {
     # 4. Calculate metrics
     $Metrics = Calculate-Metrics $Data
     
-    # 5. Set fields (using Set-NinjaField)
+    # 5. Check if restart required
+    if ($RequiresRestart) {
+        if ($AllowRestart) {
+            Write-Log "Restart authorized, initiating..." -Level WARN
+            # Ensure fields are set first
+            Start-Sleep -Seconds 5
+            Restart-Computer -Force
+        } else {
+            Write-Log "Restart required but not authorized" -Level WARN
+            Set-NinjaField -FieldName "opsRestartRequired" -Value "Yes"
+        }
+    }
+    
+    # 6. Set fields (using Set-NinjaField)
     Set-NinjaField -FieldName "field1" -Value $Metrics.Value1
     Set-NinjaField -FieldName "field2" -Value $Metrics.Value2
     
-    # 6. Log completion
+    # 7. Log completion
     Write-Log "Script completed successfully" -Level INFO
     
 } catch {
-    # 7. Handle errors
+    # 8. Handle errors
     Write-Log "Script failed: $_" -Level ERROR
     exit 1
     
 } finally {
-    # 8. REQUIRED: Calculate and log execution time
+    # 9. REQUIRED: Calculate and log execution time
     $EndTime = Get-Date
     $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
     
@@ -792,12 +1018,46 @@ Before committing any script:
 - [ ] All fields populate correctly
 - [ ] Execution time logged in finally block
 - [ ] Execution time under target (documented in header)
+- [ ] No user input required (runs unattended)
+- [ ] No unexpected restarts (parameter check works)
 - [ ] Error handling works (test failure scenarios)
 - [ ] Logging is clear and helpful
 - [ ] Works on different Windows versions
 - [ ] Works with different hardware configurations
 - [ ] Handles missing data gracefully
 - [ ] Set-NinjaField fallback tested (if possible)
+- [ ] -Confirm:$false on all potentially interactive cmdlets
+```
+
+### Unattended Operation Testing
+
+```powershell
+# Test that script doesn't hang
+# Run with timeout to verify no user interaction
+$Job = Start-Job -ScriptBlock { .\ScriptName.ps1 }
+if (-not (Wait-Job $Job -Timeout 300)) {
+    Write-Host "FAIL: Script hung (likely waiting for input)" -ForegroundColor Red
+    Stop-Job $Job
+    Remove-Job $Job
+} else {
+    Write-Host "PASS: Script completed without hanging" -ForegroundColor Green
+    Receive-Job $Job
+    Remove-Job $Job
+}
+```
+
+### Restart Parameter Testing
+
+```powershell
+# Test 1: Without parameter (should NOT restart)
+.\ScriptName.ps1
+# Verify: Device still running
+# Verify: opsRestartRequired field set if applicable
+
+# Test 2: With parameter (should restart if required)
+# WARNING: Only test on non-production VM
+.\ScriptName.ps1 -AllowRestart
+# Verify: Device restarts only if actually needed
 ```
 
 ### Performance Testing
@@ -813,18 +1073,6 @@ for ($i = 1; $i -le 5; $i++) {
 # - Document in script header (Typical Duration)
 # - Ensure under timeout setting
 # - Compare to similar scripts
-```
-
-### Test Different Scenarios
-
-```powershell
-# Test with:
-# - Missing WMI data
-# - Permission errors
-# - Timeout conditions
-# - Unusual hardware configurations
-# - Different Windows versions (10, 11, Server)
-# - Both field setting methods (if possible)
 ```
 
 ---
@@ -855,7 +1103,7 @@ function Get-ServiceStatus {
     )
     
     # Input is validated before use
-    $Service = Get-Service $ServiceName
+    $Service = Get-Service $ServiceName -ErrorAction Stop
 }
 ```
 
@@ -901,6 +1149,8 @@ Detailed explanation if needed
 Changes:
 - Added execution time tracking
 - Implemented Set-NinjaField with CLI fallback
+- Removed user input prompts
+- Added restart parameter protection
 - Improved error handling
 
 Fields affected:
@@ -912,118 +1162,38 @@ Execution time: 15s (was 23s)
 
 ---
 
-## Common Patterns
-
-### Execution Time Tracking Pattern
-
-```powershell
-# REQUIRED in all scripts
-$StartTime = Get-Date
-
-try {
-    # Script logic
-} catch {
-    # Error handling
-} finally {
-    $ExecutionTime = ((Get-Date) - $StartTime).TotalSeconds
-    Write-Log "Duration: $ExecutionTime seconds" -Level INFO
-}
-```
-
-### Safe Value Retrieval
-
-```powershell
-function Get-SafeValue {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory=$true)]
-        [scriptblock]$ScriptBlock,
-        
-        [Parameter(Mandatory=$false)]
-        $DefaultValue = "N/A"
-    )
-    
-    try {
-        $Result = & $ScriptBlock
-        if ($null -eq $Result -or $Result -eq "") {
-            return $DefaultValue
-        }
-        return $Result
-    } catch {
-        return $DefaultValue
-    }
-}
-
-# Usage
-$ComputerName = Get-SafeValue { $env:COMPUTERNAME } "Unknown"
-```
-
-### Percentage Calculation
-
-```powershell
-function Get-Percentage {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory=$true)]
-        [double]$Value,
-        
-        [Parameter(Mandatory=$true)]
-        [double]$Total,
-        
-        [Parameter(Mandatory=$false)]
-        [int]$DecimalPlaces = 1
-    )
-    
-    if ($Total -eq 0) {
-        return 0
-    }
-    
-    $Percent = ($Value / $Total) * 100
-    return [math]::Round($Percent, $DecimalPlaces)
-}
-
-# Usage
-$UsedPercent = Get-Percentage -Value $UsedSpace -Total $TotalSpace
-```
-
-### Retry Logic
-
-```powershell
-function Invoke-WithRetry {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory=$true)]
-        [scriptblock]$ScriptBlock,
-        
-        [Parameter(Mandatory=$false)]
-        [int]$MaxRetries = 3,
-        
-        [Parameter(Mandatory=$false)]
-        [int]$DelaySeconds = 2
-    )
-    
-    $Attempt = 1
-    while ($Attempt -le $MaxRetries) {
-        try {
-            return & $ScriptBlock
-        } catch {
-            if ($Attempt -eq $MaxRetries) {
-                throw
-            }
-            Write-Log "Attempt $Attempt failed, retrying..." -Level WARN
-            Start-Sleep -Seconds $DelaySeconds
-            $Attempt++
-        }
-    }
-}
-
-# Usage
-$Service = Invoke-WithRetry { Get-Service "ServiceName" }
-```
-
----
-
 ## Anti-Patterns to Avoid
+
+### Don't Wait for User Input
+
+```powershell
+# Bad - Script will hang
+Read-Host "Press Enter to continue"
+$Choice = Read-Host "Select option"
+Pause
+
+# Good - Fully automated
+Write-Log "Processing..." -Level INFO
+# No user interaction needed
+```
+
+### Don't Restart Without Authorization
+
+```powershell
+# Bad - Uncontrolled restart
+if ($UpdatesInstalled) {
+    Restart-Computer -Force
+}
+
+# Good - Parameter controlled
+if ($UpdatesInstalled) {
+    if ($AllowRestart) {
+        Restart-Computer -Force
+    } else {
+        Set-NinjaField -FieldName "opsRestartRequired" -Value "Yes"
+    }
+}
+```
 
 ### Don't Ignore Errors
 
@@ -1082,6 +1252,20 @@ try {
 }
 ```
 
+### Don't Use Interactive Confirmations
+
+```powershell
+# Bad - Will hang waiting for confirmation
+Remove-Item $File
+Stop-Service $ServiceName
+Restart-Service $ServiceName
+
+# Good - Suppress confirmations
+Remove-Item $File -Confirm:$false -Force -ErrorAction Stop
+Stop-Service $ServiceName -Confirm:$false -Force -ErrorAction Stop
+Restart-Service $ServiceName -Confirm:$false -Force -ErrorAction Stop
+```
+
 ---
 
 ## Code Review Checklist
@@ -1100,6 +1284,9 @@ Before submitting code:
 - [ ] Execution time logged in finally block
 - [ ] Set-NinjaField function included with CLI fallback
 - [ ] No direct Ninja-Property-Set calls
+- [ ] No user input commands (Read-Host, Pause, etc.)
+- [ ] No device restarts without -AllowRestart parameter
+- [ ] -Confirm:$false on all potentially interactive cmdlets
 
 ### Naming
 - [ ] Script name follows convention
@@ -1119,6 +1306,7 @@ Before submitting code:
 - [ ] Major steps logged
 - [ ] Appropriate log levels used
 - [ ] Execution time logged
+- [ ] Restart requirements logged
 
 ### Performance
 - [ ] Uses CIM instead of WMI
@@ -1134,12 +1322,21 @@ Before submitting code:
 - [ ] Data types handled properly
 - [ ] No null/empty values set
 
+### Unattended Operation
+- [ ] No Read-Host or similar input commands
+- [ ] No Pause commands
+- [ ] No interactive debugging
+- [ ] Restart requires parameter authorization
+- [ ] All confirmations suppressed (-Confirm:$false)
+
 ### Testing
 - [ ] Tested on multiple systems
+- [ ] Runs unattended without hanging
 - [ ] Error scenarios tested
 - [ ] Execution time measured (5+ runs)
 - [ ] Fields populate correctly
 - [ ] Both field setting methods tested (if possible)
+- [ ] Restart parameter tested (if applicable)
 ```
 
 ---
@@ -1151,13 +1348,17 @@ Before submitting code:
 1. **Consistency** - Follow the template and standards
 2. **Reliability** - Handle errors gracefully with dual-method field setting
 3. **Performance** - Track and optimize execution time
-4. **Maintainability** - Write clear, documented code
-5. **Security** - Follow security best practices
+4. **Automation** - No user interaction, fully unattended
+5. **Safety** - No unexpected restarts
+6. **Maintainability** - Write clear, documented code
+7. **Security** - Follow security best practices
 
 **Critical Requirements:**
 
 - ✅ **Execution time tracking** - REQUIRED in all scripts
 - ✅ **Set-NinjaField with CLI fallback** - NEVER use Ninja-Property-Set directly
+- ✅ **No user interaction** - NEVER use Read-Host, Pause, or confirmations
+- ✅ **No restarts without parameter** - NEVER restart without -AllowRestart
 - ✅ **Structured logging** - Including execution time in finally block
 - ✅ **Error handling** - Try-catch on all critical operations
 - ✅ **Performance optimization** - CIM, filtering, limited results
@@ -1172,11 +1373,14 @@ Before submitting code:
 - Filter early and limit results
 - **Track execution time ($StartTime in init, log in finally)**
 - **Use Set-NinjaField with CLI fallback (NEVER direct calls)**
+- **No user input - fully automated**
+- **No restarts without -AllowRestart parameter**
+- **-Confirm:$false on interactive cmdlets**
 - Test thoroughly before committing
 
 ---
 
-**Document Version:** 1.1  
+**Document Version:** 1.2  
 **Last Updated:** February 9, 2026  
-**Changes:** Added critical requirements for execution time tracking and NinjaRMM CLI fallback  
+**Changes:** Added mandatory rules for no user interaction and no restarts without parameter  
 **Next Review:** Quarterly or when significant changes needed

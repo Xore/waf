@@ -1,136 +1,113 @@
-#Requires -Version 5.1
+#Requires -Version 5.1 -RunAsAdministrator
 
 <#
 .SYNOPSIS
-    Set the LM and NTLMv1 authentication responses via LmCompatibilityLevel in the registry
+    Configures the LAN Manager authentication compatibility level for enhanced security.
+
 .DESCRIPTION
-    Set the LM and NTLMv1 authentication responses via LmCompatibilityLevel in the registry
+    This script sets the LMCompatibilityLevel registry value to enforce NTLMv2 authentication 
+    and reject LM and NTLM protocols. This security hardening measure prevents legacy 
+    authentication protocols that are vulnerable to pass-the-hash and relay attacks.
+    
+    Setting LMCompatibilityLevel to 5 configures Windows to:
+    - Send only NTLMv2 responses
+    - Refuse LM and NTLM authentication
+    - Require NTLMv2 session security
+    This is the recommended setting for modern Active Directory environments.
+
+.PARAMETER CompatibilityLevel
+    LAN Manager authentication level (0-5). Default: 5 (Send NTLMv2 only, refuse LM/NTLM)
+    0 = Send LM & NTLM responses
+    1 = Send LM & NTLM, use NTLMv2 if negotiated
+    2 = Send NTLM only
+    3 = Send NTLMv2 only
+    4 = Send NTLMv2 only, refuse LM
+    5 = Send NTLMv2 only, refuse LM & NTLM (Most Secure)
+
 .EXAMPLE
-    No parameters needed.
-    Sets LAN Manager auth level to 5, "Send NTLMv2 response only. Refuse LM & NTLM."
-.EXAMPLE
-     -LmCompatibilityLevel 5
-    Sets LAN Manager auth level to 5, "Send NTLMv2 response only. Refuse LM & NTLM."
-.EXAMPLE
-     -LmCompatibilityLevel 3
-    Sets LAN Manager auth level to 3, "Send NTLMv2 response only."
-    This is the default from Windows 7 and up.
-.EXAMPLE
-    PS C:\> Disable-LmNtlmV1.ps1 -LmCompatibilityLevel 5
-    Sets LAN Manager auth level to 5, "Send NTLMv2 response only. Refuse LM & NTLM."
+    -CompatibilityLevel 5
+
+    [Info] Setting LMCompatibilityLevel to 5 (Send NTLMv2 only, refuse LM and NTLM)
+    [Info] LMCompatibilityLevel successfully set to 5
+    [Info] Restart required for changes to take effect
+
 .OUTPUTS
     None
+
 .NOTES
-    Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Reference chart: https://ss64.com/nt/syntax-ntlm.html
-    Version: 1.1
-    Release Notes: Renamed script and added Script Variable support, updated Set-ItemProp
+    Minimum OS Architecture Supported: Windows 10, Windows Server 2012 R2
+    Release notes: Initial release for WAF v3.0
+    User interaction: None
+    Restart behavior: System restart required for changes to take effect
+    Typical duration: < 1 second
+    
 .COMPONENT
-    ProtocolSecurity
+    Registry - HKLM:\SYSTEM\CurrentControlSet\Control\Lsa
+    
+.LINK
+    https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/network-security-lan-manager-authentication-level
+
+.FUNCTIONALITY
+    - Validates compatibility level parameter (0-5)
+    - Sets LMCompatibilityLevel registry value in LSA configuration
+    - Enforces NTLMv2-only authentication when set to level 5
+    - Enhances security by disabling legacy LM and NTLM protocols
+    - Requires system restart to apply changes
 #>
 
 [CmdletBinding()]
-param (
+param(
     [Parameter()]
-    [int]$LmCompatibilityLevel = 5
+    [ValidateRange(0, 5)]
+    [int]$CompatibilityLevel = 5
 )
 
 begin {
-    if ($env:lmCompatibilityLevel -and $env:lmCompatibilityLevel -notlike "null") {
-        $LmCompatibilityLevel = switch ($env:lmCompatibilityLevel) {
-            "Send NTLMv2 Response Only and Refuse LM and NTLM" { 5 }
-            "Send NTLMv2 Response Only and Refuse LM" { 4 }
-            "Send NTLMv2 Response Only" { 3 }
-            "Send LM and NTLM and Use NTMLv2 if Negotiated" { 2 }
-            "Send LM and NTLM" { 1 }
-        }
+    if ($env:compatibilityLevel -and $env:compatibilityLevel -notlike "null") {
+        $CompatibilityLevel = [int]$env:compatibilityLevel
     }
 
-    if ($LmCompatibilityLevel -lt 0 -or $LmCompatibilityLevel -gt 5) {
-        Write-Error "Lm Compatibility Level needs to be between 0 and 5 (including 0 and 5)!"
-        exit 1
-    }
-    function Test-IsElevated {
-        $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-        $p = New-Object System.Security.Principal.WindowsPrincipal($id)
-        if ($p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator))
-        { Write-Output $true }
-        else
-        { Write-Output $false }
-    }
-    function Set-ItemProp {
-        param (
-            $Path,
-            $Name,
-            $Value,
-            [ValidateSet("DWord", "QWord", "String", "ExpandedString", "Binary", "MultiString", "Unknown")]
-            $PropertyType = "DWord"
-        )
-        # Do not output errors and continue
-        $ErrorActionPreference = [System.Management.Automation.ActionPreference]::SilentlyContinue
-        if (-not $(Test-Path -Path $Path)) {
-            # Check if path does not exist and create the path
-            New-Item -Path $Path -Force | Out-Null
-        }
-        if ((Get-ItemProperty -Path $Path -Name $Name)) {
-            # Update property and print out what it was changed from and changed to
-            $CurrentValue = Get-ItemProperty -Path $Path -Name $Name
-            try {
-                Set-ItemProperty -Path $Path -Name $Name -Value $Value -Force -Confirm:$false -ErrorAction Stop | Out-Null
-            }
-            catch {
-                Write-Error $_
-            }
-            Write-Host "$Path\$Name changed from $CurrentValue to $(Get-ItemProperty -Path $Path -Name $Name)"
-        }
-        else {
-            # Create property with value
-            try {
-                New-ItemProperty -Path $Path -Name $Name -Value $Value -PropertyType $PropertyType -Force -Confirm:$false -ErrorAction Stop | Out-Null
-            }
-            catch {
-                Write-Error $_
-            }
-            Write-Host "Set $Path$Name to $(Get-ItemProperty -Path $Path -Name $Name)"
-        }
-        $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Continue
+    $RegPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa"
+    $RegName = "LMCompatibilityLevel"
+    $ExitCode = 0
+
+    $LevelDescriptions = @{
+        0 = "Send LM and NTLM responses"
+        1 = "Send LM and NTLM, use NTLMv2 if negotiated"
+        2 = "Send NTLM response only"
+        3 = "Send NTLMv2 response only"
+        4 = "Send NTLMv2 only, refuse LM"
+        5 = "Send NTLMv2 only, refuse LM and NTLM"
     }
 }
+
 process {
-    if (-not (Test-IsElevated)) {
-        Write-Error -Message "Access Denied. Please run with Administrator privileges."
-        exit 1
-    }
-    $Path = @(
-        "HKLM:\SYSTEM\CurrentControlSet\Services\Lsa"
-        "HKLM:\SYSTEM\CurrentControlSet\Control\LSA"
-    )
-    $Name = "LmCompatibilityLevel"
-    # $Value = $LmCompatibilityLevel
-    # Sets LmCompatibilityLevel to $LmCompatibilityLevel
     try {
-        $Path | ForEach-Object {
-            Set-ItemProp -Path $_ -Name $Name -Value $LmCompatibilityLevel
+        Write-Host "[Info] Setting LMCompatibilityLevel to $CompatibilityLevel ($($LevelDescriptions[$CompatibilityLevel]))"
+
+        if (-not (Test-Path $RegPath)) {
+            New-Item -Path $RegPath -Force | Out-Null
         }
-        
+
+        Set-ItemProperty -Path $RegPath -Name $RegName -Value $CompatibilityLevel -Type DWord -Force -Confirm:$false
+
+        $CurrentValue = (Get-ItemProperty -Path $RegPath -Name $RegName -ErrorAction SilentlyContinue).$RegName
+        if ($CurrentValue -eq $CompatibilityLevel) {
+            Write-Host "[Info] LMCompatibilityLevel successfully set to $CompatibilityLevel"
+            Write-Host "[Info] Restart required for changes to take effect"
+        }
+        else {
+            Write-Host "[Error] Failed to set LMCompatibilityLevel. Current value: $CurrentValue"
+            $ExitCode = 1
+        }
     }
     catch {
-        Write-Error $_
-        exit 1
+        Write-Host "[Error] Failed to configure LMCompatibilityLevel: $_"
+        $ExitCode = 1
     }
-    $Path | ForEach-Object {
-        $Value = Get-ItemPropertyValue -Path $_ -Name $Name -ErrorAction SilentlyContinue
-        if ($null -eq $Value) {
-            Write-Host "$_\$Name set to: OS's default value(3)."
-        }
-        else {
-            Write-Host "$_\$Name set to: $Value"
-        }
-    }
-}
-end {
-    
-    
-    
+
+    exit $ExitCode
 }
 
+end {
+}

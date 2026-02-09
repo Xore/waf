@@ -2,7 +2,7 @@
 
 **Document Type:** Development Standards  
 **Audience:** Script Developers, Contributors  
-**Version:** 1.2  
+**Version:** 1.3  
 **Last Updated:** February 9, 2026
 
 ---
@@ -130,6 +130,197 @@ Write-Log "Debug checkpoint: Variable value = $Value" -Level DEBUG
 
 ---
 
+## File Naming Standards
+
+### Script File Naming Schema
+
+**REQUIRED Format:**
+
+```
+[Human Readable Description] [Sequential Number].ps1
+```
+
+**Rules:**
+
+1. **Description:** 2-5 words maximum, human-readable, no technical abbreviations
+2. **Sequential Number:** Start at 1, increment for each new script
+3. **No Verb-Noun Format:** Use plain language descriptions
+4. **Spaces Allowed:** Use spaces between words for readability
+5. **Case:** Title Case (capitalize first letter of each word)
+
+**Examples:**
+
+```powershell
+# Good - Clear and numbered
+Disk Space Monitor 1.ps1
+Memory Health Check 2.ps1
+Windows Update Status 3.ps1
+Security Compliance Scan 4.ps1
+Network Connectivity Test 5.ps1
+
+# Bad - Too technical, no number
+Get-DiskSpace.ps1
+Check-MemHealth.ps1
+
+# Bad - Too long
+Monitor All System Disk Drives For Free Space 1.ps1
+
+# Bad - Wrong numbering format
+Disk Space Monitor [001].ps1
+Disk Space Monitor v1.ps1
+```
+
+### Sequential Number Assignment
+
+**Process:**
+
+1. Check the repository for the highest existing number
+2. Assign the next sequential number to your new script
+3. Document the script in the inventory (if tracking exists)
+4. Never reuse numbers, even if a script is deleted
+
+**Finding Next Number:**
+
+```powershell
+# Find highest numbered script
+Get-ChildItem -Path . -Filter "*.ps1" -Recurse |
+    Where-Object { $_.Name -match ' (\d+)\.ps1$' } |
+    ForEach-Object {
+        [PSCustomObject]@{
+            Name = $_.Name
+            Number = [int]$Matches[1]
+        }
+    } |
+    Sort-Object Number -Descending |
+    Select-Object -First 1
+
+# Next available number is: HighestNumber + 1
+```
+
+### Description Guidelines
+
+**Good Descriptions:**
+- Clear purpose obvious from name
+- 2-5 words maximum
+- No technical jargon
+- Describes WHAT it does, not HOW
+
+**Examples:**
+
+```
+System Health Score 15.ps1           # Clear
+Disk Usage Report 23.ps1             # Clear
+Bitlocker Status Check 47.ps1        # Clear
+Firewall Rules Audit 89.ps1          # Clear
+
+Get-WMISystemInfo 15.ps1             # Too technical
+Disk-Space-Monitor-Tool 23.ps1       # Too many hyphens
+CheckIfDiskSpaceIsLow 47.ps1         # Awkward phrasing
+Script1.ps1                           # No description
+```
+
+### Special Cases
+
+**Helper Scripts:**
+
+If creating internal helper scripts (not monitored/executed directly):
+
+```
+Helpers\[Description] [Number].ps1
+
+Examples:
+Helpers\Format Disk Data 1.ps1
+Helpers\Calculate Health Score 2.ps1
+```
+
+**Test Scripts:**
+
+```
+Tests\[Description] Test [Number].ps1
+
+Examples:
+Tests\Disk Space Monitor Test 1.ps1
+Tests\Memory Health Test 2.ps1
+```
+
+**Refactored Scripts:**
+
+When refactoring, keep the same number:
+
+```
+# Before refactoring
+Disk Space Monitor 15.ps1
+
+# After refactoring (same number)
+Disk Space Monitor 15.ps1
+
+# Update version in header, not filename
+```
+
+### Migration from Old Naming
+
+If migrating existing scripts with different naming:
+
+**Option 1: Rename with sequential numbers (recommended)**
+
+```powershell
+# Old names
+Get-DiskSpace.ps1
+Get-MemoryUsage.ps1
+Check-WindowsUpdate.ps1
+
+# New names (assign next available numbers)
+Disk Space Monitor 142.ps1
+Memory Usage Check 143.ps1
+Windows Update Status 144.ps1
+```
+
+**Option 2: Keep old format in legacy folder**
+
+```
+Legacy\Get-DiskSpace.ps1
+Legacy\Get-MemoryUsage.ps1
+
+# New scripts in root with new naming
+Disk Space Monitor 1.ps1
+Memory Usage Check 2.ps1
+```
+
+### Naming Anti-Patterns
+
+**AVOID:**
+
+```powershell
+# No number
+Disk Space Monitor.ps1
+
+# Technical verb-noun format
+Get-DiskSpaceMetrics.ps1
+
+# Version numbers instead of sequential
+Disk Space Monitor v2.3.ps1
+
+# Date stamps in filename
+Disk Space Monitor 2026-02-09.ps1
+
+# Too long (>5 words)
+Monitor All Local Fixed Disk Drives Free Space 1.ps1
+
+# Abbreviations and acronyms
+DSM Tool 1.ps1
+WU Check Script 2.ps1
+
+# Hyphens or underscores instead of spaces
+Disk-Space-Monitor_1.ps1
+
+# Incorrect number format
+Disk Space Monitor [1].ps1
+Disk Space Monitor (1).ps1
+Disk Space Monitor #1.ps1
+```
+
+---
+
 ## Script Structure
 
 ### Standard Script Layout
@@ -177,7 +368,7 @@ Every script must include:
     Without this parameter, script will only flag restart requirement.
 
 .NOTES
-    Script Name:    (exact filename)
+    Script Name:    (exact filename including number)
     Author:         Windows Automation Framework
     Version:        X.Y
     Creation Date:  YYYY-MM-DD
@@ -204,7 +395,7 @@ Every script must include:
     Exit Codes:
         0 - Success
         1 - General error
-        2 - Missing dependencies
+        2 - Missing prerequisites
         3 - Permission denied
         4 - Timeout
 
@@ -219,6 +410,7 @@ Every script must include:
 - DESCRIPTION should be 3-5 sentences
 - Document all NinjaRMM fields updated
 - List all dependencies explicitly
+- **REQUIRED: Include exact filename with number in Script Name field**
 - **REQUIRED: Include typical execution time from testing**
 - **REQUIRED: State "User Interaction: NONE"**
 - **REQUIRED: Document restart behavior**
@@ -227,21 +419,6 @@ Every script must include:
 ---
 
 ## Naming Conventions
-
-### Script Names
-
-**Format:** `Verb-NounDescription.ps1`
-
-**Examples:**
-- `Get-SystemHealthScore.ps1`
-- `Update-SecurityCompliance.ps1`
-- `Monitor-DiskCapacity.ps1`
-
-**Rules:**
-- Use approved PowerShell verbs (Get, Set, Update, Monitor, Test, etc.)
-- Use PascalCase for all parts
-- Be descriptive but concise
-- Avoid abbreviations unless standard (OS, CPU, RAM)
 
 ### Variable Names
 
@@ -425,7 +602,7 @@ Write-Host "Press any key..."; $Host.UI.RawUI.ReadKey()
 
 # Instead of Pause
 # Use logging to track progress
-Write-Log "Processing complete" -Level INFO
+Write-Log "Processing completed" -Level INFO
 
 # Instead of confirmations
 # Always use -Confirm:$false
@@ -1015,6 +1192,7 @@ Before committing any script:
 
 ```markdown
 - [ ] Script runs without errors
+- [ ] Filename follows naming schema (Description + Number)
 - [ ] All fields populate correctly
 - [ ] Execution time logged in finally block
 - [ ] Execution time under target (documented in header)
@@ -1034,7 +1212,7 @@ Before committing any script:
 ```powershell
 # Test that script doesn't hang
 # Run with timeout to verify no user interaction
-$Job = Start-Job -ScriptBlock { .\ScriptName.ps1 }
+$Job = Start-Job -ScriptBlock { .\"Script Name 123.ps1" }
 if (-not (Wait-Job $Job -Timeout 300)) {
     Write-Host "FAIL: Script hung (likely waiting for input)" -ForegroundColor Red
     Stop-Job $Job
@@ -1050,13 +1228,12 @@ if (-not (Wait-Job $Job -Timeout 300)) {
 
 ```powershell
 # Test 1: Without parameter (should NOT restart)
-.\ScriptName.ps1
+.\"Script Name 123.ps1"
 # Verify: Device still running
 # Verify: opsRestartRequired field set if applicable
 
-# Test 2: With parameter (should restart if required)
-# WARNING: Only test on non-production VM
-.\ScriptName.ps1 -AllowRestart
+# Test 2: With parameter (only on test VM!)
+.\"Script Name 123.ps1" -AllowRestart
 # Verify: Device restarts only if actually needed
 ```
 
@@ -1066,7 +1243,7 @@ if (-not (Wait-Job $Job -Timeout 300)) {
 # Test execution time multiple times
 for ($i = 1; $i -le 5; $i++) {
     Write-Host "Run $i of 5"
-    Measure-Command { .\ScriptName.ps1 }
+    Measure-Command { .\"Script Name 123.ps1" }
 }
 
 # Calculate average:
@@ -1152,6 +1329,7 @@ Changes:
 - Removed user input prompts
 - Added restart parameter protection
 - Improved error handling
+- Renamed file to new schema: "Description 123.ps1"
 
 Fields affected:
 - fieldName1
@@ -1266,6 +1444,25 @@ Stop-Service $ServiceName -Confirm:$false -Force -ErrorAction Stop
 Restart-Service $ServiceName -Confirm:$false -Force -ErrorAction Stop
 ```
 
+### Don't Use Wrong File Naming
+
+```powershell
+# Bad - Technical verb-noun format
+Get-DiskSpace.ps1
+Monitor-SystemHealth.ps1
+
+# Bad - No number
+Disk Space Monitor.ps1
+
+# Bad - Wrong number format
+Disk Space Monitor [1].ps1
+Disk Space Monitor v1.ps1
+
+# Good - Human readable with sequential number
+Disk Space Monitor 1.ps1
+System Health Check 2.ps1
+```
+
 ---
 
 ## Code Review Checklist
@@ -1273,9 +1470,17 @@ Restart-Service $ServiceName -Confirm:$false -Force -ErrorAction Stop
 Before submitting code:
 
 ```markdown
+### File Naming
+- [ ] Filename uses new schema: "Description Number.ps1"
+- [ ] Description is 2-5 words, clear and human-readable
+- [ ] Sequential number assigned (next available)
+- [ ] Uses spaces between words (not hyphens or underscores)
+- [ ] Title Case used for description
+
 ### Structure
 - [ ] Uses standard script template
 - [ ] Comment-based help complete with execution time
+- [ ] Script Name field includes exact filename with number
 - [ ] Requires statements present
 - [ ] Standard sections in correct order
 
@@ -1289,7 +1494,6 @@ Before submitting code:
 - [ ] -Confirm:$false on all potentially interactive cmdlets
 
 ### Naming
-- [ ] Script name follows convention
 - [ ] Variables use PascalCase
 - [ ] Functions use approved verbs
 - [ ] Names are descriptive
@@ -1351,10 +1555,12 @@ Before submitting code:
 4. **Automation** - No user interaction, fully unattended
 5. **Safety** - No unexpected restarts
 6. **Maintainability** - Write clear, documented code
-7. **Security** - Follow security best practices
+7. **Organization** - Use sequential numbering for easy tracking
+8. **Security** - Follow security best practices
 
 **Critical Requirements:**
 
+- ✅ **File naming schema** - "Description Number.ps1" format (2-5 words + sequential number)
 - ✅ **Execution time tracking** - REQUIRED in all scripts
 - ✅ **Set-NinjaField with CLI fallback** - NEVER use Ninja-Property-Set directly
 - ✅ **No user interaction** - NEVER use Read-Host, Pause, or confirmations
@@ -1365,6 +1571,7 @@ Before submitting code:
 
 **Quick Reference:**
 
+- Use new file naming: "Description Number.ps1" (e.g., "Disk Space Monitor 1.ps1")
 - Use [SCRIPT_HEADER_TEMPLATE.ps1](SCRIPT_HEADER_TEMPLATE.ps1)
 - PascalCase for all names
 - Try-catch for all critical operations
@@ -1380,7 +1587,7 @@ Before submitting code:
 
 ---
 
-**Document Version:** 1.2  
+**Document Version:** 1.3  
 **Last Updated:** February 9, 2026  
-**Changes:** Added mandatory rules for no user interaction and no restarts without parameter  
+**Changes:** Added comprehensive file naming schema with sequential numbering requirement  
 **Next Review:** Quarterly or when significant changes needed

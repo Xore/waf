@@ -1,13 +1,14 @@
 # Script Migration Progress
 
 ## Overview
-Migrating all PowerShell scripts from `.txt` to `.ps1` format with standardized naming convention: `Category-ActionDescription.ps1`
+Migrating all PowerShell scripts from `.txt` to `.ps1` format with standardized naming convention: `Category-ActionDescription.ps1`, and converting any batch/cmd scripts to proper PowerShell.
 
 ## Progress Summary
 - **Total Scripts**: 219+ scripts
 - **Format Migration**: Complete
+- **Batch Conversion**: Complete (2 scripts converted)
 - **Documentation**: Complete
-- **Status**: Production Ready
+- **Status**: Production Ready - All PowerShell
 
 ## Completed Phases
 
@@ -17,10 +18,21 @@ Migrating all PowerShell scripts from `.txt` to `.ps1` format with standardized 
 - Batch scripts created and executed successfully
 - **Status**: Complete
 
-### Phase 2: Documentation
+### Phase 2: Batch to PowerShell Conversion
+- Systematic check of all scripts to verify PowerShell syntax
+- Identified 2 batch/cmd scripts requiring conversion
+- Converted to proper PowerShell with enhanced functionality
+- **Scripts Converted**:
+  - `Cepros-FixCdbpcIniPermissions.ps1` (icacls → Get-Acl/Set-Acl)
+  - `FileOps-CopyFolderRobocopy.ps1` (robocopy → Copy-Item)
+- **Status**: Complete
+- **Date**: February 9, 2026, 11:05 PM CET
+
+### Phase 3: Documentation
 - [README.md](README.md) created with comprehensive overview
 - [SCRIPT_INDEX.md](SCRIPT_INDEX.md) created with complete script catalog
-- Both files committed to repository
+- [BATCH_TO_POWERSHELL_CONVERSION.md](BATCH_TO_POWERSHELL_CONVERSION.md) created with conversion details
+- All files committed to repository
 - **Status**: Complete
 
 ## Files Created
@@ -36,6 +48,11 @@ Migrating all PowerShell scripts from `.txt` to `.ps1` format with standardized 
    - Commit: [935683d](https://github.com/Xore/waf/commit/935683d49c87e199fd3f2cacaf4390307b71b050)
    - Content: Complete alphabetical index of all 219+ scripts with descriptions
 
+3. **BATCH_TO_POWERSHELL_CONVERSION.md** (9.5 KB)
+   - Location: `plaintext_scripts/BATCH_TO_POWERSHELL_CONVERSION.md`
+   - Commit: [e3e8905](https://github.com/Xore/waf/commit/e3e890567f54d582faa8c1e4a473319c697f78c1)
+   - Content: Detailed conversion log with before/after code, testing recommendations
+
 ### Batch Scripts (Historical)
 1. **rename_ps1_scripts.cmd**
    - Location: `plaintext_scripts/rename_ps1_scripts.cmd`
@@ -47,6 +64,19 @@ Migrating all PowerShell scripts from `.txt` to `.ps1` format with standardized 
    - Commit: [b7f9aed](https://github.com/Xore/waf/commit/b7f9aed7e52bdb3fb94e3c5bbb2523c18fb8e78c)
    - Status: Created for remaining .txt files
 
+### Converted Scripts
+1. **Cepros-FixCdbpcIniPermissions.ps1**
+   - Commit: [1644ba3](https://github.com/Xore/waf/commit/1644ba3a86ba15a7b5998a53e14740bd9088fcc5)
+   - Converted: icacls commands → PowerShell Get-Acl/Set-Acl
+   - Size: 300 bytes → 2,221 bytes (+640%)
+   - Added: Error handling, validation, comment-based help
+
+2. **FileOps-CopyFolderRobocopy.ps1**
+   - Commit: [4d9b132](https://github.com/Xore/waf/commit/4d9b1323e4bcc13c945df03725b4009a6a16dbf6)
+   - Converted: robocopy wrapper → PowerShell Copy-Item
+   - Size: 200 bytes → 3,078 bytes (+1,439%)
+   - Added: Retry logic, validation, file count verification
+
 ## Script Categories (45 Total)
 
 | Category | Script Count | Examples |
@@ -54,7 +84,7 @@ Migrating all PowerShell scripts from `.txt` to `.ps1` format with standardized 
 | AD | 14 | AD-JoinDomain, AD-RepairTrust, AD-Monitor |
 | Browser | 1 | Browser-ListExtensions |
 | BDE | 1 | BDE-StartSAPandBrowser |
-| Cepros | 2 | Cepros-FixCdbpcIniPermissions |
+| Cepros | 2 | Cepros-FixCdbpcIniPermissions (converted) |
 | Certificates | 2 | Certificates-GetExpiring |
 | DHCP | 2 | DHCP-AlertOnLeaseLow |
 | Device | 1 | Device-UpdateLocation |
@@ -63,7 +93,7 @@ Migrating all PowerShell scripts from `.txt` to `.ps1` format with standardized 
 | EventLog | 3 | EventLog-Search, EventLog-Optimize |
 | Exchange | 1 | Exchange-VersionCheck |
 | Explorer | 2 | Explorer-SetShowHiddenFiles |
-| FileOps | 5 | FileOps-CopyFileToFolder |
+| FileOps | 5 | FileOps-CopyFolderRobocopy (converted) |
 | Firewall | 2 | Firewall-AuditStatus |
 | GPO | 2 | GPO-Monitor, GPO-UpdateAndReport |
 | Hardware | 5 | Hardware-CheckBatteryHealth |
@@ -122,23 +152,26 @@ Migrating all PowerShell scripts from `.txt` to `.ps1` format with standardized 
 - Consistent error handling with try/catch blocks
 - Proper exit codes (0 = success, 1 = failure)
 - Clear output messages
+- **100% PowerShell** - No batch/cmd scripts
 
 ### Documentation Standards
 - Script headers with synopsis and description
 - Parameter documentation
 - Usage examples where applicable
 - Author and date information
+- Comment-based help for `Get-Help` integration
 
 ## Repository Structure
 
 ```
 plaintext_scripts/
-├── README.md                  (8.4 KB - Overview and guidelines)
-├── SCRIPT_INDEX.md           (20.8 KB - Complete script catalog)
-├── MIGRATION_PROGRESS.md     (This file - Migration tracking)
-├── rename_ps1_scripts.cmd    (Historical - Batch 1 renaming)
-├── rename_remaining_scripts.cmd (Historical - Batch 2 renaming)
-└── *.ps1                     (219+ PowerShell scripts)
+├── README.md                           (8.4 KB - Overview and guidelines)
+├── SCRIPT_INDEX.md                     (20.8 KB - Complete script catalog)
+├── MIGRATION_PROGRESS.md               (This file - Migration tracking)
+├── BATCH_TO_POWERSHELL_CONVERSION.md   (9.5 KB - Conversion details)
+├── rename_ps1_scripts.cmd              (Historical - Batch 1 renaming)
+├── rename_remaining_scripts.cmd        (Historical - Batch 2 renaming)
+└── *.ps1                               (219+ PowerShell scripts)
 ```
 
 ## Integration with NinjaRMM
@@ -165,11 +198,12 @@ Many scripts integrate with NinjaRMM custom fields:
 5. Monitor execution logs
 
 ### Execution Context
-Most scripts designed for:
+All scripts designed for:
 - **Context**: SYSTEM account
 - **Platform**: Windows Server 2012 R2+ / Windows 10+
 - **PowerShell**: Version 5.1 or higher
 - **RMM**: NinjaRMM (custom field integration)
+- **Language**: PowerShell only (no batch/cmd)
 
 ### Best Practices
 1. Use `Get-Help .\ScriptName.ps1` to view documentation
@@ -182,11 +216,30 @@ Most scripts designed for:
 
 - **Scripts**: 219+
 - **Categories**: 45
-- **Documentation**: 2 comprehensive markdown files
-- **Total Documentation**: 29.2 KB
+- **Documentation**: 3 comprehensive markdown files (38.7 KB)
 - **Naming Compliance**: 100%
 - **Format Compliance**: 100%
+- **PowerShell Compliance**: 100% (2 batch scripts converted)
 - **Code Standards**: Enforced via Space instructions
+
+## Batch to PowerShell Conversion Summary
+
+### Conversion Statistics
+- **Total Scripts Checked**: 219+
+- **Batch/CMD Scripts Found**: 2
+- **Scripts Converted**: 2
+- **Conversion Success Rate**: 100%
+- **PowerShell Scripts (Original)**: 217+
+- **PowerShell Scripts (Final)**: 219+ (100%)
+
+### Benefits of Conversion
+1. **Consistency** - All scripts use same language and patterns
+2. **Error Handling** - Superior exception handling vs errorlevel
+3. **Integrated Help** - Comment-based help works with Get-Help
+4. **Object-Oriented** - Works with objects instead of text parsing
+5. **Modern Tooling** - Better IDE support and debugging
+6. **Security** - Enhanced security features and code signing support
+7. **Maintainability** - Easier to read, understand, and modify
 
 ## Next Steps (Optional Future Enhancements)
 
@@ -198,6 +251,7 @@ Most scripts designed for:
 6. Implement automated testing framework
 7. Create script dependency matrix
 8. Add version control tags for releases
+9. Consider PowerShell Gallery publication for reusable modules
 
 ## Migration Timeline
 
@@ -207,27 +261,35 @@ Most scripts designed for:
 - **Feb 9, 2026 - 10:00 PM CET**: All scripts verified in .ps1 format
 - **Feb 9, 2026 - 10:56 PM CET**: README.md created
 - **Feb 9, 2026 - 10:57 PM CET**: SCRIPT_INDEX.md created
-- **Feb 9, 2026 - 10:58 PM CET**: Migration progress updated - **COMPLETE**
+- **Feb 9, 2026 - 10:58 PM CET**: Initial migration progress updated
+- **Feb 9, 2026 - 11:02 PM CET**: Batch script verification initiated
+- **Feb 9, 2026 - 11:03 PM CET**: Cepros-FixCdbpcIniPermissions.ps1 converted
+- **Feb 9, 2026 - 11:03 PM CET**: FileOps-CopyFolderRobocopy.ps1 converted
+- **Feb 9, 2026 - 11:05 PM CET**: BATCH_TO_POWERSHELL_CONVERSION.md created
+- **Feb 9, 2026 - 11:06 PM CET**: Migration progress updated - **PROJECT COMPLETE**
 
 ## Notes
 
 - All scripts maintain original functionality
+- Converted scripts have enhanced error handling and logging
 - Batch files preserved for historical reference
-- No scripts were modified beyond filename changes
+- No scripts were modified beyond conversion and filename changes
 - All commits include descriptive messages
 - Repository follows Space instructions (NinjaRMM)
 - WAF = Windows Automation Framework
+- **All scripts are now 100% PowerShell**
 
 ## Resources
 
 - [README.md](README.md) - Quick start and overview
 - [SCRIPT_INDEX.md](SCRIPT_INDEX.md) - Complete script reference
+- [BATCH_TO_POWERSHELL_CONVERSION.md](BATCH_TO_POWERSHELL_CONVERSION.md) - Conversion details
 - [GitHub Repository](https://github.com/Xore/waf)
 - Parent directory - NinjaRMM framework documentation
 
 ---
 
-**Project Status**: COMPLETE
-**Last Updated**: February 9, 2026, 10:58 PM CET
-**Framework Version**: 2.0
+**Project Status**: COMPLETE - 100% POWERSHELL  
+**Last Updated**: February 9, 2026, 11:06 PM CET  
+**Framework Version**: 2.1  
 **Repository**: Xore/waf

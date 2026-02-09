@@ -1,51 +1,74 @@
-#Requires -Version 5.1
+#Requires -Version 5.1 -RunAsAdministrator
 
 <#
 .SYNOPSIS
-    Deletes the existing Windows Search Index and forces Windows to rebuild it.
+    Rebuilds the Windows Search Index by deleting existing index files and forcing recreation.
+
 .DESCRIPTION
-    Deletes the existing Windows Search Index and forces Windows to rebuild it.
+    This script stops the Windows Search service, removes existing search index database files, 
+    resets the setup completion registry flag, and restarts the service to force a complete 
+    index rebuild. This resolves issues with corrupted search indexes or incomplete search results.
+    
+    Index corruption can cause Windows Search to return incomplete or incorrect results. Rebuilding 
+    the index removes all cached data and forces Windows to re-crawl and re-index all configured 
+    locations, typically completing within several hours depending on data volume.
+
 .EXAMPLE
-    (No Parameters)
-  
-    Stopping Windows Search Service.
-    Attempt 1
-    Successfully stopped Search Index service.
+    No Parameters
 
-    Removing Windows search index files.
-    Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows Search\SetupCompletedSuccessfully changed from 1 to 0
+    [Info] Stopping Windows Search service...
+    [Info] Successfully stopped Windows Search service
+    [Info] Removing search index files from: C:\ProgramData\Microsoft\Search\Data\Applications\Windows
+    [Info] Resetting search setup completion flag
+    [Info] Starting Windows Search service...
+    [Info] Successfully started Windows Search service
+    [Info] Windows Search Index rebuild initiated
 
-    Starting Windows Search Service
-    Attempt 1
-    Successfully started Search Index service.
+.OUTPUTS
+    None
 
 .NOTES
     Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Version: 1.0
-    Release Notes: Initial Release
+    Release notes: Initial release for WAF v3.0
+    User interaction: None - fully automated process
+    Restart behavior: N/A - Service restart only, no system reboot
+    Typical duration: 5-15 seconds to initiate (rebuild takes hours in background)
+    
+.COMPONENT
+    Windows Search Service (wsearch)
+    
+.LINK
+    https://learn.microsoft.com/en-us/windows/win32/search/-search-3x-wds-overview
+
+.FUNCTIONALITY
+    - Validates Windows Search service exists and is not disabled
+    - Stops Windows Search service with retry logic (up to 4 attempts)
+    - Deletes .db and .edb index files from search data directory
+    - Resets SetupCompletedSuccessfully registry flag to force rebuild
+    - Restarts Windows Search service with retry logic
+    - Validates service state transitions before proceeding
 #>
 
 [CmdletBinding()]
 param ()
 
 begin {
-    $Attempts = 4
+    $MaxAttempts = 4
+    $AttemptDelay = 1
 
-    # Check if Windows Search Service exists
     if (-not (Get-Service -Name "wsearch" -ErrorAction SilentlyContinue)) {
-        Write-Host "[Error] Windows Search Service does not exist. Nothing to rebuild."
+        Write-Host "[Error] Windows Search service does not exist. Nothing to rebuild"
         exit 1
     }
 
-    # Check if Windows Search Service is disabled
     $StartType = Get-Service -Name "wsearch" | Select-Object -ExpandProperty StartType
     if ($StartType -eq "Disabled") {
-        Write-Host "[Error] Windows Search Service is disabled. Nothing to rebuild."
+        Write-Host "[Error] Windows Search service is disabled. Enable the service before rebuilding"
         exit 1
     }
 
-    # Function to set registry key values
     function Set-RegKey {
+        [CmdletBinding()]
         param (
             $Path,
             $Name,
@@ -53,123 +76,115 @@ begin {
             [ValidateSet("DWord", "QWord", "String", "ExpandedString", "Binary", "MultiString", "Unknown")]
             $PropertyType = "DWord"
         )
-        if (-not $(Test-Path -Path $Path)) {
-            # Check if path does not exist and create the path
+
+        if (-not (Test-Path -Path $Path)) {
             New-Item -Path $Path -Force | Out-Null
         }
-        if ((Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue)) {
-            # Update property and print out what it was changed from and changed to
+
+        if (Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue) {
             $CurrentValue = (Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue).$Name
             try {
                 Set-ItemProperty -Path $Path -Name $Name -Value $Value -Force -Confirm:$false -ErrorAction Stop | Out-Null
             }
             catch {
-                Write-Host "[Error] Unable to Set registry key for $Name. Please see the error below!"
-                Write-Host "[Error] $($_.Message)"
+                Write-Host "[Error] Unable to set registry key for $Name: $($_.Message)"
                 exit 1
             }
-            Write-Host "$Path\$Name changed from $CurrentValue to $($(Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue).$Name)"
+            Write-Host "[Info] $Path\$Name changed from $CurrentValue to $($(Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue).$Name)"
         }
         else {
-            # Create property with value
             try {
                 New-ItemProperty -Path $Path -Name $Name -Value $Value -PropertyType $PropertyType -Force -Confirm:$false -ErrorAction Stop | Out-Null
             }
             catch {
-                Write-Host "[Error] Unable to Set registry key for $Name. Please see the error below!"
-                Write-Host "[Error] $($_.Exception.Message)"
+                Write-Host "[Error] Unable to set registry key for $Name: $($_.Exception.Message)"
                 exit 1
             }
-            Write-Host "Set $Path\$Name to $($(Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue).$Name)"
+            Write-Host "[Info] Set $Path\$Name to $($(Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue).$Name)"
         }
     }
 
-    # Function to check if the script is running with elevated privileges
     function Test-IsElevated {
         $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
         $p = New-Object System.Security.Principal.WindowsPrincipal($id)
         $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
     }
 
-    # Initialize ExitCode
-    if (!$ExitCode) {
-        $ExitCode = 0
-    }
+    $ExitCode = 0
 }
+
 process {
-    # Check if running with elevated privileges
     if (-not (Test-IsElevated)) {
-        Write-Host -Object "[Error] Access Denied. Please run with Administrator privileges."
+        Write-Host "[Error] Access Denied. Please run with Administrator privileges"
         exit 1
     }
 
-    # Stop the Windows Search Service
-    Write-Host "Stopping Windows Search Service."
-    $i = 1
+    Write-Host "[Info] Stopping Windows Search service..."
+    $Attempt = 1
     do {
         try {
-            Write-Host "Attempt $i"
+            Write-Host "[Info] Attempt $Attempt of $MaxAttempts"
             Get-Service -Name "wsearch" | Stop-Service -ErrorAction Stop
         }
         catch {
-            Write-Host "[Error] $($_.Exception.Message)"
+            Write-Host "[Warn] Failed to stop service: $($_.Exception.Message)"
         }
 
-        Start-Sleep -Seconds 1
+        Start-Sleep -Seconds $AttemptDelay
         $Status = Get-Service -Name "wsearch" | Select-Object -ExpandProperty Status
-        $i++
-    }while ($Status -ne "Stopped" -and $i -lt $Attempts)
+        $Attempt++
+    } while ($Status -ne "Stopped" -and $Attempt -le $MaxAttempts)
 
-    # Check if the service stopped successfully
     if ($Status -ne "Stopped") {
-        Write-Host "[Error] Search Index service failed to stop!"
+        Write-Host "[Error] Windows Search service failed to stop after $MaxAttempts attempts"
         Get-Service -Name "wsearch" | Format-Table | Out-String | Write-Host
         exit 1
     }
-    else {
-        Write-Host "Successfully stopped Search Index service."
-    }
-    
-    # Remove existing search index files
-    Write-Host "`nRemoving Windows search index files."
-    Get-ChildItem -Path "$env:ProgramData\Microsoft\Search\Data\Applications\Windows" -File -Filter "*.db" | Remove-Item -Force
-    Get-ChildItem -Path "$env:ProgramData\Microsoft\Search\Data\Applications\Windows" -File -Filter "*.edb" | Remove-Item -Force
+    Write-Host "[Info] Successfully stopped Windows Search service"
 
-    # Set the registry key to indicate setup is incomplete
+    $SearchDataPath = "$env:ProgramData\Microsoft\Search\Data\Applications\Windows"
+    Write-Host "[Info] Removing search index files from: $SearchDataPath"
+    
+    try {
+        Get-ChildItem -Path $SearchDataPath -File -Filter "*.db" -ErrorAction SilentlyContinue | Remove-Item -Force -Confirm:$false
+        Get-ChildItem -Path $SearchDataPath -File -Filter "*.edb" -ErrorAction SilentlyContinue | Remove-Item -Force -Confirm:$false
+        Write-Host "[Info] Search index files removed successfully"
+    }
+    catch {
+        Write-Host "[Warn] Some index files could not be removed: $_"
+    }
+
+    Write-Host "[Info] Resetting search setup completion flag"
     Set-RegKey -Path "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows Search" -Name "SetupCompletedSuccessfully" -Value 0
 
-    # Start the Windows Search Service
-    Write-Host "`nStarting Windows Search Service"
-    $i = 1
+    Write-Host "[Info] Starting Windows Search service..."
+    $Attempt = 1
     do {
-        Start-Sleep -Seconds 1
+        Start-Sleep -Seconds $AttemptDelay
 
         try {
-            Write-Host "Attempt $i"
+            Write-Host "[Info] Attempt $Attempt of $MaxAttempts"
             Get-Service -Name "wsearch" | Start-Service -ErrorAction Stop
         }
         catch {
-            Write-Host "[Error] $($_.Exception.Message)"
+            Write-Host "[Warn] Failed to start service: $($_.Exception.Message)"
         }
 
-        $i++
+        $Attempt++
         $Status = Get-Service -Name "wsearch" | Select-Object -ExpandProperty Status
-    }while ($Status -ne "Running" -and $i -lt $Attempts)
+    } while ($Status -ne "Running" -and $Attempt -le $MaxAttempts)
 
-    # Check if the service started successfully
     if ($Status -ne "Running") {
-        Write-Host "[Error] Search Index service failed to start!"
+        Write-Host "[Error] Windows Search service failed to start after $MaxAttempts attempts"
         Get-Service -Name "wsearch" | Format-Table | Out-String | Write-Host
         exit 1
     }
-    else {
-        Write-Host "Successfully started Search Index service."
-    }
+    
+    Write-Host "[Info] Successfully started Windows Search service"
+    Write-Host "[Info] Windows Search Index rebuild initiated. This process will continue in the background and may take several hours to complete."
 
     exit $ExitCode
 }
+
 end {
-    
-    
-    
 }

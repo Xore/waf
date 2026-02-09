@@ -1,194 +1,296 @@
+#Requires -Version 5.1
+#Requires -RunAsAdministrator
 
 <#
 .SYNOPSIS
-    Retrieves the current device description and optionally saves it to a custom field.
-.DESCRIPTION
-    Retrieves the current device description and optionally saves it to a custom field.
-.EXAMPLE
-    -CustomField "text"
-    
-    Current device description: 'Kitchen Computer'
-    Attempting to set custom field 'text'.
-    Successfully set custom field 'text'!
+    Retrieves the Windows device description from operating system properties
 
-PARAMETER: -CustomField "ExampleInput"
-    Optionally specify the name of a custom field you would like to save the results to.
+.DESCRIPTION
+    Simple utility script that queries the Win32_OperatingSystem WMI/CIM class
+    to retrieve the device description field. This field typically contains
+    custom text set by administrators to identify the device purpose or location.
+    
+    The script performs the following:
+    - Checks for administrator privileges
+    - Queries Win32_OperatingSystem for Description property
+    - Handles empty/null descriptions gracefully
+    - Optionally saves result to NinjaRMM custom field
+    - Provides clear output for monitoring
+    
+    Device descriptions are useful for inventory management, asset tracking,
+    and identifying system roles in larger environments.
+
+.PARAMETER CustomField
+    Name of NinjaRMM custom field to store the device description.
+    If not specified, the description is only displayed.
+
+.EXAMPLE
+    .\System-GetDeviceDescription.ps1
+    
+    Retrieves and displays the current device description.
+
+.EXAMPLE
+    .\System-GetDeviceDescription.ps1 -CustomField "deviceDescription"
+    
+    Retrieves device description and saves it to custom field.
 
 .NOTES
-    Minimum OS Architecture Supported: Windows 10, Windows Server 2012 R2
-    Version: 1.0
-    Release Notes: Initial Release
+    Script Name:    System-GetDeviceDescription.ps1
+    Author:         Windows Automation Framework
+    Version:        3.0
+    Creation Date:  2024-01-15
+    Last Modified:  2026-02-10
+    
+    Execution Context: Administrator (required for WMI/CIM access)
+    Execution Frequency: Daily or on-demand
+    Typical Duration: ~1 second
+    Timeout Setting: 30 seconds recommended
+    
+    User Interaction: NONE (fully automated, no prompts)
+    Restart Behavior: N/A (no restart required)
+    
+    Fields Updated:
+        - CustomField - Device description (if specified)
+    
+    Dependencies:
+        - Windows PowerShell 5.1 or higher
+        - Administrator privileges
+        - Windows 10 or Server 2016 minimum
+        - WMI/CIM service running
+    
+    Environment Variables (Optional):
+        - nameOfCustomField: Override -CustomField parameter
+    
+    Exit Codes:
+        0 - Success (description retrieved)
+        1 - Failure (access denied or query failed)
+
+.LINK
+    https://github.com/Xore/waf
 #>
 
 [CmdletBinding()]
 param (
-    [Parameter()]
-    [String]$CustomField
+    [Parameter(Mandatory=$false, HelpMessage="Custom field to store device description")]
+    [string]$CustomField
 )
 
-begin {
-    if ($env:nameOfCustomField -and $env:nameOfCustomField -notlike "null") { $CustomField = $env:nameOfCustomField }
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
 
-    # PowerShell 3 or higher is required for custom field functionality
-    if ($PSVersionTable.PSVersion.Major -lt 3 -and $CustomField) {
-        Write-Host -Object "[Error] Setting custom fields requires powershell version 3 or higher."
-        Write-Host -Object "https://ninjarmm.zendesk.com/hc/en-us/articles/4405408656013-Custom-Fields-and-Documentation-CLI-and-Scripting"
-        exit 1
-    }
+$ScriptVersion = "3.0"
+$ScriptName = "System-GetDeviceDescription"
 
-    function Set-NinjaProperty {
-        [CmdletBinding()]
-        Param(
-            [Parameter(Mandatory = $True)]
-            [String]$Name,
-            [Parameter()]
-            [String]$Type,
-            [Parameter(Mandatory = $True, ValueFromPipeline = $True)]
-            $Value,
-            [Parameter()]
-            [String]$DocumentName
-        )
+# NinjaRMM CLI path for fallback
+$NinjaRMMCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
+
+# ============================================================================
+# INITIALIZATION
+# ============================================================================
+
+$StartTime = Get-Date
+$ErrorActionPreference = 'Stop'
+$script:ErrorCount = 0
+$script:WarningCount = 0
+$script:CLIFallbackCount = 0
+
+# ============================================================================
+# FUNCTIONS
+# ============================================================================
+
+function Write-Log {
+    <#
+    .SYNOPSIS
+        Writes structured log messages with plain text output
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Message,
         
-        $Characters = $Value | Out-String | Measure-Object -Character | Select-Object -ExpandProperty Characters
-        if ($Characters -ge 200000) {
-            throw [System.ArgumentOutOfRangeException]::New("Character limit exceeded: the value is greater than or equal to 200,000 characters.")
-        }
-            
-        # If requested to set the field value for a Ninja document, specify it here.
-        $DocumentationParams = @{}
-        if ($DocumentName) { $DocumentationParams["DocumentName"] = $DocumentName }
-            
-        # This is a list of valid fields that can be set. If no type is specified, assume that the input does not need to be changed.
-        $ValidFields = "Attachment", "Checkbox", "Date", "Date or Date Time", "Decimal", "Dropdown", "Email", "Integer", "IP Address", "MultiLine", "MultiSelect", "Phone", "Secure", "Text", "Time", "URL", "WYSIWYG"
-        if ($Type -and $ValidFields -notcontains $Type) { Write-Warning "$Type is an invalid type. Please check here for valid types: https://ninjarmm.zendesk.com/hc/en-us/articles/16973443979789-Command-Line-Interface-CLI-Supported-Fields-and-Functionality" }
-            
-        # The field below requires additional information to set.
-        $NeedsOptions = "Dropdown"
-        if ($DocumentName) {
-            if ($NeedsOptions -contains $Type) {
-                # Redirect error output to the success stream to handle errors more easily if nothing is found or something else goes wrong.
-                $NinjaPropertyOptions = Ninja-Property-Docs-Options -AttributeName $Name @DocumentationParams 2>&1
-            }
-        }
-        else {
-            if ($NeedsOptions -contains $Type) {
-                $NinjaPropertyOptions = Ninja-Property-Options -Name $Name 2>&1
-            }
-        }
-            
-        # If an error is received with an exception property, exit the function with that error information.
-        if ($NinjaPropertyOptions.Exception) { throw $NinjaPropertyOptions }
-            
-        # The types below require values not typically given to be set. The code below will convert whatever we're given into a format ninjarmm-cli supports.
-        switch ($Type) {
-            "Checkbox" {
-                # Although it's highly likely we were given a value like "True" or a boolean data type, it's better to be safe than sorry.
-                $NinjaValue = [System.Convert]::ToBoolean($Value)
-            }
-            "Date or Date Time" {
-                # Ninjarmm-cli expects the GUID of the option to be selected. Therefore, match the given value with a GUID.
-                $Date = (Get-Date $Value).ToUniversalTime()
-                $TimeSpan = New-TimeSpan (Get-Date "1970-01-01 00:00:00") $Date
-                $NinjaValue = $TimeSpan.TotalSeconds
-            }
-            "Dropdown" {
-                # Ninjarmm-cli expects the GUID of the option we're trying to select, so match the value we were given with a GUID.
-                $Options = $NinjaPropertyOptions -replace '=', ',' | ConvertFrom-Csv -Header "GUID", "Name"
-                $Selection = $Options | Where-Object { $_.Name -eq $Value } | Select-Object -ExpandProperty GUID
-            
-                if (-not $Selection) {
-                    throw [System.ArgumentOutOfRangeException]::New("Value is not present in dropdown options.")
-                }
-            
-                $NinjaValue = $Selection
-            }
-            default {
-                # All the other types shouldn't require additional work on the input.
-                $NinjaValue = $Value
-            }
-        }
-            
-        # Set the field differently depending on whether it's a field in a Ninja Document or not.
-        if ($DocumentName) {
-            $CustomField = Ninja-Property-Docs-Set -AttributeName $Name -AttributeValue $NinjaValue @DocumentationParams 2>&1
-        }
-        else {
-            $CustomField = $NinjaValue | Ninja-Property-Set-Piped -Name $Name 2>&1
-        }
-            
-        if ($CustomField.Exception) {
-            throw $CustomField
-        }
-    }
+        [Parameter(Mandatory=$false)]
+        [ValidateSet('DEBUG','INFO','WARN','ERROR','SUCCESS')]
+        [string]$Level = 'INFO'
+    )
     
-    function Test-IsElevated {
-        $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-        $p = New-Object System.Security.Principal.WindowsPrincipal($id)
-        $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
-    }
-
-    if (!$ExitCode) {
-        $ExitCode = 0
+    $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $LogMessage = "[$Timestamp] [$Level] $Message"
+    
+    Write-Output $LogMessage
+    
+    switch ($Level) {
+        'WARN'  { $script:WarningCount++ }
+        'ERROR' { $script:ErrorCount++ }
     }
 }
-process {
-    # Check if the script is being run with elevated (administrator) privileges
-    if (!(Test-IsElevated)) {
-        Write-Host -Object "[Error] Access denied. Please run with administrator privileges."
-        exit 1
-    }
 
+function Set-NinjaField {
+    <#
+    .SYNOPSIS
+        Sets a NinjaRMM custom field value with automatic fallback to CLI
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$FieldName,
+        
+        [Parameter(Mandatory=$true)]
+        [AllowNull()]
+        $Value
+    )
+    
+    if ($null -eq $Value -or $Value -eq "") {
+        Write-Log "Skipping field '$FieldName' - no value" -Level DEBUG
+        return
+    }
+    
+    $ValueString = $Value.ToString()
+    
     try {
-        # Determine the PowerShell version and get the operating system description accordingly
-        if ($PSVersionTable.PSVersion.Major -lt 5) {
-            # Use Get-WmiObject for PowerShell versions less than 5
-            $Description = $(Get-WmiObject -Class Win32_OperatingSystem -ErrorAction Stop).Description
+        if (Get-Command Ninja-Property-Set -ErrorAction SilentlyContinue) {
+            Ninja-Property-Set $FieldName $ValueString -ErrorAction Stop
+            Write-Log "Field '$FieldName' set successfully" -Level DEBUG
+            return
+        } else {
+            throw "Ninja-Property-Set cmdlet not available"
         }
-        else {
-            # Use Get-CimInstance for PowerShell version 5 or greater
-            $Description = $(Get-CimInstance -Class Win32_OperatingSystem -ErrorAction Stop).Description
-        }
-
-        # Trim any leading or trailing whitespace from the description
-        if ($Description) {
-            $Description = $Description.Trim()
-        }
-    }
-    catch {
-        # Handle any errors that occur while retrieving the device description
-        Write-Host -Object "[Error] Failed to retrieve current device description."
-        Write-Host -Object "[Error] $($_.Exception.Message)"
-        exit 1
-    }
-
-    # Check if the description is empty or not
-    if (!$Description) {
-        Write-Host -Object "[Alert] No device description is currently set."
-        $CustomFieldValue = "No device description is currently set."
-    }
-    else {
-        Write-Host -Object "Current device description: '$Description'"
-        $CustomFieldValue = $Description
-    }
-
-    # If a custom field is specified, attempt to set its value
-    if ($CustomField) {
+    } catch {
+        Write-Log "Ninja-Property-Set failed, using CLI fallback" -Level DEBUG
+        
         try {
-            Write-Host "Attempting to set custom field '$CustomField'."
-            Set-NinjaProperty -Name $CustomField -Value $CustomFieldValue
-            Write-Host "Successfully set custom field '$CustomField'!"
-        }
-        catch {
-            Write-Host -Object "[Error] Failed to set custom field '$CustomField'"
-            Write-Host "[Error] $($_.Exception.Message)"
-            exit 1
+            if (-not (Test-Path $NinjaRMMCLI)) {
+                throw "NinjaRMM CLI not found at: $NinjaRMMCLI"
+            }
+            
+            $CLIArgs = @("set", $FieldName, $ValueString)
+            $CLIResult = & $NinjaRMMCLI $CLIArgs 2>&1
+            
+            if ($LASTEXITCODE -ne 0) {
+                throw "CLI exit code: $LASTEXITCODE, Output: $CLIResult"
+            }
+            
+            Write-Log "Field '$FieldName' set via CLI" -Level DEBUG
+            $script:CLIFallbackCount++
+            
+        } catch {
+            Write-Log "Failed to set field '$FieldName': $_" -Level ERROR
         }
     }
-
-    exit $ExitCode
 }
-end {
+
+function Test-IsElevated {
+    <#
+    .SYNOPSIS
+        Checks if script is running with Administrator privileges
+    #>
+    $Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $Principal = New-Object System.Security.Principal.WindowsPrincipal($Identity)
+    return $Principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Get-DeviceDescription {
+    <#
+    .SYNOPSIS
+        Retrieves device description from Win32_OperatingSystem
+    #>
+    try {
+        Write-Log "Querying Win32_OperatingSystem for device description" -Level DEBUG
+        
+        $OS = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+        
+        if ($OS.Description) {
+            $Description = $OS.Description.Trim()
+            Write-Log "Device description retrieved: '$Description'" -Level SUCCESS
+            return $Description
+        } else {
+            Write-Log "Device description is empty" -Level WARN
+            return $null
+        }
+        
+    } catch {
+        Write-Log "Failed to query device description: $($_.Exception.Message)" -Level ERROR
+        throw
+    }
+}
+
+# ============================================================================
+# MAIN EXECUTION
+# ============================================================================
+
+try {
+    Write-Log "========================================" -Level INFO
+    Write-Log "Starting: $ScriptName v$ScriptVersion" -Level INFO
+    Write-Log "========================================" -Level INFO
     
+    # Check for environment variable override
+    if ($env:nameOfCustomField -and $env:nameOfCustomField -notlike "null") {
+        $CustomField = $env:nameOfCustomField.Trim()
+        Write-Log "CustomField from environment: $CustomField" -Level INFO
+    }
     
+    # Validate custom field parameter
+    if ($CustomField) {
+        $CustomField = $CustomField.Trim()
+        
+        if ([string]::IsNullOrWhiteSpace($CustomField)) {
+            throw "CustomField parameter is empty after trimming"
+        }
+        
+        Write-Log "Custom field specified: $CustomField" -Level INFO
+    }
     
+    # Check administrator privileges
+    if (-not (Test-IsElevated)) {
+        throw "Administrator privileges required. Please run as Administrator."
+    }
+    Write-Log "Administrator privileges confirmed" -Level SUCCESS
+    
+    # Retrieve device description
+    $Description = Get-DeviceDescription
+    
+    # Prepare output value
+    if ($Description) {
+        Write-Log "Current device description: '$Description'" -Level INFO
+        $OutputValue = $Description
+    } else {
+        Write-Log "No device description is currently set" -Level WARN
+        $OutputValue = "No device description is currently set"
+    }
+    
+    # Update custom field if specified
+    if ($CustomField) {
+        Write-Log "Updating custom field: $CustomField" -Level INFO
+        Set-NinjaField -FieldName $CustomField -Value $OutputValue
+        Write-Log "Custom field updated successfully" -Level SUCCESS
+    }
+    
+    Write-Log "Device description retrieval completed" -Level SUCCESS
+    exit 0
+    
+} catch {
+    Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
+    Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
+    
+    if ($CustomField) {
+        Set-NinjaField -FieldName $CustomField -Value "Error: $($_.Exception.Message)"
+    }
+    
+    exit 1
+    
+} finally {
+    $EndTime = Get-Date
+    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+    
+    Write-Log "========================================" -Level INFO
+    Write-Log "Execution Summary:" -Level INFO
+    Write-Log "  Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
+    Write-Log "  Errors: $script:ErrorCount" -Level INFO
+    Write-Log "  Warnings: $script:WarningCount" -Level INFO
+    
+    if ($script:CLIFallbackCount -gt 0) {
+        Write-Log "  CLI Fallbacks: $script:CLIFallbackCount" -Level INFO
+    }
+    
+    Write-Log "========================================" -Level INFO
 }

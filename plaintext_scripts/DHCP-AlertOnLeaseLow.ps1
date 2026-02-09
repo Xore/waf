@@ -1,210 +1,153 @@
-#Requires -Version 5.1
+#Requires -Version 5.1 -Modules DhcpServer
 
 <#
 .SYNOPSIS
-    Checks the DHCP scopes for the number of leases used and alerts if the threshold is exceeded.
+    Monitors DHCP scope utilization and alerts when available leases are low.
+
 .DESCRIPTION
-    Checks the DHCP scopes for the number of leases used and alerts if the threshold is exceeded.
-    This script requires the DhcpServer module to be installed with the DHCP server feature installed.
-    The script will output the number of leases used, free, and total for each scope.
-    If the LeaseThreshold parameter is set, the script will alert if the number of free leases is less than the threshold.
-    If the ExcludeScope parameter is set, the script will exclude the specified scope from the output.
-    If the IncludeScope parameter is set, the script will only include the specified scope in the output.
+    This script queries DHCP server scopes to determine current IP address utilization and alerts 
+    administrators when the percentage of available addresses falls below a specified threshold. 
+    This proactive monitoring prevents DHCP exhaustion issues.
+    
+    DHCP scope exhaustion can prevent new devices from obtaining IP addresses, causing network 
+    connectivity failures. Early warning allows administrators to expand scopes or reclaim unused 
+    addresses before service disruption occurs.
 
-.PARAMETER LeaseThreshold
-    The number of free leases that will trigger an alert. If the number of free leases is less than the threshold, an alert will be triggered.
-.PARAMETER ExcludeScope
-    The name of the scope to exclude from the output.
-.PARAMETER IncludeScope
-    The name of the scope to include in the output.
+.PARAMETER ThresholdPercent
+    Alert threshold percentage for available addresses. Default: 10 (alert when < 10% available)
 
-.EXAMPLE
-    (No Parameters)
-    ## EXAMPLE OUTPUT WITHOUT PARAMS ##
-    [Info] Scope: Test1 Leases Used(In Use/Total): 250/252
-    [Info] Scope: Test2 Leases Used(In Use/Total): 220/252
-    [Info] Scope: Test6 Leases Used(In Use/Total): 4954378/18446744073709551615
+.PARAMETER ScopeId
+    Specific DHCP scope ID to monitor. If not specified, monitors all scopes.
+
+.PARAMETER SaveToCustomField
+    Name of a custom field to save the DHCP utilization report.
 
 .EXAMPLE
-    PARAMETER: -LeaseThreshold 10
-    ## EXAMPLE OUTPUT WITH LEASETHRESHOLD ##
-    [Alert] Scope: Test1 Leases Used(In Use/Free/Total): 220/2/252
-    [Info] Scope: Test2 Leases Used(In Use/Free/Total): 150/102/252
-    [Info] Scope: Test6 Leases Used(In Use/Free/Total): 0/18446744073709551615/18446744073709551615
+    -ThresholdPercent 10
 
-.EXAMPLE
-    PARAMETER: -ExcludeScope "Test1"
-    ## EXAMPLE OUTPUT WITH EXCLUDESCOPE ##
-    [Info] Scope: Test2 Leases Used(In Use/Free/Total): 220/2/252
-    [Info] Scope: Test6 Leases Used(In Use/Free/Total): 0/18446744073709551615/18446744073709551615
+    [Info] Monitoring DHCP scopes for utilization threshold: 10%
+    [Alert] Scope 192.168.1.0: 5% available (245/250 addresses in use)
+    [Info] Scope 192.168.2.0: 35% available (65/100 addresses in use)
 
-.EXAMPLE
-    PARAMETER: -IncludeScope "Test2"
-    ## EXAMPLE OUTPUT WITH INCLUDESCOPE ##
-    [Info] Scope: Test2 Leases Used(In Use/Free/Total): 220/2/252
+.OUTPUTS
+    None
+
 .NOTES
-    Minimum OS: Windows Server 2016
-    Requires the DhcpServer module to be installed with the DHCP server feature installed.
-    Version: 1.0
-    Release Notes: Initial Release
+    Minimum OS Architecture Supported: Windows Server 2012 R2
+    Release notes: Initial release for WAF v3.0
+    Requires: DHCP Server role and DhcpServer PowerShell module
+    
+.COMPONENT
+    DhcpServer - Windows DHCP Server management module
+    
+.LINK
+    https://learn.microsoft.com/en-us/powershell/module/dhcpserver/
+
+.FUNCTIONALITY
+    - Queries DHCP server scope statistics
+    - Calculates percentage of available IP addresses
+    - Alerts when utilization exceeds threshold
+    - Reports scope ID, total addresses, used addresses, percentage available
+    - Can save utilization report to custom fields
+    - Supports monitoring all scopes or specific scope by ID
 #>
 
 [CmdletBinding()]
-param (
-    $LeaseThreshold,
-    [string[]]$ExcludeScope,
-    [string[]]$IncludeScope
+param(
+    [int]$ThresholdPercent = 10,
+    [string]$ScopeId,
+    [string]$SaveToCustomField
 )
 
 begin {
-    function Test-IsElevated {
-        # check if running under a Pester test case
-        $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-        $p = New-Object System.Security.Principal.WindowsPrincipal($id)
-        $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+    if ($env:thresholdPercent -and $env:thresholdPercent -notlike "null") {
+        $ThresholdPercent = [int]$env:thresholdPercent
+    }
+    if ($env:scopeId -and $env:scopeId -notlike "null") {
+        $ScopeId = $env:scopeId
+    }
+    if ($env:saveToCustomField -and $env:saveToCustomField -notlike "null") {
+        $SaveToCustomField = $env:saveToCustomField
     }
 
+    function Set-NinjaProperty {
+        [CmdletBinding()]
+        Param(
+            [Parameter(Mandatory = $True)]
+            [String]$Name,
+            [Parameter(Mandatory = $True, ValueFromPipeline = $True)]
+            $Value
+        )
+        $NinjaValue = $Value
+        $CustomField = $NinjaValue | Ninja-Property-Set-Piped -Name $Name 2>&1
+        if ($CustomField.Exception) {
+            throw $CustomField
+        }
+    }
+
+    $ExitCode = 0
+}
+
+process {
     try {
-        if ($env:leaseThreshold -and $env:leaseThreshold -notlike "null") {
-            [int]$LeaseThreshold = $env:leaseThreshold
+        Write-Host "[Info] Monitoring DHCP scopes for utilization threshold: $ThresholdPercent%"
+        
+        if ($ScopeId) {
+            $Scopes = Get-DhcpServerv4Scope -ScopeId $ScopeId -ErrorAction Stop
+        }
+        else {
+            $Scopes = Get-DhcpServerv4Scope -ErrorAction Stop
+        }
+
+        $Report = @()
+        $AlertTriggered = $false
+
+        foreach ($Scope in $Scopes) {
+            $Stats = Get-DhcpServerv4ScopeStatistics -ScopeId $Scope.ScopeId -ErrorAction Stop
+            
+            $TotalAddresses = $Stats.AddressesFree + $Stats.AddressesInUse
+            if ($TotalAddresses -gt 0) {
+                $PercentAvailable = [Math]::Round(($Stats.AddressesFree / $TotalAddresses) * 100, 2)
+            }
+            else {
+                $PercentAvailable = 0
+            }
+
+            $ScopeInfo = "Scope $($Scope.ScopeId): $PercentAvailable% available ($($Stats.AddressesInUse)/$TotalAddresses addresses in use)"
+            
+            if ($PercentAvailable -lt $ThresholdPercent) {
+                Write-Host "[Alert] $ScopeInfo"
+                $AlertTriggered = $true
+            }
+            else {
+                Write-Host "[Info] $ScopeInfo"
+            }
+            
+            $Report += $ScopeInfo
+        }
+
+        if ($SaveToCustomField) {
+            try {
+                $Report -join "; " | Set-NinjaProperty -Name $SaveToCustomField
+                Write-Host "[Info] Report saved to custom field '$SaveToCustomField'"
+            }
+            catch {
+                Write-Host "[Error] Failed to save to custom field: $_"
+                $ExitCode = 1
+            }
+        }
+
+        if ($AlertTriggered) {
+            $ExitCode = 1
         }
     }
     catch {
-        Write-Host "[Error] LeaseThreshold must be a number"
-        exit 2
-    }
-    
-    if ($env:excludeScope -and $env:excludeScope -notlike "null") {
-        $ExcludeScope = $env:excludeScope
-    }
-    if ($env:includeScope -and $env:includeScope -notlike "null") {
-        $IncludeScope = $env:includeScope
+        Write-Host "[Error] Failed to monitor DHCP scopes: $_"
+        $ExitCode = 1
     }
 
-    # Split the ExcludeScope and IncludeScope parameters into an array
-    if (-not [String]::IsNullOrWhiteSpace($ExcludeScope) -and $ExcludeScope -like '*,*') {
-        $ExcludeScope = $ExcludeScope -split ',' | ForEach-Object { $_.Trim() } | Where-Object { -not [String]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique
-    }
-    if (-not [String]::IsNullOrWhiteSpace($IncludeScope) -and $IncludeScope -like '*,*') {
-        $IncludeScope = $IncludeScope -split ',' | ForEach-Object { $_.Trim() } | Where-Object { -not [String]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique
-    }
-
-    # Check if $ExcludeScope and $IncludeScope contain similar items
-    if (-not [String]::IsNullOrWhiteSpace($ExcludeScope) -and -not [String]::IsNullOrWhiteSpace($IncludeScope)) {
-        $SimilarItems = $ExcludeScope | Where-Object { $IncludeScope -contains $_ }
-        if ($SimilarItems) {
-            Write-Host "[Error] The following scopes are in both ExcludeScope and IncludeScope: $($SimilarItems -join ', ')"
-            exit 2
-        }
-    }
-
-    $ShouldAlert = $false
+    exit $ExitCode
 }
-process {
-    if (-not (Test-IsElevated)) {
-        Write-Host "[Error] Access Denied. Please run with Administrator privileges."
-        exit 2
-    }
 
-    # Check if the DhcpServer module is installed
-    if (-not (Get-Module -ListAvailable -Name DhcpServer -ErrorAction SilentlyContinue)) {
-        Write-Host "[Error] The DhcpServer module is not installed. Please install the DHCP server feature and the DhcpServer module."
-        exit 2
-    }
-
-    # Get all DHCP scopes
-    $AllScopes = $(
-        Get-DhcpServerv4Scope | Select-Object -ExpandProperty Name
-        Get-DhcpServerv6Scope | Select-Object -ExpandProperty Name
-    )
-
-    # Output an error if the ExcludeScope or IncludeScope parameters contain invalid scope names
-    $(
-        if ($IncludeScope) { $IncludeScope }
-        if ($ExcludeScope) { $ExcludeScope }
-    ) | ForEach-Object {
-        if ($_ -notin $AllScopes) {
-            Write-Host "[Error] Scope: $_ does not exist in the DHCP server. Please check the scope name and try again."
-        }
-    }
-
-    # IPv4
-    # Get all DHCP scopes
-    $v4scopes = Get-DhcpServerv4Scope | Where-Object { $_.State }
-
-    # Iterate through each scope
-    foreach ($scope in $v4scopes) {
-        # Get statistics for the scope
-        $Stats = Get-DhcpServerv4ScopeStatistics -ScopeId $scope.ScopeId
-
-        # Get the name of the scope
-        $Name = (Get-DhcpServerv4Scope -ScopeId $scope.ScopeId).Name
-
-        # Check if the scope should be excluded
-        if (-not [String]::IsNullOrWhiteSpace($ExcludeScope) -and $Name -in $ExcludeScope) {
-            continue
-        }
-
-        # Check if the scope should be included
-        if (-not [String]::IsNullOrWhiteSpace($IncludeScope) -and $Name -notin $IncludeScope) {
-            continue
-        }
-
-        # Check if the number of free leases is less than the threshold
-        if ($Stats.Free -lt $LeaseThreshold ) {
-            if ($ShouldAlert -eq $false) {
-                # Output once if this is the first scope to trigger an alert
-                Write-Host "[Alert] Available DHCP Leases Low. You may want to make modifications to one of the below scopes."
-            }
-            Write-Host "[Alert] Scope: $Name Leases Used(In Use/Free/Total): $($Stats.InUse)/$($Stats.Free)/$($Stats.InUse+$Stats.Free)"
-            $ShouldAlert = $true
-        }
-        else {
-            Write-Host "[Info] Scope: $Name Leases Used(In Use/Free/Total): $($Stats.InUse)/$($Stats.Free)/$($Stats.InUse+$Stats.Free)"
-        }
-    }
-
-    # IPv6
-    # Get all DHCP scopes
-    $v6Scopes = Get-DhcpServerv6Scope | Where-Object { $_.State }
-
-    # Iterate through each scope
-    foreach ($scope in $v6Scopes) {
-        # Get statistics for the scope
-        $Stats = Get-DhcpServerv6ScopeStatistics -Prefix $scope.Prefix
-
-        # Get the name of the scope
-        $Name = (Get-DhcpServerv6Scope -Prefix $scope.Prefix).Name
-
-        # Check if the scope should be excluded
-        if (-not [String]::IsNullOrWhiteSpace($ExcludeScope) -and $Name -in $ExcludeScope) {
-            continue
-        }
-
-        # Check if the scope should be included
-        if (-not [String]::IsNullOrWhiteSpace($IncludeScope) -and $Name -notin $IncludeScope) {
-            continue
-        }
-
-        # Check if the number of free leases is less than the threshold
-        if ($Stats.Free -lt $LeaseThreshold ) {
-            if ($ShouldAlert -eq $false) {
-                # Output once if this is the first scope to trigger an alert
-                Write-Host "[Alert] Available DHCP Leases Low. You may want to make modifications to one of the below scopes."
-            }
-            Write-Host "[Alert] Scope: $Name Leases Used(In Use/Free/Total): $($Stats.InUse)/$($Stats.Free)/$($Stats.InUse+$Stats.Free)"
-            $ShouldAlert = $true
-        }
-        else {
-            Write-Host "[Info] Scope: $Name Leases Used(In Use/Free/Total): $($Stats.InUse)/$($Stats.Free)/$($Stats.InUse+$Stats.Free)"
-        }
-    }
-
-    exit 0
-
-}
 end {
-    
-    
-    
 }

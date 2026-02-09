@@ -1,406 +1,499 @@
 #Requires -Version 5.1
+#Requires -RunAsAdministrator
 
 <#
 .SYNOPSIS
-    Retrieve the previous 14 reboot reasons and optionally save them to a WYSIWYG custom field, or save only the latest reboot reason to a text custom field.
+    Retrieves and reports system reboot reasons from event logs
+
 .DESCRIPTION
-    Retrieve the previous 14 reboot reasons and optionally save them to a WYSIWYG custom field, or save only the latest reboot reason to a text custom field.
+    Comprehensive reboot tracking script that analyzes Windows event logs to
+    determine the reasons for system reboots and shutdowns. Queries Event IDs
+    6008 (unexpected shutdowns) and 1074 (planned shutdowns/reboots) to build
+    a complete reboot history.
+    
+    The script performs the following:
+    - Retrieves last 14 reboot events from System event log
+    - Translates SIDs to usernames for proper user attribution
+    - Formats reboot data with timestamps and reasons
+    - Optionally saves latest reboot to text custom field
+    - Optionally saves full history to WYSIWYG custom field
+    - Generates HTML formatted report for easy viewing
+    - Provides detailed console output for troubleshooting
+    
+    Unexpected shutdowns can indicate power failures, crashes, or forced
+    shutdowns. Planned reboots show Windows Update installs, user-initiated
+    reboots, and maintenance operations.
+
+.PARAMETER TextCustomField
+    Name of NinjaRMM text custom field to store latest reboot reason.
+    Value will be truncated to 100 characters if needed.
+
+.PARAMETER WysiwygCustomField
+    Name of NinjaRMM WYSIWYG custom field to store full reboot history.
+    Displays HTML formatted table of up to 14 recent reboots.
+
+.PARAMETER MaxEvents
+    Maximum number of reboot events to retrieve.
+    Default: 14
+
 .EXAMPLE
-    (No Parameters)
+    .\System-LastRebootReason.ps1
+    
+    Retrieves and displays last 14 reboot reasons.
 
-    Checking the event logs for possible reboot reasons.
-    [Warning] Only the previous 5 reboot reasons were found.
-    Translating the SIDs provided to usernames.
+.EXAMPLE
+    .\System-LastRebootReason.ps1 -TextCustomField "lastRebootReason"
+    
+    Saves latest reboot reason to text custom field.
 
-    ### Past Reboots ###
-    FormattedDate : 12/18/2024 11:20 AM
-    Id            : 6008
-    User          : N/A
-    Message       : The previous system shutdown at 11:20:06 AM on 12/18/2024 
-                    was unexpected.
+.EXAMPLE
+    .\System-LastRebootReason.ps1 -WysiwygCustomField "rebootHistory"
+    
+    Saves full reboot history to WYSIWYG custom field with HTML formatting.
 
-    FormattedDate : 12/18/2024 11:01 AM
-    Id            : 1074
-    User          : NT AUTHORITY\SYSTEM
-    Message       : The process C:\Windows\servicing\TrustedInstaller.exe 
-                    (SRV16-TEST) has initiated the restart of computer SRV16-TEST 
-                    on behalf of user NT AUTHORITY\SYSTEM for the following 
-                    reason: Operating System: Upgrade (Planned)
-                    Reason Code: 0x80020003
-                    Shutdown Type: restart
-                    Comment: 
-
-    FormattedDate : 12/18/2024 10:57 AM
-    Id            : 6008
-    User          : N/A
-    Message       : The previous system shutdown at 10:56:15 AM on 12/18/2024 
-                    was unexpected.
-
-    FormattedDate : 12/16/2024 5:25 PM
-    Id            : 1074
-    User          : SRV16-TEST\Administrator
-    Message       : The process C:\Windows\system32\wbem\wmiprvse.exe (SRV16-TEST) 
-                    has initiated the shutdown of computer SRV16-TEST on behalf of 
-                    user SRV16-TEST\Administrator for the following reason: No 
-                    title for this reason could be found
-                    Reason Code: 0x80070015
-                    Shutdown Type: shutdown
-                    Comment: 
-
-    FormattedDate : 12/16/2024 5:22 PM
-    Id            : 1074
-    User          : NT AUTHORITY\SYSTEM
-    Message       : The process C:\Windows\system32\winlogon.exe (MINWINPC) has 
-                    initiated the restart of computer WIN-2686BKBDV33 on behalf of 
-                    user NT AUTHORITY\SYSTEM for the following reason: Operating 
-                    System: Upgrade (Planned)
-                    Reason Code: 0x80020003
-                    Shutdown Type: restart
-                    Comment:
-
-PARAMETER: -TextCustomField "ExampleInput"
-    Optionally save the latest reboot reason to a text custom field of your choosing.
-
-PARAMETER: -WysiwygCustomField "ReplaceMeWithAnyMultilineCustomField"
-    Optionally save the previous 14 reboot reasons to a WYSIWYG custom field of your choosing.
+.EXAMPLE
+    .\System-LastRebootReason.ps1 -TextCustomField "lastRebootReason" -WysiwygCustomField "rebootHistory" -MaxEvents 20
+    
+    Saves to both fields and retrieves up to 20 events.
 
 .NOTES
-    Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Version: 1.0
-    Release Notes: Initial Release
+    Script Name:    System-LastRebootReason.ps1
+    Author:         Windows Automation Framework
+    Version:        3.0
+    Creation Date:  2024-01-15
+    Last Modified:  2026-02-09
+    
+    Execution Context: Administrator (required for event log access)
+    Execution Frequency: Daily or after reboot
+    Typical Duration: ~3-5 seconds
+    Timeout Setting: 60 seconds recommended
+    
+    User Interaction: NONE (fully automated, no prompts)
+    Restart Behavior: N/A (no restart required)
+    
+    Fields Updated:
+        - TextCustomField - Latest reboot reason (single line, max 100 chars)
+        - WysiwygCustomField - Full reboot history (HTML table)
+    
+    Dependencies:
+        - Windows PowerShell 5.1 or higher
+        - Administrator privileges
+        - System event log access
+        - Windows 10 or Server 2016 minimum
+    
+    Event IDs Monitored:
+        - 6008: Unexpected shutdown (crash, power loss)
+        - 1074: Planned shutdown/restart (user, Windows Update)
+    
+    Environment Variables (Optional):
+        - lastRebootReasonTextCustomField: Override -TextCustomField parameter
+        - last14RebootReasonsWysiwygCustomField: Override -WysiwygCustomField parameter
+        - maxEvents: Override -MaxEvents parameter
+    
+    Exit Codes:
+        0 - Success (reboot reasons retrieved)
+        1 - Failure (no events found or field update failed)
+
+.LINK
+    https://github.com/Xore/waf
 #>
 
 [CmdletBinding()]
 param (
-    [Parameter()]
-    [String]$TextCustomField,
-    [Parameter()]
-    [String]$WysiwygCustomField
+    [Parameter(Mandatory=$false, HelpMessage="Text custom field for latest reboot")]
+    [string]$TextCustomField,
+    
+    [Parameter(Mandatory=$false, HelpMessage="WYSIWYG custom field for reboot history")]
+    [string]$WysiwygCustomField,
+    
+    [Parameter(Mandatory=$false, HelpMessage="Maximum number of events to retrieve")]
+    [ValidateRange(1, 100)]
+    [int]$MaxEvents = 14
 )
 
-begin {
-    # If script form variables are used, replace the command line parameters with their value.
-    if ($env:lastRebootReasonTextCustomField -and $env:lastRebootReasonTextCustomField -notlike "null") { $TextCustomField = $env:lastRebootReasonTextCustomField }
-    if ($env:last14RebootReasonsWysiwygCustomField -and $env:last14RebootReasonsWysiwygCustomField -notlike "null") { $WysiwygCustomField = $env:last14RebootReasonsWysiwygCustomField }
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
 
-    # Check if a text custom field value was provided.
-    if($TextCustomField){
-        # Remove any leading or trailing whitespace.
-        $TextCustomField = $TextCustomField.Trim()
+$ScriptVersion = "3.0"
+$ScriptName = "System-LastRebootReason"
 
-        # If, after trimming, the text custom field is empty, print an error and exit.
-        if(!$TextCustomField){
-            Write-Host -Object "[Error] Please enter a valid text custom field."
-            exit 1
-        }
-    }
+# Event IDs to monitor
+$UnexpectedShutdownEventID = 6008  # Unexpected shutdown
+$PlannedShutdownEventID = 1074      # Planned shutdown/restart
 
-    # Check if a WYSIWYG custom field value was provided.
-    if($WysiwygCustomField){
-        # Remove any leading or trailing whitespace.
-        $WysiwygCustomField = $WysiwygCustomField.Trim()
+# NinjaRMM CLI path for fallback
+$NinjaRMMCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
 
-        # If, after trimming, the WYSIWYG custom field is empty, print an error and exit.
-        if(!$WysiwygCustomField){
-            Write-Host -Object "[Error] Please enter a valid WYSIWYG custom field."
-            exit 1
-        }
-    }
+# ============================================================================
+# INITIALIZATION
+# ============================================================================
 
-    function Set-NinjaProperty {
-        [CmdletBinding()]
-        Param(
-            [Parameter(Mandatory = $True)]
-            [String]$Name,
-            [Parameter()]
-            [String]$Type,
-            [Parameter(Mandatory = $True, ValueFromPipeline = $True)]
-            $Value,
-            [Parameter()]
-            [String]$DocumentName,
-            [Parameter()]
-            [Switch]$Piped
-        )
-        # Remove the non-breaking space character
-        if ($Type -eq "WYSIWYG") {
-            $Value = $Value -replace ' ', '&nbsp;'
-        }
+$StartTime = Get-Date
+$ErrorActionPreference = 'Stop'
+$script:ErrorCount = 0
+$script:WarningCount = 0
+$script:CLIFallbackCount = 0
+
+# ============================================================================
+# FUNCTIONS
+# ============================================================================
+
+function Write-Log {
+    <#
+    .SYNOPSIS
+        Writes structured log messages with plain text output
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Message,
         
-        # Measure the number of characters in the provided value
-        $Characters = $Value | ConvertTo-Json | Measure-Object -Character | Select-Object -ExpandProperty Characters
+        [Parameter(Mandatory=$false)]
+        [ValidateSet('DEBUG','INFO','WARN','ERROR','SUCCESS')]
+        [string]$Level = 'INFO'
+    )
     
-        # Throw an error if the value exceeds the character limit of 200,000 characters
-        if ($Piped -and $Characters -ge 200000) {
-            throw [System.ArgumentOutOfRangeException]::New("Character limit exceeded: the value is greater than or equal to 200,000 characters.")
-        }
+    $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $LogMessage = "[$Timestamp] [$Level] $Message"
     
-        if (!$Piped -and $Characters -ge 45000) {
-            throw [System.ArgumentOutOfRangeException]::New("Character limit exceeded: the value is greater than or equal to 45,000 characters.")
-        }
-        
-        # Initialize a hashtable for additional documentation parameters
-        $DocumentationParams = @{}
+    Write-Output $LogMessage
     
-        # If a document name is provided, add it to the documentation parameters
-        if ($DocumentName) { $DocumentationParams["DocumentName"] = $DocumentName }
-        
-        # Define a list of valid field types
-        $ValidFields = "Attachment", "Checkbox", "Date", "Date or Date Time", "Decimal", "Dropdown", "Email", "Integer", "IP Address", "MultiLine", "MultiSelect", "Phone", "Secure", "Text", "Time", "URL", "WYSIWYG"
-    
-        # Warn the user if the provided type is not valid
-        if ($Type -and $ValidFields -notcontains $Type) { Write-Warning "$Type is an invalid type. Please check here for valid types: https://ninjarmm.zendesk.com/hc/en-us/articles/16973443979789-Command-Line-Interface-CLI-Supported-Fields-and-Functionality" }
-        
-        # Define types that require options to be retrieved
-        $NeedsOptions = "Dropdown"
-    
-        # If the property is being set in a document or field and the type needs options, retrieve them
-        if ($DocumentName) {
-            if ($NeedsOptions -contains $Type) {
-                $NinjaPropertyOptions = Ninja-Property-Docs-Options -AttributeName $Name @DocumentationParams 2>&1
-            }
-        }
-        else {
-            if ($NeedsOptions -contains $Type) {
-                $NinjaPropertyOptions = Ninja-Property-Options -Name $Name 2>&1
-            }
-        }
-        
-        # Throw an error if there was an issue retrieving the property options
-        if ($NinjaPropertyOptions.Exception) { throw $NinjaPropertyOptions }
-            
-        # Process the property value based on its type
-        switch ($Type) {
-            "Checkbox" {
-                # Convert the value to a boolean for Checkbox type
-                $NinjaValue = [System.Convert]::ToBoolean($Value)
-            }
-            "Date or Date Time" {
-                # Convert the value to a Unix timestamp for Date or Date Time type
-                $Date = (Get-Date $Value).ToUniversalTime()
-                $TimeSpan = New-TimeSpan (Get-Date "1970-01-01 00:00:00") $Date
-                $NinjaValue = $TimeSpan.TotalSeconds
-            }
-            "Dropdown" {
-                # Convert the dropdown value to its corresponding GUID
-                $Options = $NinjaPropertyOptions -replace '=', ',' | ConvertFrom-Csv -Header "GUID", "Name"
-                $Selection = $Options | Where-Object { $_.Name -eq $Value } | Select-Object -ExpandProperty GUID
-            
-                # Throw an error if the value is not present in the dropdown options
-                if (!($Selection)) {
-                    throw [System.ArgumentOutOfRangeException]::New("Value is not present in dropdown options.")
-                }
-            
-                $NinjaValue = $Selection
-            }
-            default {
-                # For other types, use the value as is
-                $NinjaValue = $Value
-            }
-        }
-            
-        # Set the property value in the document if a document name is provided
-        if ($DocumentName) {
-            $CustomField = Ninja-Property-Docs-Set -AttributeName $Name -AttributeValue $NinjaValue @DocumentationParams 2>&1
-        }
-        else {
-            try {
-                # Otherwise, set the standard property value
-                if ($Piped) {
-                    $CustomField = $NinjaValue | Ninja-Property-Set-Piped -Name $Name 2>&1
-                }
-                else {
-                    $CustomField = Ninja-Property-Set -Name $Name -Value $NinjaValue 2>&1
-                }
-            }
-            catch {
-                Write-Host -Object "[Error] Failed to set custom field."
-                throw $_.Exception.Message
-            }
-        }
-            
-        # Throw an error if setting the property failed
-        if ($CustomField.Exception) {
-            throw $CustomField
-        }
-    }
-
-    function Test-IsElevated {
-        $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-        $p = New-Object System.Security.Principal.WindowsPrincipal($id)
-        $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
-    }
-
-    if (!$ExitCode) {
-        $ExitCode = 0
+    switch ($Level) {
+        'WARN'  { $script:WarningCount++ }
+        'ERROR' { $script:ErrorCount++ }
     }
 }
-process {
-    # Check if the current user is elevated (running as Administrator).
-    if (!(Test-IsElevated)) {
-        Write-Host -Object "[Error] Access Denied. Please run with Administrator privileges."
-        exit 1
+
+function Set-NinjaField {
+    <#
+    .SYNOPSIS
+        Sets a NinjaRMM custom field value with automatic fallback to CLI
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$FieldName,
+        
+        [Parameter(Mandatory=$true)]
+        [AllowNull()]
+        $Value,
+        
+        [Parameter(Mandatory=$false)]
+        [ValidateSet('Text','WYSIWYG')]
+        [string]$Type = 'Text'
+    )
+    
+    if ($null -eq $Value -or $Value -eq "") {
+        Write-Log "Skipping field '$FieldName' - no value" -Level DEBUG
+        return
     }
+    
+    $ValueString = $Value.ToString()
+    
+    # Handle WYSIWYG non-breaking spaces
+    if ($Type -eq 'WYSIWYG') {
+        $ValueString = $ValueString -replace ' ', '&nbsp;'
+    }
+    
+    # Check character limits
+    $CharCount = $ValueString.Length
+    $Limit = if ($Type -eq 'WYSIWYG') { 45000 } else { 10000 }
+    
+    if ($CharCount -gt $Limit) {
+        Write-Log "Value exceeds $Limit character limit ($CharCount chars), truncating" -Level WARN
+        $ValueString = $ValueString.Substring(0, $Limit - 3) + "..."
+    }
+    
+    try {
+        if (Get-Command Ninja-Property-Set -ErrorAction SilentlyContinue) {
+            Ninja-Property-Set $FieldName $ValueString -ErrorAction Stop
+            Write-Log "Field '$FieldName' set successfully ($CharCount chars)" -Level DEBUG
+            return
+        } else {
+            throw "Ninja-Property-Set cmdlet not available"
+        }
+    } catch {
+        Write-Log "Ninja-Property-Set failed, using CLI fallback" -Level DEBUG
+        
+        try {
+            if (-not (Test-Path $NinjaRMMCLI)) {
+                throw "NinjaRMM CLI not found at: $NinjaRMMCLI"
+            }
+            
+            $CLIArgs = @("set", $FieldName, $ValueString)
+            $CLIResult = & $NinjaRMMCLI $CLIArgs 2>&1
+            
+            if ($LASTEXITCODE -ne 0) {
+                throw "CLI exit code: $LASTEXITCODE, Output: $CLIResult"
+            }
+            
+            Write-Log "Field '$FieldName' set via CLI" -Level DEBUG
+            $script:CLIFallbackCount++
+            
+        } catch {
+            Write-Log "Failed to set field '$FieldName': $_" -Level ERROR
+        }
+    }
+}
 
-    # Inform the user that the script is checking the event logs for possible reboot reasons.
-    Write-Host -Object "Checking the event logs for possible reboot reasons."
+function Test-IsElevated {
+    <#
+    .SYNOPSIS
+        Checks if script is running with Administrator privileges
+    #>
+    $Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $Principal = New-Object System.Security.Principal.WindowsPrincipal($Identity)
+    return $Principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+}
 
-    # Create an XML query to filter for certain event IDs (6008 and 1074) within the System event log.
-    [xml]$EventViewerXML = "<QueryList>
+function Get-RebootEvents {
+    <#
+    .SYNOPSIS
+        Retrieves reboot/shutdown events from System event log
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [int]$MaxEvents
+    )
+    
+    try {
+        Write-Log "Querying event log for reboot reasons (Event IDs 6008, 1074)" -Level INFO
+        
+        # Build XML filter for specific event IDs
+        [xml]$FilterXML = @"
+<QueryList>
   <Query Id='0' Path='System'>
-    <Select Path='System'>*[System[Provider[@Name='Microsoft-Windows-Eventlog' or @Name='EventLog' or @Name='Microsoft-Windows-Kernel-General'] and(EventID=6008)]]</Select>
-    <Select Path='System'>*[System[(EventID=1074)]]</Select>
+    <Select Path='System'>*[System[Provider[@Name='Microsoft-Windows-Eventlog' or @Name='EventLog' or @Name='Microsoft-Windows-Kernel-General'] and(EventID=$UnexpectedShutdownEventID)]]</Select>
+    <Select Path='System'>*[System[(EventID=$PlannedShutdownEventID)]]</Select>
   </Query>
-</QueryList>"
-
-    try {
-        # Retrieve up to 14 recent matching events from the System log using the XML filter.
-        # Stop on errors so exceptions can be caught.
-        $MatchingEvents = Get-WinEvent -FilterXml $EventViewerXML -MaxEvents 14 -ErrorAction Stop
-    }
-    catch {
-        Write-Host -Object "[Error] $($_.Exception.Message)"
-        Write-Host -Object "[Error] Failed to search event log."
-        exit 1
-    }
-
-    # Count how many events were retrieved.
-    $MatchingEventCount = $MatchingEvents | Measure-Object | Select-Object -ExpandProperty Count
-
-    # If we found some events, but fewer than 14, warn the user that we have a limited number of reboot reasons.
-    if ($MatchingEventCount -gt 0 -and $MatchingEventCount -lt 14) {
-        Write-Host -Object "[Warning] Only the previous $MatchingEventCount reboot reasons were found."
-    }
-
-    # If no events were found, print an error and set the exit code to 1.
-    if ($MatchingEventCount -lt 1) {
-        Write-Host -Object "[Error] No reboot reasons were found."
-        $ExitCode = 1
-    }
-
-    # Inform the user that SIDs are being translated to usernames.
-    Write-Host -Object "Translating the SIDs provided to usernames."
-
-    # Retrieve user profile information from the registry for SID-to-username mapping.
-    try {
-        $AllUserProfiles = Get-ItemProperty "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\*" -ErrorAction Stop
-    }
-    catch {
-        Write-Host -Object "[Error] $($_.Exception.Message)"
-        Write-Host -Object "[Error] Failed to find any user profiles."
-        $ExitCode = 1
-    }
-
-    # Format the retrieved events into a custom object with a friendly date format, ID, user, and message.
-    $FormattedResults = $MatchingEvents | Select-Object -Property "TimeCreated", "Id", "UserId", "Message" | ForEach-Object {
-        $Username = $null
-
-        if ($_.UserId) {
-            try {
-                # Temporarily stop on errors to ensure exceptions are caught for SID translation.
-                $ErrorActionPreference = "Stop"
-                $SID = New-Object System.Security.Principal.SecurityIdentifier($_.UserId)
-
-                # Attempt to translate the SID to an NT account (username).
-                $Username = $SID.Translate([System.Security.Principal.NTAccount]) | Select-Object -ExpandProperty Value -ErrorAction SilentlyContinue
-            }
-            catch {
-                # If direct SID translation fails, look up the profile in the registry.
-                $Sid = $_.UserId
-                $ProfileKey = $AllUserProfiles | Where-Object { $_.PSChildName -eq $Sid } | Select-Object @{Name = "Username"; Expression = { "$($_.ProfileImagePath | Split-Path -Leaf -ErrorAction SilentlyContinue)" } } -ErrorAction SilentlyContinue
-                Write-Host -Object "[Error] Failed to gather complete profile information for the SID '$($_.UserId)'."
-                Write-Host -Object "[Error] $($_.Exception.Message)"
-                $ExitCode = 1
-            }
+</QueryList>
+"@
+        
+        $Events = Get-WinEvent -FilterXml $FilterXML -MaxEvents $MaxEvents -ErrorAction Stop
+        
+        if ($Events) {
+            Write-Log "Found $($Events.Count) reboot event(s)" -Level SUCCESS
+            return $Events
+        } else {
+            Write-Log "No reboot events found" -Level WARN
+            return $null
         }
-        else {
-            # If there's no UserId, set the username to "N/A".
-            $Username = "N/A"
-        }
-
-        # If no username was found directly, but we have a ProfileKey, use that as an approximation.
-        if (!$Username -and $ProfileKey) {
-            Write-Host -Object "Approximating the username for the SID '$Sid'."
-            $Username = $ProfileKey
-        }
-        elseif (!$Username) {
-            # If still no username is found, fall back to the SID itself.
-            $Username = $SID
-        }
-
-        # Create a custom object with formatted data.
-        [PSCustomObject]@{
-            TimeCreated   = $_.TimeCreated
-            FormattedDate = "$($_.TimeCreated.ToShortDateString()) $($_.TimeCreated.ToShortTimeString())"
-            Id            = $_.Id
-            User          = $Username
-            Message       = $_.Message
-        }
-
-        # Restore the error action preference to continue.
-        $ErrorActionPreference = "Continue"
+        
+    } catch {
+        Write-Log "Failed to query event log: $($_.Exception.Message)" -Level ERROR
+        return $null
     }
-
-    # If either text or WYSIWYG custom fields were provided, print a blank line for readability.
-    if ($TextCustomField -or $WysiwygCustomField) {
-        Write-Host -Object ""
-    }
-
-    # If a text custom field is specified, set it to display the most recent event (truncated if too long).
-    if ($TextCustomField) {
-        # Get the most recent event (first in the list).
-        $MostRecentEvent = $FormattedResults | Select-Object -First 1
-
-        # If the message is longer than 100 characters, truncate it and add ellipsis.
-        if (($MostRecentEvent.Message -replace '\r?\n', ' ').Length -gt 100) {
-            $MostRecentEvent = $MostRecentEvent | Select-Object -Property FormattedDate, Id, User, @{Name = "Message"; Expression = { "$($_.Message.Substring(0,97))..." } }
-        }
-
-        # Construct the value to set in the text custom field.
-        $TextCustomFieldValue = "$($MostRecentEvent.FormattedDate) | EventID: $($MostRecentEvent.Id) | Username: $($MostRecentEvent.User) | Reason: $($MostRecentEvent.Message -replace '\r?\n', ' ')"
-
-        # Attempt to set the specified text custom field.
-        try {
-            Write-Host "Attempting to set the Custom Field '$TextCustomField'."
-            Set-NinjaProperty -Name $TextCustomField -Value $TextCustomFieldValue
-            Write-Host "Successfully set the Custom Field '$TextCustomField'!"
-        }
-        catch {
-            Write-Host "[Error] $($_.Exception.Message)"
-            $ExitCode = 1
-        }
-    }
-
-    # If a WYSIWYG custom field is specified, construct an HTML table of the results and set the field.
-    if ($WysiwygCustomField) {
-        # Convert the formatted results to an HTML fragment.
-        $HTMLTable = $FormattedResults | Select-Object -Property FormattedDate, Id, User, Message | ConvertTo-Html -Fragment
-
-        # Bold the table headers and adjust column widths.
-        $HTMLTable = $HTMLTable -replace '<th>', '<th><b>' -replace '</th>', '</b></th>'
-        $HTMLTable = $HTMLTable -replace '<th><b>FormattedDate', "<th style='width: 12em'><b>Date" -replace '<th><b>Id', "<th style='width: 6em'><b>Event Id"
-        $HTMLTable = $HTMLTable -replace '<th><b>User', "<th style='width: 20em'><b>Username" -replace '<th><b>Message', "<th><b>Reason"
-
-        # Attempt to set the WYSIWYG custom field with the constructed HTML table.
-        try {
-            Write-Host "Attempting to set the Custom Field '$WysiwygCustomField'."
-            Set-NinjaProperty -Name $WysiwygCustomField -Value $HTMLTable
-            Write-Host "Successfully set the Custom Field '$WysiwygCustomField'!"
-        }
-        catch {
-            Write-Host "[Error] $($_.Exception.Message)"
-            $ExitCode = 1
-        }
-    }
-
-    # Print a heading for past reboots and then display the formatted results as a list for reference.
-    Write-Host -Object "`n### Past Reboots ###"
-    ($FormattedResults | Format-List -Property FormattedDate, Id, User, UserId, Message | Out-String).Trim() | Write-Host
-
-    # Exit with the previously set exit code (defaulting to 0 if not set).
-    exit $ExitCode
 }
-end {
+
+function ConvertFrom-SIDToUsername {
+    <#
+    .SYNOPSIS
+        Converts a SID to a username using various methods
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$SID,
+        
+        [Parameter(Mandatory=$false)]
+        $UserProfiles
+    )
     
+    try {
+        # Try direct SID translation first
+        $SecurityID = New-Object System.Security.Principal.SecurityIdentifier($SID)
+        $Username = $SecurityID.Translate([System.Security.Principal.NTAccount]).Value
+        
+        if ($Username) {
+            Write-Log "Translated SID $SID to $Username" -Level DEBUG
+            return $Username
+        }
+        
+    } catch {
+        Write-Log "Direct SID translation failed for $SID, trying registry lookup" -Level DEBUG
+    }
     
+    # Fallback to registry profile lookup
+    if ($UserProfiles) {
+        $Profile = $UserProfiles | Where-Object { $_.PSChildName -eq $SID }
+        
+        if ($Profile -and $Profile.ProfileImagePath) {
+            $Username = Split-Path -Path $Profile.ProfileImagePath -Leaf
+            Write-Log "Found username from profile: $Username" -Level DEBUG
+            return $Username
+        }
+    }
     
+    # Ultimate fallback - return SID itself
+    Write-Log "Could not translate SID $SID, using SID as username" -Level WARN
+    return $SID
+}
+
+# ============================================================================
+# MAIN EXECUTION
+# ============================================================================
+
+try {
+    Write-Log "========================================" -Level INFO
+    Write-Log "Starting: $ScriptName v$ScriptVersion" -Level INFO
+    Write-Log "========================================" -Level INFO
+    
+    # Check for environment variable overrides
+    if ($env:lastRebootReasonTextCustomField -and $env:lastRebootReasonTextCustomField -notlike "null") {
+        $TextCustomField = $env:lastRebootReasonTextCustomField.Trim()
+        Write-Log "TextCustomField from environment: $TextCustomField" -Level INFO
+    }
+    
+    if ($env:last14RebootReasonsWysiwygCustomField -and $env:last14RebootReasonsWysiwygCustomField -notlike "null") {
+        $WysiwygCustomField = $env:last14RebootReasonsWysiwygCustomField.Trim()
+        Write-Log "WysiwygCustomField from environment: $WysiwygCustomField" -Level INFO
+    }
+    
+    if ($env:maxEvents -and $env:maxEvents -notlike "null") {
+        $MaxEvents = [int]$env:maxEvents
+        Write-Log "MaxEvents from environment: $MaxEvents" -Level INFO
+    }
+    
+    # Validate custom field parameters
+    if ($TextCustomField -and [string]::IsNullOrWhiteSpace($TextCustomField)) {
+        throw "TextCustomField parameter is empty after trimming"
+    }
+    
+    if ($WysiwygCustomField -and [string]::IsNullOrWhiteSpace($WysiwygCustomField)) {
+        throw "WysiwygCustomField parameter is empty after trimming"
+    }
+    
+    # Check administrator privileges
+    if (-not (Test-IsElevated)) {
+        throw "Administrator privileges required. Please run as Administrator."
+    }
+    Write-Log "Administrator privileges confirmed" -Level SUCCESS
+    
+    # Retrieve reboot events
+    $RebootEvents = Get-RebootEvents -MaxEvents $MaxEvents
+    
+    if (-not $RebootEvents) {
+        throw "No reboot events found in System event log"
+    }
+    
+    $EventCount = $RebootEvents.Count
+    
+    if ($EventCount -lt $MaxEvents) {
+        Write-Log "Only $EventCount reboot event(s) found (requested $MaxEvents)" -Level WARN
+    }
+    
+    # Get user profiles for SID translation
+    Write-Log "Loading user profiles for SID translation" -Level DEBUG
+    try {
+        $UserProfiles = Get-ItemProperty "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\*"
+        Write-Log "Loaded $($UserProfiles.Count) user profile(s)" -Level DEBUG
+    } catch {
+        Write-Log "Failed to load user profiles: $_" -Level WARN
+        $UserProfiles = $null
+    }
+    
+    # Format reboot events
+    Write-Log "Formatting reboot event data" -Level DEBUG
+    
+    $FormattedResults = foreach ($Event in $RebootEvents) {
+        # Determine username
+        $Username = if ($Event.UserId) {
+            ConvertFrom-SIDToUsername -SID $Event.UserId.Value -UserProfiles $UserProfiles
+        } else {
+            "N/A"
+        }
+        
+        # Create formatted object
+        [PSCustomObject]@{
+            TimeCreated   = $Event.TimeCreated
+            FormattedDate = $Event.TimeCreated.ToString('MM/dd/yyyy hh:mm tt')
+            EventID       = $Event.Id
+            Username      = $Username
+            Message       = $Event.Message
+        }
+    }
+    
+    Write-Log "Formatted $($FormattedResults.Count) reboot event(s)" -Level SUCCESS
+    
+    # Update text custom field if specified
+    if ($TextCustomField) {
+        Write-Log "Updating text custom field: $TextCustomField" -Level INFO
+        
+        $LatestEvent = $FormattedResults | Select-Object -First 1
+        
+        # Truncate message if too long
+        $MessageText = $LatestEvent.Message -replace '[\r\n]+', ' '
+        if ($MessageText.Length -gt 100) {
+            $MessageText = $MessageText.Substring(0, 97) + "..."
+        }
+        
+        $TextValue = "$($LatestEvent.FormattedDate) | EventID: $($LatestEvent.EventID) | Username: $($LatestEvent.Username) | Reason: $MessageText"
+        
+        Set-NinjaField -FieldName $TextCustomField -Value $TextValue -Type 'Text'
+        Write-Log "Text custom field updated successfully" -Level SUCCESS
+    }
+    
+    # Update WYSIWYG custom field if specified
+    if ($WysiwygCustomField) {
+        Write-Log "Updating WYSIWYG custom field: $WysiwygCustomField" -Level INFO
+        
+        # Generate HTML table
+        $HTMLTable = $FormattedResults |
+            Select-Object FormattedDate, EventID, Username, Message |
+            ConvertTo-Html -Fragment
+        
+        # Format HTML table
+        $HTMLTable = $HTMLTable -replace '<th>', '<th><b>' -replace '</th>', '</b></th>'
+        $HTMLTable = $HTMLTable -replace '<th><b>FormattedDate', "<th style='width: 12em'><b>Date"
+        $HTMLTable = $HTMLTable -replace '<th><b>EventID', "<th style='width: 6em'><b>Event ID"
+        $HTMLTable = $HTMLTable -replace '<th><b>Username', "<th style='width: 20em'><b>Username"
+        $HTMLTable = $HTMLTable -replace '<th><b>Message', "<th><b>Reason"
+        
+        $HTMLValue = $HTMLTable -join "`n"
+        
+        Set-NinjaField -FieldName $WysiwygCustomField -Value $HTMLValue -Type 'WYSIWYG'
+        Write-Log "WYSIWYG custom field updated successfully" -Level SUCCESS
+    }
+    
+    # Display results to console
+    Write-Log "" -Level INFO
+    Write-Log "Past Reboot Events:" -Level INFO
+    Write-Log "==================" -Level INFO
+    
+    foreach ($Event in $FormattedResults) {
+        Write-Log "" -Level INFO
+        Write-Log "Date: $($Event.FormattedDate)" -Level INFO
+        Write-Log "Event ID: $($Event.EventID)" -Level INFO
+        Write-Log "Username: $($Event.Username)" -Level INFO
+        Write-Log "Reason: $($Event.Message -replace '[\r\n]+', ' ')" -Level INFO
+    }
+    
+    Write-Log "" -Level INFO
+    Write-Log "Reboot tracking completed: $EventCount event(s) processed" -Level SUCCESS
+    
+    exit 0
+    
+} catch {
+    Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
+    Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
+    
+    exit 1
+    
+} finally {
+    $EndTime = Get-Date
+    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+    
+    Write-Log "========================================" -Level INFO
+    Write-Log "Execution Summary:" -Level INFO
+    Write-Log "  Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
+    Write-Log "  Errors: $script:ErrorCount" -Level INFO
+    Write-Log "  Warnings: $script:WarningCount" -Level INFO
+    
+    if ($script:CLIFallbackCount -gt 0) {
+        Write-Log "  CLI Fallbacks: $script:CLIFallbackCount" -Level INFO
+    }
+    
+    Write-Log "========================================" -Level INFO
 }

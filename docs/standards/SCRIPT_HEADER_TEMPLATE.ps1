@@ -38,6 +38,7 @@
     Dependencies:
         - Windows PowerShell 5.1 or higher
         - Administrator privileges (SYSTEM context)
+        - NinjaRMM agent installed
         - [Any other required modules or features]
     
     Exit Codes:
@@ -79,6 +80,9 @@ $VerbosePreference = 'SilentlyContinue'  # Change to 'Continue' for debug
 $DefaultTimeout = 300  # 5 minutes
 $MaxRetries = 3
 
+# NinjaRMM CLI path
+$NinjaRMMCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
+
 # ============================================================================
 # INITIALIZATION
 # ============================================================================
@@ -91,6 +95,7 @@ $ScriptName = $MyInvocation.MyCommand.Name
 $ErrorActionPreference = 'Stop'
 $script:ErrorCount = 0
 $script:WarningCount = 0
+$script:CLIFallbackCount = 0
 
 # ============================================================================
 # FUNCTIONS
@@ -147,6 +152,12 @@ function Test-Prerequisites {
             throw "Script must be run with administrator privileges"
         }
         
+        # Check NinjaRMM CLI exists (for fallback)
+        if (-not (Test-Path $NinjaRMMCLI)) {
+            Write-Log "NinjaRMM CLI not found at: $NinjaRMMCLI" -Level WARN
+            Write-Log "Field setting fallback will not be available" -Level WARN
+        }
+        
         # Add additional prerequisite checks here
         
         Write-Log "Prerequisites validated successfully" -Level INFO
@@ -187,7 +198,31 @@ function Get-SafeValue {
 function Set-NinjaField {
     <#
     .SYNOPSIS
-        Sets a NinjaRMM custom field value with validation
+        Sets a NinjaRMM custom field value with automatic fallback to CLI
+    
+    .DESCRIPTION
+        Attempts to set a NinjaRMM custom field using the Ninja-Property-Set cmdlet.
+        If the cmdlet fails (e.g., not available in current context), automatically
+        falls back to using the NinjaRMM CLI executable.
+        
+        This dual approach ensures field setting works in all execution contexts:
+        - Ninja-Property-Set: Primary method (when running within NinjaRMM)
+        - ninjarmm-cli.exe: Fallback method (when cmdlet unavailable)
+    
+    .PARAMETER FieldName
+        The name of the custom field to set (case-sensitive)
+    
+    .PARAMETER Value
+        The value to set for the field. Null or empty values are skipped.
+    
+    .EXAMPLE
+        Set-NinjaField -FieldName "opsHealthScore" -Value 85
+    
+    .EXAMPLE
+        Set-NinjaField -FieldName "capDiskCFreeGB" -Value 125.5
+    
+    .NOTES
+        The function tracks fallback usage via $script:CLIFallbackCount for monitoring.
     #>
     [CmdletBinding()]
     param(
@@ -199,19 +234,56 @@ function Set-NinjaField {
         $Value
     )
     
+    # Validate value is not null or empty
+    if ($null -eq $Value -or $Value -eq "") {
+        Write-Log "Skipping field '$FieldName' - no value provided" -Level DEBUG
+        return
+    }
+    
+    # Convert value to string for consistent handling
+    $ValueString = $Value.ToString()
+    
+    # Attempt 1: Try Ninja-Property-Set cmdlet (primary method)
     try {
-        # Validate value is not null or empty
-        if ($null -eq $Value -or $Value -eq "") {
-            Write-Log "Skipping field '$FieldName' - no value" -Level DEBUG
+        # Check if cmdlet exists
+        if (Get-Command Ninja-Property-Set -ErrorAction SilentlyContinue) {
+            Ninja-Property-Set $FieldName $ValueString -ErrorAction Stop
+            Write-Log "Field '$FieldName' set to: $ValueString" -Level DEBUG
             return
+        } else {
+            Write-Log "Ninja-Property-Set cmdlet not available, using CLI fallback" -Level DEBUG
+            throw "Cmdlet not found"
         }
         
-        # Set the field using Ninja-Property-Set
-        Ninja-Property-Set $FieldName $Value
-        Write-Log "Field '$FieldName' set to: $Value" -Level DEBUG
-        
     } catch {
-        Write-Log "Failed to set field '$FieldName': $_" -Level ERROR
+        Write-Log "Ninja-Property-Set failed for '$FieldName': $_" -Level DEBUG
+        Write-Log "Attempting CLI fallback..." -Level DEBUG
+        
+        # Attempt 2: Fall back to NinjaRMM CLI
+        try {
+            # Verify CLI exists
+            if (-not (Test-Path $NinjaRMMCLI)) {
+                throw "NinjaRMM CLI not found at: $NinjaRMMCLI"
+            }
+            
+            # Execute CLI command
+            # Format: ninjarmm-cli.exe set <field-name> <value>
+            $CLIArgs = @("set", $FieldName, $ValueString)
+            $CLIResult = & $NinjaRMMCLI $CLIArgs 2>&1
+            
+            # Check if CLI execution succeeded
+            if ($LASTEXITCODE -ne 0) {
+                throw "CLI returned exit code: $LASTEXITCODE. Output: $CLIResult"
+            }
+            
+            Write-Log "Field '$FieldName' set via CLI to: $ValueString" -Level DEBUG
+            $script:CLIFallbackCount++
+            
+        } catch {
+            # Both methods failed
+            Write-Log "Failed to set field '$FieldName' (both methods): $_" -Level ERROR
+            throw
+        }
     }
 }
 
@@ -233,12 +305,12 @@ try {
     Write-Log "Executing main logic..." -Level INFO
     
     # Example: Gather data
-    # $SomeData = Get-SafeValue { Get-WmiObject Win32_OperatingSystem }
+    # $SomeData = Get-SafeValue { Get-CimInstance Win32_OperatingSystem }
     
     # Example: Calculate metrics
     # $SomeMetric = Calculate-Something $SomeData
     
-    # Example: Set fields
+    # Example: Set fields (with automatic fallback)
     # Set-NinjaField -FieldName "fieldName" -Value $SomeMetric
     
     Write-Log "Script execution completed successfully" -Level INFO
@@ -259,6 +331,12 @@ try {
     Write-Log "  Duration: $ExecutionTime seconds" -Level INFO
     Write-Log "  Errors: $script:ErrorCount" -Level INFO
     Write-Log "  Warnings: $script:WarningCount" -Level INFO
+    
+    # Report CLI fallback usage if applicable
+    if ($script:CLIFallbackCount -gt 0) {
+        Write-Log "  CLI Fallbacks: $script:CLIFallbackCount" -Level INFO
+    }
+    
     Write-Log "========================================" -Level INFO
 }
 

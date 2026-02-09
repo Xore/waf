@@ -8,7 +8,7 @@
 
 ## Project Overview
 
-The plaintext_scripts folder contains 164 automation scripts (200+ including duplicates) that require standardization to comply with WAF Coding Standards. This project will rename, refactor, test, and deploy all scripts according to established guidelines.
+The plaintext_scripts folder contains 164 automation scripts (200+ including duplicates) that require standardization to comply with WAF Coding Standards. This project will rename, refactor, test, deploy, and integrate all scripts into the WAF framework to enhance monitoring capabilities.
 
 ---
 
@@ -50,6 +50,41 @@ The plaintext_scripts folder contains 164 automation scripts (200+ including dup
 - Deployment steps
 
 **Use this for:** Daily work and execution
+
+### 4. [PLAINTEXT_SCRIPTS_FRAMEWORK_INTEGRATION.md](PLAINTEXT_SCRIPTS_FRAMEWORK_INTEGRATION.md) 🆕
+**Purpose:** Framework integration and enhancement plan  
+**Contents:**
+- Integration strategy for all 164 scripts
+- 96 new custom fields design
+- 5 new dashboard specifications
+- 20+ alert templates
+- 5 automation policies
+- 11 enhancement areas identified
+- 12-week integration timeline
+
+**Use this for:** Integrating scripts into WAF framework after standardization
+
+---
+
+## Project Phases
+
+### Part 1: Script Standardization (Weeks 1-11)
+
+**Weeks 1-7:** Rename and standardize scripts  
+**Weeks 8-9:** Testing  
+**Weeks 10-11:** Deployment
+
+### Part 2: Framework Integration (Weeks 12-23) 🆕
+
+**Week 12:** Custom field creation (96 new fields)  
+**Weeks 13-18:** Script integration with framework  
+**Week 19:** Dashboard integration (5 new dashboards)  
+**Week 20:** Alert configuration (20+ alerts)  
+**Week 21:** Automation policies (5 policies)  
+**Week 22:** Testing & validation  
+**Week 23:** Documentation & training
+
+**Total Project Duration:** 23 weeks (~6 months)
 
 ---
 
@@ -109,6 +144,91 @@ Copy-Item "plaintext_scripts" "C:\Backups\WAF\plaintext_scripts_$timestamp" -Rec
 - **Standardize:** 161 scripts
 - **Test:** All scripts
 - **Deploy:** All scripts
+- **Integrate:** All scripts into framework 🆕
+
+### Framework Enhancements 🆕
+- **New Custom Fields:** 96 fields
+- **New Dashboards:** 5 dashboards
+- **New Alerts:** 20+ alert templates
+- **New Policies:** 5 automation policies
+- **Total Custom Fields:** 373 (277 existing + 96 new)
+
+---
+
+## Framework Enhancement Areas 🆕
+
+### 1. Active Directory Monitoring
+- DC health scoring
+- Replication monitoring
+- FSMO role tracking
+- **Scripts:** 3 monitors
+
+### 2. Security & Compliance
+- SMBv1 compliance
+- Antivirus detection
+- Security posture tracking
+- Unencrypted disk detection
+- **Scripts:** 9 monitors
+
+### 3. Network Infrastructure
+- LLDP topology mapping
+- DHCP monitoring
+- WiFi health tracking
+- Network speed monitoring
+- **Scripts:** 5 monitors
+
+### 4. Server Role Monitoring
+- SQL Server health
+- Exchange monitoring
+- Hyper-V monitoring
+- IIS monitoring
+- Certificate tracking
+- **Scripts:** 10 monitors
+
+### 5. System Health & Performance
+- Battery health tracking
+- BSOD monitoring
+- Service monitoring
+- Uptime tracking
+- **Scripts:** 9 monitors
+
+### 6. Configuration & Compliance
+- GPO monitoring
+- File integrity monitoring
+- Firewall compliance
+- **Scripts:** 4 monitors
+
+### 7. User Management & Authentication
+- Local admin tracking
+- Login history
+- Locked account monitoring
+- Certificate expiration
+- **Scripts:** 6 monitors
+
+### 8. Windows Update & Patching
+- Windows 11 compatibility
+- Update diagnostics
+- WSUS configuration
+- **Scripts:** 2 monitors
+
+### 9. Office 365 & Cloud Services
+- Modern auth monitoring
+- OneDrive tracking
+- Large PST/OST detection
+- **Scripts:** 3 monitors
+
+### 10. Remote Management & Diagnostics
+- RDP monitoring
+- Speed testing
+- Browser extension tracking
+- Time drift monitoring
+- **Scripts:** 6 monitors
+
+### 11. Telemetry & Analytics
+- Comprehensive telemetry
+- Field validation
+- Capacity forecasting
+- **Scripts:** 3 monitors (existing, enhanced)
 
 ---
 
@@ -156,14 +276,16 @@ Pattern: XX_Description_Action.ps1
 
 ---
 
-## Timeline
+## Complete Timeline
 
-### Week 1: Setup & Analysis
+### Part 1: Script Standardization (Weeks 1-11)
+
+#### Week 1: Setup & Analysis
 - Day 1-2: Infrastructure setup
 - Day 3: Duplicate resolution
 - Day 4-5: Batch renaming
 
-### Weeks 2-7: Code Standardization
+#### Weeks 2-7: Code Standardization
 - Week 2: Active Directory (8 scripts)
 - Week 3: System Monitoring (11 scripts)
 - Week 4: Security & Compliance (12 scripts)
@@ -171,13 +293,62 @@ Pattern: XX_Description_Action.ps1
 - Week 6: Server & Applications (30 scripts)
 - Week 7: Remaining scripts (80+ scripts)
 
-### Weeks 8-9: Testing
+#### Weeks 8-9: Testing
 - Week 8: Unit testing on multiple OS/language combinations
 - Week 9: Integration testing in NinjaRMM
 
-### Weeks 10-11: Deployment
+#### Weeks 10-11: Deployment
 - Week 10: Pilot (10% → 75% staged rollout)
 - Week 11: Full deployment and stabilization
+
+### Part 2: Framework Integration (Weeks 12-23) 🆕
+
+#### Week 12: Custom Field Creation
+- Design field schema
+- Create 96 new custom fields
+- Map fields to scripts
+- Document field relationships
+
+#### Weeks 13-18: Script Integration
+- Update script headers
+- Implement field mappings
+- Configure script scheduling
+- Test field population
+
+#### Week 19: Dashboard Integration
+- Update existing dashboards
+- Create 5 new dashboards:
+  - Active Directory Health
+  - Security Compliance
+  - Network Infrastructure
+  - Server Infrastructure
+  - User Activity
+
+#### Week 20: Alert Configuration
+- Create 20+ alert templates
+- Configure escalation paths
+- Test alert delivery
+- Document response procedures
+
+#### Week 21: Automation Policies
+- Create 5 automation policies:
+  - Security Hardening
+  - AD Health Check
+  - Network Monitoring
+  - Certificate Monitoring
+  - User Activity Monitoring
+
+#### Week 22: Testing & Validation
+- Field population testing
+- Dashboard performance testing
+- Alert effectiveness testing
+- End-to-end validation
+
+#### Week 23: Documentation & Training
+- Update documentation
+- Create training materials
+- Knowledge base articles
+- User guides
 
 ---
 
@@ -200,25 +371,34 @@ Pattern: XX_Description_Action.ps1
 - >98% device success rate
 - All dashboards functional
 
+### Integration Targets 🆕
+- >95% field population rate
+- <5 second dashboard load time
+- <10% alert false positive rate
+- >98% script execution success
+
 ---
 
 ## Resources Required
 
 ### Personnel
-- Lead Developer: Full-time, 8-11 weeks
-- QA Engineer: Part-time, 3 weeks
-- Technical Writer: Part-time, 2 weeks
+- Lead Developer: Full-time, 23 weeks
+- QA Engineer: Part-time, 6 weeks
+- Technical Writer: Part-time, 4 weeks
+- Dashboard Designer: Part-time, 2 weeks 🆕
 
 ### Infrastructure
 - Development environment
 - Test devices (Win10, Win11, Server, German/English)
 - NinjaRMM test tenant
+- Staging environment 🆕
 
 ### Tools
 - Git/GitHub
 - PowerShell 5.1+
 - Visual Studio Code
 - Testing framework
+- Dashboard design tools 🆕
 
 ---
 
@@ -249,6 +429,23 @@ Pattern: XX_Description_Action.ps1
 - Update dashboards first
 - Test before deployment
 
+### Risk 4: Custom Field Limit 🆕
+**Impact:** High  
+**Probability:** Medium  
+**Current:** 277 fields, Adding 96 = 373 total  
+**Mitigation:**
+- Verify NinjaRMM limits
+- Prioritize critical fields
+- Consolidate where possible
+
+### Risk 5: Dashboard Performance 🆕
+**Impact:** Medium  
+**Probability:** Low  
+**Mitigation:**
+- Optimize queries
+- Use caching
+- Limit real-time widgets
+
 ---
 
 ## Validation Tools
@@ -277,6 +474,12 @@ Checks individual script compliance with WAF standards.
 ```
 Automated renaming based on CSV mapping.
 
+### Tool 5: Field Population Validator 🆕
+```powershell
+.\scripts\Test-FieldPopulation.ps1 -Fields $newFields
+```
+Validates custom field population rates.
+
 ---
 
 ## Communication Plan
@@ -293,6 +496,7 @@ Automated renaming based on CSV mapping.
 ### Milestones
 - Phase completion reports
 - Deployment notifications
+- Integration updates 🆕
 - Final project report
 
 ---
@@ -300,7 +504,7 @@ Automated renaming based on CSV mapping.
 ## Next Steps
 
 ### Immediate (Today)
-1. Review all three planning documents
+1. ✅ Review all planning documents
 2. Set up development environment
 3. Create GitHub Project board
 4. Schedule kickoff meeting
@@ -316,6 +520,12 @@ Automated renaming based on CSV mapping.
 2. Begin code standardization
 3. Start with Active Directory scripts
 
+### After Script Standardization (Week 12+) 🆕
+1. Begin custom field creation
+2. Design dashboard layouts
+3. Plan alert templates
+4. Start framework integration
+
 ---
 
 ## Project Deliverables
@@ -325,14 +535,20 @@ Automated renaming based on CSV mapping.
 - [ ] 161 standardized scripts
 - [ ] 0 duplicates
 - [ ] All validation tools
+- [ ] 96 new custom fields 🆕
+- [ ] 5 new dashboards 🆕
+- [ ] 20+ alert templates 🆕
+- [ ] 5 automation policies 🆕
 
 ### Documentation
 - [x] Migration plan
 - [x] Script inventory
 - [x] Action plan
 - [x] Project summary
+- [x] Framework integration plan 🆕
 - [ ] Testing results
 - [ ] Deployment report
+- [ ] Integration report 🆕
 - [ ] Lessons learned
 
 ### Training
@@ -340,6 +556,8 @@ Automated renaming based on CSV mapping.
 - [ ] Usage examples
 - [ ] Troubleshooting guide
 - [ ] Migration guide for users
+- [ ] Dashboard user guides 🆕
+- [ ] Alert response procedures 🆕
 
 ---
 
@@ -350,6 +568,12 @@ Automated renaming based on CSV mapping.
 - [ ] Resources allocated
 - [ ] Timeline confirmed
 - [ ] Budget approved (if applicable)
+
+### Pre-Integration (Week 12) 🆕
+- [ ] Script standardization complete
+- [ ] Testing passed
+- [ ] Deployment successful
+- [ ] Custom field limits verified
 
 ### Pre-Deployment
 - [ ] Testing complete
@@ -383,6 +607,7 @@ Automated renaming based on CSV mapping.
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
 | 1.0 | 2026-02-09 | Initial planning complete | AI Assistant |
+| 1.1 | 2026-02-09 | Added framework integration task | AI Assistant |
 
 ---
 
@@ -392,9 +617,11 @@ Automated renaming based on CSV mapping.
 - [Migration Plan](PLAINTEXT_SCRIPTS_MIGRATION_PLAN.md) - Overall strategy
 - [Script Inventory](PLAINTEXT_SCRIPTS_INVENTORY.md) - Complete catalog
 - [Action Plan](PLAINTEXT_SCRIPTS_ACTION_PLAN.md) - Execution guide
+- [Framework Integration](PLAINTEXT_SCRIPTS_FRAMEWORK_INTEGRATION.md) - Integration strategy 🆕
 
 ### Reference Documents
 - [WAF Coding Standards](WAF_CODING_STANDARDS.md) - Development standards
+- [Custom Fields Complete](CUSTOM_FIELDS_COMPLETE.md) - Field documentation
 - [Deployment Guide](reference/DEPLOYMENT_GUIDE.md) - Deployment procedures
 - [Quick Start Guide](QUICK_START.md) - Getting started
 
@@ -426,4 +653,4 @@ Automated renaming based on CSV mapping.
 
 **Project Status:** Ready to Begin  
 **Next Action:** Review planning documents and schedule kickoff  
-**Updated:** February 9, 2026, 10:29 PM CET
+**Updated:** February 9, 2026, 10:32 PM CET

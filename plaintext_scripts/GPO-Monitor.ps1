@@ -1,252 +1,453 @@
+#Requires -Version 5.1
+
 <#
 .SYNOPSIS
-    Group Policy Monitor - GPO Application Status and Error Detection
+    Monitors Group Policy application status and detects errors
 
 .DESCRIPTION
-    Monitors Group Policy application status, tracks applied GPOs, detects processing errors,
-    and provides HTML summary of all applied policies. Parses gpresult XML output to provide
-    comprehensive GPO monitoring and maintains historical error tracking.
+    Comprehensive Group Policy monitoring script that tracks applied GPOs, detects
+    processing errors, and generates detailed reports. Parses gpresult XML output
+    to provide complete visibility into Group Policy deployment.
     
-    Provides detailed visibility into Group Policy deployment including GPO names, paths,
-    application timestamps, and error detection from event logs. Supports both domain-joined
-    and workgroup computers with graceful handling of non-domain environments.
+    The script performs the following:
+    - Checks domain membership status
+    - Generates Group Policy report using gpresult
+    - Parses applied computer GPOs from XML
+    - Checks event logs for Group Policy errors (last 24 hours)
+    - Falls back to registry checks if gpresult fails
+    - Generates HTML formatted table of applied GPOs
+    - Reports comprehensive status to NinjaRMM
+    
+    Gracefully handles non-domain computers by reporting appropriate status.
+    This script runs unattended without user interaction.
+
+.PARAMETER MaxErrors
+    Maximum number of event log errors to check.
+    Default: 10
+
+.PARAMETER ErrorWindowHours
+    Hours to look back for Group Policy errors in event log.
+    Default: 24
+
+.EXAMPLE
+    .\GPO-Monitor.ps1
+    
+    Monitors GPO status with default settings.
+
+.EXAMPLE
+    .\GPO-Monitor.ps1 -ErrorWindowHours 48
+    
+    Checks for errors in last 48 hours.
 
 .NOTES
-    Frequency: Daily
-    Runtime: ~30 seconds
-    Timeout: 120 seconds
-    Context: SYSTEM
+    Script Name:    GPO-Monitor.ps1
+    Author:         Windows Automation Framework
+    Version:        3.0
+    Creation Date:  2024-01-15
+    Last Modified:  2026-02-09
+    
+    Execution Context: SYSTEM (via NinjaRMM automation)
+    Execution Frequency: Daily
+    Typical Duration: ~5-30 seconds
+    Timeout Setting: 120 seconds recommended
+    
+    User Interaction: NONE (fully automated, no prompts)
+    Restart Behavior: N/A (no restart required)
     
     Fields Updated:
-    - GPOApplied (Text: "true"/"false")
-    - GPOLastApplied (DateTime: Unix Epoch seconds since 1970-01-01 UTC)
-    - GPOCount (Integer: number of applied computer GPOs)
-    - GPOErrorsPresent (Text: "true"/"false")
-    - GPOLastError (Text: error message, max 500 chars)
-    - GPOAppliedList (WYSIWYG: HTML formatted table of all applied GPOs)
+        - gpoApplied - Boolean status (true/false)
+        - gpoLastApplied - Unix Epoch timestamp of last application
+        - gpoCount - Number of applied computer GPOs
+        - gpoErrorsPresent - Boolean error status (true/false)
+        - gpoLastError - Last error message (max 500 chars)
+        - gpoAppliedList - HTML formatted table of applied GPOs
     
     Dependencies:
-    - gpresult.exe (built-in Windows tool)
-    - Requires domain-joined computer for full functionality
+        - Windows PowerShell 5.1 or higher
+        - gpresult.exe (Windows built-in)
+        - Domain-joined computer for full functionality
+        - Event log access
+        - Windows 10 or Server 2016 minimum
     
-    Framework Version: 4.0
-    Last Updated: February 4, 2026
+    Environment Variables (Optional):
+        - maxErrors: Override -MaxErrors parameter
+        - errorWindowHours: Override -ErrorWindowHours parameter
     
-.MIGRATION NOTES
-    v1.1 -> v4.0 Changes:
-    - Updated to Framework 4.0 standards
-    - Enhanced .NOTES section with complete field documentation
-    - Added timeout specification
-    - Improved .DESCRIPTION with functionality details
-    
-    v1.0 -> v1.1 Changes:
-    - Converted GPOLastApplied from text to DateTime field (Unix Epoch format)
-    - Uses inline DateTimeOffset conversion (no helper functions needed)
-    - Maintains human-readable logging for troubleshooting
-    - NinjaOne handles timezone display automatically
-    - Applies to both gpresult and registry fallback methods
+    Exit Codes:
+        0 - Success (monitoring completed)
+        1 - Failure (script error)
+
+.LINK
+    https://github.com/Xore/waf
 #>
 
 [CmdletBinding()]
-param()
+param (
+    [Parameter(Mandatory=$false, HelpMessage="Maximum event log errors to check")]
+    [int]$MaxErrors = 10,
+    
+    [Parameter(Mandatory=$false, HelpMessage="Hours to look back for errors")]
+    [ValidateRange(1, 168)]
+    [int]$ErrorWindowHours = 24
+)
 
-try {
-    Write-Host "Starting Group Policy Monitor (Script 43 v4.0)..."
-    $ErrorActionPreference = 'Stop'
-    
-    # Initialize variables
-    $gpoApplied = "false"
-    $lastApplied = 0
-    $gpoCount = 0
-    $errorsPresent = "false"
-    $lastError = "None"
-    $appliedList = ""
-    
-    # Check if computer is domain-joined
-    Write-Host "INFO: Checking domain membership..."
-    $computerSystem = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
-    
-    if ($computerSystem.PartOfDomain -eq $false) {
-        Write-Host "INFO: Computer is not domain-joined. Group Policy not applicable."
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+
+$ScriptVersion = "3.0"
+$ScriptName = "GPO-Monitor"
+
+# Temporary report path
+$ReportPath = "$env:TEMP\gpresult_$(Get-Date -Format 'yyyyMMddHHmmss').xml"
+
+# NinjaRMM CLI path for fallback
+$NinjaRMMCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
+
+# ============================================================================
+# INITIALIZATION
+# ============================================================================
+
+$StartTime = Get-Date
+$ErrorActionPreference = 'Stop'
+$script:ErrorCount = 0
+$script:WarningCount = 0
+$script:CLIFallbackCount = 0
+
+# ============================================================================
+# FUNCTIONS
+# ============================================================================
+
+function Write-Log {
+    <#
+    .SYNOPSIS
+        Writes structured log messages with plain text output
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Message,
         
-        # Update fields for non-domain computers
-        Ninja-Property-Set gpoApplied "false"
-        Ninja-Property-Set gpoLastApplied 0
-        Ninja-Property-Set gpoCount 0
-        Ninja-Property-Set gpoErrorsPresent "false"
-        Ninja-Property-Set gpoLastError "Not domain-joined"
-        Ninja-Property-Set gpoAppliedList "Computer is not domain-joined"
+        [Parameter(Mandatory=$false)]
+        [ValidateSet('DEBUG','INFO','WARN','ERROR','SUCCESS')]
+        [string]$Level = 'INFO'
+    )
+    
+    $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $LogMessage = "[$Timestamp] [$Level] $Message"
+    
+    Write-Output $LogMessage
+    
+    switch ($Level) {
+        'WARN'  { $script:WarningCount++ }
+        'ERROR' { $script:ErrorCount++ }
+    }
+}
+
+function Set-NinjaField {
+    <#
+    .SYNOPSIS
+        Sets a NinjaRMM custom field value with automatic fallback to CLI
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$FieldName,
         
-        Write-Host "SUCCESS: Group Policy Monitor complete (not domain-joined)"
-        exit 0
+        [Parameter(Mandatory=$true)]
+        [AllowNull()]
+        $Value
+    )
+    
+    if ($null -eq $Value -or $Value -eq "") {
+        Write-Log "Skipping field '$FieldName' - no value" -Level DEBUG
+        return
     }
     
-    Write-Host "INFO: Computer is domain-joined: $($computerSystem.Domain)"
+    $ValueString = $Value.ToString()
     
-    # Generate Group Policy report
     try {
-        Write-Host "INFO: Generating Group Policy report..."
-        $reportPath = "C:\Temp\gpresult.xml"
+        if (Get-Command Ninja-Property-Set -ErrorAction SilentlyContinue) {
+            Ninja-Property-Set $FieldName $ValueString -ErrorAction Stop
+            Write-Log "Field '$FieldName' set successfully" -Level DEBUG
+            return
+        } else {
+            throw "Ninja-Property-Set cmdlet not available"
+        }
+    } catch {
+        Write-Log "Ninja-Property-Set failed, using CLI fallback" -Level DEBUG
         
-        # Run gpresult to generate XML report
-        $null = gpresult /f /x $reportPath 2>&1
+        try {
+            if (-not (Test-Path $NinjaRMMCLI)) {
+                throw "NinjaRMM CLI not found at: $NinjaRMMCLI"
+            }
+            
+            $CLIArgs = @("set", $FieldName, $ValueString)
+            $CLIResult = & $NinjaRMMCLI $CLIArgs 2>&1
+            
+            if ($LASTEXITCODE -ne 0) {
+                throw "CLI exit code: $LASTEXITCODE, Output: $CLIResult"
+            }
+            
+            Write-Log "Field '$FieldName' set via CLI" -Level DEBUG
+            $script:CLIFallbackCount++
+            
+        } catch {
+            Write-Log "Failed to set field '$FieldName': $_" -Level ERROR
+        }
+    }
+}
+
+function Get-GPOReport {
+    <#
+    .SYNOPSIS
+        Generates Group Policy report using gpresult
+    #>
+    try {
+        Write-Log "Generating Group Policy report" -Level INFO
         
-        if ($LASTEXITCODE -ne 0) {
-            throw "gpresult failed with exit code $LASTEXITCODE"
+        # Run gpresult
+        $GPResultProcess = Start-Process -FilePath "gpresult.exe" -ArgumentList "/f", "/x", $ReportPath -Wait -NoNewWindow -PassThru
+        
+        if ($GPResultProcess.ExitCode -ne 0) {
+            throw "gpresult failed with exit code $($GPResultProcess.ExitCode)"
         }
         
-        if (-not (Test-Path $reportPath)) {
+        if (-not (Test-Path $ReportPath)) {
             throw "Group Policy report file not created"
         }
         
-        Write-Host "INFO: Group Policy report generated successfully"
+        # Parse XML
+        [xml]$Report = Get-Content $ReportPath
+        Write-Log "Group Policy report generated successfully" -Level SUCCESS
         
-        # Parse XML report
-        [xml]$gpoReport = Get-Content $reportPath
-        
-        # Get computer GPOs
-        $computerGPOs = $gpoReport.Rsop.ComputerResults.GPO
-        
-        if ($computerGPOs) {
-            $gpoApplied = "true"
-            $gpoCount = @($computerGPOs).Count
-            Write-Host "INFO: Applied GPOs: $gpoCount"
-            
-            # Get last applied time from first GPO
-            $readTime = $gpoReport.Rsop.ReadTime
-            if ($readTime) {
-                $lastAppliedDate = [DateTime]::Parse($readTime)
-                $lastApplied = [DateTimeOffset]$lastAppliedDate | Select-Object -ExpandProperty ToUnixTimeSeconds
-                Write-Host "INFO: Last Applied: $($lastAppliedDate.ToString('yyyy-MM-dd HH:mm:ss'))"
-            }
-            
-            # Build HTML list of applied GPOs
-            $htmlRows = @()
-            foreach ($gpo in $computerGPOs) {
-                $gpoName = $gpo.Name
-                $gpoPath = $gpo.Path.Identifier.'#text'
-                $htmlRows += "<tr><td>$gpoName</td><td style='font-size:0.85em;color:#666'>$gpoPath</td></tr>"
-            }
-            
-            $appliedList = @"
-<table border='1' style='border-collapse:collapse; width:100%; font-family:Arial,sans-serif;'>
-<tr style='background-color:#f0f0f0;'><th>GPO Name</th><th>Path</th></tr>
-$($htmlRows -join "`n")
-</table>
-<p style='font-size:0.9em; color:#666; margin-top:10px;'>Total: $gpoCount GPO(s) applied</p>
-"@
-        } else {
-            Write-Host "WARNING: No computer GPOs found in report"
-            $appliedList = "No Group Policies applied to this computer"
-        }
-        
-        # Clean up report file
-        Remove-Item $reportPath -Force -ErrorAction SilentlyContinue
+        return $Report
         
     } catch {
-        Write-Host "WARNING: Failed to generate/parse Group Policy report: $_"
-        $lastError = "Report generation failed: $_"
-        $errorsPresent = "true"
-        $appliedList = "Unable to generate GPO report"
+        Write-Log "Failed to generate Group Policy report: $_" -Level ERROR
+        return $null
+    } finally {
+        # Clean up report file
+        if (Test-Path $ReportPath) {
+            Remove-Item $ReportPath -Force -ErrorAction SilentlyContinue
+        }
     }
-    
-    # Check for Group Policy errors in event log
-    try {
-        Write-Host "INFO: Checking for Group Policy errors..."
-        $startTime = (Get-Date).AddHours(-24)
+}
+
+function Get-GPOErrors {
+    <#
+    .SYNOPSIS
+        Retrieves Group Policy errors from event log
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [int]$Hours,
         
-        $gpoErrors = Get-WinEvent -FilterHashtable @{
+        [Parameter(Mandatory=$true)]
+        [int]$MaxEvents
+    )
+    
+    try {
+        Write-Log "Checking for Group Policy errors (last $Hours hours)" -Level DEBUG
+        
+        $StartTime = (Get-Date).AddHours(-$Hours)
+        
+        $Errors = Get-WinEvent -FilterHashtable @{
             LogName = 'System'
             ProviderName = 'Microsoft-Windows-GroupPolicy'
-            Level = 1,2
-            StartTime = $startTime
-        } -MaxEvents 10 -ErrorAction SilentlyContinue
+            Level = 1,2  # Error and Critical
+            StartTime = $StartTime
+        } -MaxEvents $MaxEvents -ErrorAction SilentlyContinue
         
-        if ($gpoErrors -and $gpoErrors.Count -gt 0) {
-            $errorsPresent = "true"
-            $lastError = $gpoErrors[0].Message
-            
-            # Truncate if too long
-            if ($lastError.Length -gt 500) {
-                $lastError = $lastError.Substring(0, 497) + "..."
-            }
-            
-            Write-Host "WARNING: Group Policy errors detected: $($gpoErrors.Count) error(s) in last 24 hours"
+        if ($Errors) {
+            Write-Log "Found $($Errors.Count) Group Policy error(s)" -Level WARN
+            return $Errors
         } else {
-            Write-Host "INFO: No Group Policy errors detected"
-            $lastError = "None"
+            Write-Log "No Group Policy errors detected" -Level SUCCESS
+            return $null
         }
+        
     } catch {
-        Write-Host "WARNING: Failed to check event log for GPO errors: $_"
+        Write-Log "Failed to query event log for GPO errors: $_" -Level WARN
+        return $null
+    }
+}
+
+# ============================================================================
+# MAIN EXECUTION
+# ============================================================================
+
+try {
+    Write-Log "========================================" -Level INFO
+    Write-Log "Starting: $ScriptName v$ScriptVersion" -Level INFO
+    Write-Log "========================================" -Level INFO
+    
+    # Check for environment variable overrides
+    if ($env:maxErrors -and $env:maxErrors -notlike "null") {
+        $MaxErrors = [int]$env:maxErrors
+        Write-Log "MaxErrors from environment: $MaxErrors" -Level INFO
     }
     
-    # Alternative method: Check GP application status from registry
-    if ($gpoApplied -eq "false") {
-        try {
-            Write-Host "INFO: Checking registry for GP application status..."
-            $gpoRegPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Group Policy\State\Machine"
+    if ($env:errorWindowHours -and $env:errorWindowHours -notlike "null") {
+        $ErrorWindowHours = [int]$env:errorWindowHours
+        Write-Log "ErrorWindowHours from environment: $ErrorWindowHours" -Level INFO
+    }
+    
+    # Check domain membership
+    Write-Log "Checking domain membership" -Level INFO
+    $ComputerSystem = Get-CimInstance -ClassName Win32_ComputerSystem
+    
+    if (-not $ComputerSystem.PartOfDomain) {
+        Write-Log "Computer is not domain-joined" -Level INFO
+        
+        Set-NinjaField -FieldName "gpoApplied" -Value "false"
+        Set-NinjaField -FieldName "gpoLastApplied" -Value 0
+        Set-NinjaField -FieldName "gpoCount" -Value 0
+        Set-NinjaField -FieldName "gpoErrorsPresent" -Value "false"
+        Set-NinjaField -FieldName "gpoLastError" -Value "Not domain-joined"
+        Set-NinjaField -FieldName "gpoAppliedList" -Value "Computer is not domain-joined"
+        
+        Write-Log "Group Policy monitoring not applicable for workgroup computer" -Level SUCCESS
+        exit 0
+    }
+    
+    Write-Log "Computer is domain-joined: $($ComputerSystem.Domain)" -Level INFO
+    
+    # Initialize status variables
+    $GPOApplied = "false"
+    $LastApplied = 0
+    $GPOCount = 0
+    $ErrorsPresent = "false"
+    $LastError = "None"
+    $AppliedList = ""
+    
+    # Generate and parse GPO report
+    $GPOReport = Get-GPOReport
+    
+    if ($GPOReport) {
+        # Extract computer GPOs
+        $ComputerGPOs = $GPOReport.Rsop.ComputerResults.GPO
+        
+        if ($ComputerGPOs) {
+            $GPOApplied = "true"
+            $GPOCount = @($ComputerGPOs).Count
+            Write-Log "Found $GPOCount applied GPO(s)" -Level SUCCESS
             
-            if (Test-Path $gpoRegPath) {
-                $gpoState = Get-ItemProperty -Path $gpoRegPath -ErrorAction SilentlyContinue
+            # Get last applied time
+            $ReadTime = $GPOReport.Rsop.ReadTime
+            if ($ReadTime) {
+                $LastAppliedDate = [DateTime]::Parse($ReadTime)
+                $LastApplied = [DateTimeOffset]$LastAppliedDate | Select-Object -ExpandProperty ToUnixTimeSeconds
+                Write-Log "Last applied: $($LastAppliedDate.ToString('yyyy-MM-dd HH:mm:ss'))" -Level INFO
+            }
+            
+            # Build HTML table
+            $HTMLRows = foreach ($GPO in $ComputerGPOs) {
+                $GPOName = $GPO.Name
+                $GPOPath = $GPO.Path.Identifier.'#text'
+                "<tr><td>$GPOName</td><td style='font-size:0.85em;color:#666'>$GPOPath</td></tr>"
+            }
+            
+            $AppliedList = @"
+<table border='1' style='border-collapse:collapse; width:100%; font-family:Arial,sans-serif;'>
+<tr style='background-color:#f0f0f0;'><th>GPO Name</th><th>Path</th></tr>
+$($HTMLRows -join "`n")
+</table>
+<p style='font-size:0.9em; color:#666; margin-top:10px;'>Total: $GPOCount GPO(s) applied</p>
+"@
+        } else {
+            Write-Log "No computer GPOs found in report" -Level WARN
+            $AppliedList = "No Group Policies applied to this computer"
+        }
+    } else {
+        # Fallback to registry if gpresult failed
+        Write-Log "Attempting registry fallback for GP status" -Level WARN
+        
+        try {
+            $GPORegPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Group Policy\State\Machine"
+            
+            if (Test-Path $GPORegPath) {
+                $GPOState = Get-ItemProperty -Path $GPORegPath
                 
-                if ($gpoState) {
-                    # Get last GPUpdate time
-                    $lastGPUpdate = $gpoState.LastGPOProcessingTime
-                    if ($lastGPUpdate) {
-                        $lastAppliedDate = [DateTime]::Parse($lastGPUpdate)
-                        $lastApplied = [DateTimeOffset]$lastAppliedDate | Select-Object -ExpandProperty ToUnixTimeSeconds
-                        $gpoApplied = "true"
-                        Write-Host "INFO: Last Applied (registry): $($lastAppliedDate.ToString('yyyy-MM-dd HH:mm:ss'))"
-                    }
+                if ($GPOState.LastGPOProcessingTime) {
+                    $LastAppliedDate = [DateTime]::Parse($GPOState.LastGPOProcessingTime)
+                    $LastApplied = [DateTimeOffset]$LastAppliedDate | Select-Object -ExpandProperty ToUnixTimeSeconds
+                    $GPOApplied = "true"
+                    Write-Log "Last applied (from registry): $($LastAppliedDate.ToString('yyyy-MM-dd HH:mm:ss'))" -Level INFO
                 }
             }
+            
+            $AppliedList = "Unable to retrieve detailed GPO list (gpresult failed, registry used)"
+            $LastError = "GPO report generation failed"
+            $ErrorsPresent = "true"
+            
         } catch {
-            Write-Host "WARNING: Failed to check registry for GP status: $_"
+            Write-Log "Registry fallback failed: $_" -Level ERROR
+            $AppliedList = "Unable to retrieve GPO status"
+            $LastError = "Both gpresult and registry checks failed"
+            $ErrorsPresent = "true"
         }
     }
     
-    # Check for pending GP refresh
-    try {
-        $pendingRegPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Group Policy\State\Machine\Extension-List"
-        if (Test-Path $pendingRegPath) {
-            Write-Host "INFO: Group Policy extensions are registered"
+    # Check for Group Policy errors
+    $GPOErrors = Get-GPOErrors -Hours $ErrorWindowHours -MaxEvents $MaxErrors
+    
+    if ($GPOErrors) {
+        $ErrorsPresent = "true"
+        $LastError = $GPOErrors[0].Message
+        
+        # Truncate if too long
+        if ($LastError.Length -gt 500) {
+            $LastError = $LastError.Substring(0, 497) + "..."
         }
-    } catch {
-        # Silent fail
+        
+        Write-Log "Group Policy errors detected: $($GPOErrors.Count)" -Level WARN
     }
     
-    # If still no GPO data, set minimal info
-    if ($gpoApplied -eq "false" -and $computerSystem.PartOfDomain) {
-        $gpoApplied = "true"
-        $appliedList = "Unable to retrieve detailed GPO list (gpresult failed)"
-        $lastError = "GPO report generation failed"
-        $errorsPresent = "true"
-    }
+    # Update NinjaRMM fields
+    Write-Log "Updating NinjaRMM custom fields" -Level INFO
     
-    # Update NinjaRMM custom fields
-    Write-Host "INFO: Updating NinjaRMM custom fields..."
+    Set-NinjaField -FieldName "gpoApplied" -Value $GPOApplied
+    Set-NinjaField -FieldName "gpoLastApplied" -Value $LastApplied
+    Set-NinjaField -FieldName "gpoCount" -Value $GPOCount
+    Set-NinjaField -FieldName "gpoErrorsPresent" -Value $ErrorsPresent
+    Set-NinjaField -FieldName "gpoLastError" -Value $LastError
+    Set-NinjaField -FieldName "gpoAppliedList" -Value $AppliedList
     
-    Ninja-Property-Set gpoApplied $gpoApplied
-    Ninja-Property-Set gpoLastApplied $lastApplied
-    Ninja-Property-Set gpoCount $gpoCount
-    Ninja-Property-Set gpoErrorsPresent $errorsPresent
-    Ninja-Property-Set gpoLastError $lastError
-    Ninja-Property-Set gpoAppliedList $appliedList
-    
-    Write-Host "SUCCESS: Group Policy Monitor complete. GPOs Applied: $gpoCount, Errors: $errorsPresent"
-    
-    exit 0
+    Write-Log "Group Policy monitoring completed: $GPOCount GPO(s), Errors: $ErrorsPresent" -Level SUCCESS
     
 } catch {
-    $errorMessage = $_.Exception.Message
-    Write-Host "ERROR: Group Policy Monitor failed: $errorMessage"
+    Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
+    Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
     
-    # Set error state in fields
-    Ninja-Property-Set gpoApplied "false"
-    Ninja-Property-Set gpoLastApplied 0
-    Ninja-Property-Set gpoErrorsPresent "true"
-    Ninja-Property-Set gpoLastError "Monitor script error: $errorMessage"
-    Ninja-Property-Set gpoAppliedList "Script execution failed"
+    Set-NinjaField -FieldName "gpoApplied" -Value "false"
+    Set-NinjaField -FieldName "gpoLastApplied" -Value 0
+    Set-NinjaField -FieldName "gpoErrorsPresent" -Value "true"
+    Set-NinjaField -FieldName "gpoLastError" -Value "Monitor script error: $($_.Exception.Message)"
+    Set-NinjaField -FieldName "gpoAppliedList" -Value "Script execution failed"
     
     exit 1
+    
+} finally {
+    $EndTime = Get-Date
+    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+    
+    Write-Log "========================================" -Level INFO
+    Write-Log "Execution Summary:" -Level INFO
+    Write-Log "  Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
+    Write-Log "  Errors: $script:ErrorCount" -Level INFO
+    Write-Log "  Warnings: $script:WarningCount" -Level INFO
+    
+    if ($script:CLIFallbackCount -gt 0) {
+        Write-Log "  CLI Fallbacks: $script:CLIFallbackCount" -Level INFO
+    }
+    
+    Write-Log "========================================" -Level INFO
+}
+
+if ($script:ErrorCount -gt 0) {
+    exit 1
+} else {
+    exit 0
 }

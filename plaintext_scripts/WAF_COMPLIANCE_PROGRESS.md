@@ -35,10 +35,10 @@ Tracking conversion of plaintext scripts to full WAF (Windows Automation Framewo
 
 ## Current Status
 - **Total Scripts**: 219+
-- **Analyzed**: 8
-- **Level 3 Compliant**: 8 (3.7%)
-- **Upgraded This Session**: 6
-- **Remaining**: 211+
+- **Analyzed**: 11
+- **Level 3 Compliant**: 11 (5.0%)
+- **Upgraded This Session**: 9
+- **Remaining**: 208+
 
 ## Scripts Upgraded to WAF v3.0
 
@@ -113,15 +113,54 @@ Tracking conversion of plaintext scripts to full WAF (Windows Automation Framewo
   - Status tracking with NoDrives/Success/Failed states
   - Drive count reporting
 
+#### 9. WindowsUpdate-GetLastUpdate.ps1
+- **Commit**: [0657111](https://github.com/Xore/waf/commit/0657111b7e9b34c57cb2554f8e1162c8f0b21539)
+- **Size**: 1.0 KB → 11.5 KB (+1,050%)
+- **Features Added**:
+  - Complete documentation
+  - Get-WindowsUpdateHistory helper function
+  - Enhanced COM object handling for Windows Update
+  - Configurable overdue threshold (default 60 days)
+  - Additional tracking fields (status, days since update)
+  - Parameter validation (1-365 days)
+  - Environment variable support
+
+#### 10. System-EnableMinidumps.ps1
+- **Commit**: [49749e3](https://github.com/Xore/waf/commit/49749e3c7c23b98881da9359add79924f31a5eca)
+- **Size**: 4.0 KB → 14.1 KB (+253%)
+- **Features Added**:
+  - Complete documentation
+  - Set-RegistryValue helper function
+  - Get-CrashDumpTypeName helper function
+  - Force mode parameter for overriding existing config
+  - Reboot requirement tracking
+  - Crash dump type enumeration (0-7)
+  - Registry key validation and creation
+  - Pagefile automatic management
+
+#### 11. Security-SecureBootComplianceReport.ps1
+- **Commit**: [0a91e1a](https://github.com/Xore/waf/commit/0a91e1a9a16cc0f334e678cb827484fba4656b35)
+- **Size**: 2.0 KB → 14.7 KB (+635%)
+- **Features Added**:
+  - Complete documentation
+  - Get-SecureBootStatus helper function
+  - Get-BIOSInformation helper function
+  - Comprehensive UEFI audit (5 compliance checks)
+  - Certificate database validation
+  - Registry key validation (0x5944)
+  - Scheduled task verification
+  - Compliance scoring (Compliant/Partial/NonCompliant)
+  - Compliance issue counter
+
 ## Upgrade Statistics Summary
 
 ### Overall Session Metrics
-- **Scripts Upgraded**: 6
-- **Total Size Increase**: 78.1 KB (from 8.4 KB to 78.1 KB)
-- **Average Size Increase**: +1,149% per script
-- **Lines of Code Added**: ~1,800+ lines
-- **Functions Added**: 18+ standard functions
-- **Documentation Headers**: 6 complete help blocks
+- **Scripts Upgraded**: 9
+- **Total Size Increase**: 122.4 KB (from 15.6 KB to 122.4 KB)
+- **Average Size Increase**: +884% per script
+- **Lines of Code Added**: ~2,800+ lines
+- **Functions Added**: 27+ standard functions
+- **Documentation Headers**: 9 complete help blocks
 
 ### Size Comparison Table
 
@@ -133,7 +172,10 @@ Tracking conversion of plaintext scripts to full WAF (Windows Automation Framewo
 | User-GetDisplayName.ps1 | 0.7 KB | 11.5 KB | +1,543% |
 | IIS-GetBindings.ps1 | 0.6 KB | 13.4 KB | +2,133% |
 | Network-MapDrives.ps1 | 0.8 KB | 12.8 KB | +1,500% |
-| **Total** | **8.6 KB** | **78.1 KB** | **+808%** |
+| WindowsUpdate-GetLastUpdate.ps1 | 1.0 KB | 11.5 KB | +1,050% |
+| System-EnableMinidumps.ps1 | 4.0 KB | 14.1 KB | +253% |
+| Security-SecureBootComplianceReport.ps1 | 2.0 KB | 14.7 KB | +635% |
+| **Total** | **15.6 KB** | **118.4 KB** | **+659%** |
 
 ## Benefits of WAF v3.0 Compliance
 
@@ -179,14 +221,14 @@ Tracking conversion of plaintext scripts to full WAF (Windows Automation Framewo
 ## Priority Categories for Upgrade
 
 ### High Priority (Security & Critical Operations)
-1. **Security-*** scripts (16 scripts) - Security monitoring
+1. **Security-*** scripts (15 remaining) - Security monitoring and compliance
 2. **AD-*** scripts (12 remaining) - Active Directory management
 3. **Monitoring-*** scripts (7 scripts) - System monitoring
 
 ### Medium Priority (Daily Operations)
-1. **Network-*** scripts (14 remaining) - Network management
+1. **Network-*** scripts (12 remaining) - Network management
 2. **Software-*** scripts (23 scripts) - Software deployment
-3. **System-*** scripts (9 scripts) - System management
+3. **System-*** scripts (8 remaining) - System management
 
 ### Lower Priority (Utilities & Tools)
 1. **FileOps-*** scripts (5 scripts) - File operations
@@ -216,9 +258,31 @@ Tracking conversion of plaintext scripts to full WAF (Windows Automation Framewo
 - Enhanced validation
 - Multiple output formats
 
-### Pattern 3: IIS/Web Server Script
+### Pattern 3: System Configuration Script
+**Characteristics**: Registry or system setting modifications  
+**Examples**: System-EnableMinidumps  
+**Effort**: 1-2 hours per script  
+**Template Components**:
+- All Pattern 1 components
+- Set-RegistryValue helper function
+- Reboot requirement tracking
+- Configuration validation
+- Force mode parameter
+
+### Pattern 4: Security Compliance Script
+**Characteristics**: Multi-check audits with compliance scoring  
+**Examples**: Security-SecureBootComplianceReport  
+**Effort**: 2-3 hours per script  
+**Template Components**:
+- All Pattern 1 components
+- Multiple validation functions
+- Compliance issue counter
+- Detailed status reporting per check
+- Overall compliance determination
+
+### Pattern 5: IIS/Web Server Script
 **Characteristics**: IIS management with certificate handling  
-**Examples**: IIS-GetBindings, Certificates-GetExpiring  
+**Examples**: IIS-GetBindings  
 **Effort**: 1-2 hours per script  
 **Template Components**:
 - All Pattern 1 components
@@ -226,19 +290,23 @@ Tracking conversion of plaintext scripts to full WAF (Windows Automation Framewo
 - Certificate store access
 - Expiration warnings
 
-### Pattern 4: AD Management Script (Pre-existing)
-**Characteristics**: Complex AD operations with proper structure  
-**Examples**: AD-DomainControllerHealthReport, AD-GetOUMembers  
-**Effort**: Review only (already compliant)  
-**Status**: These are already well-structured
+### Pattern 6: Windows Update Script
+**Characteristics**: COM object interaction for Windows Update  
+**Examples**: WindowsUpdate-GetLastUpdate  
+**Effort**: 1-2 hours per script  
+**Template Components**:
+- All Pattern 1 components
+- COM object error handling
+- Date/time calculations
+- Threshold validation
 
 ## Session Statistics (Feb 9, 2026)
 
 ### Time Tracking
 - **Session Start**: 11:29 PM CET
-- **Session End**: 11:41 PM CET
-- **Session Duration**: ~12 minutes
-- **Scripts Upgraded**: 6
+- **Session End**: 11:47 PM CET
+- **Session Duration**: ~18 minutes
+- **Scripts Upgraded**: 9
 - **Average Time per Script**: ~2 minutes (automated workflow)
 
 ### Commit Log
@@ -250,20 +318,24 @@ Tracking conversion of plaintext scripts to full WAF (Windows Automation Framewo
 6. Progress updated (intermediate)
 7. IIS-GetBindings.ps1 upgraded to v3.0
 8. Network-MapDrives.ps1 upgraded to v3.0
-9. Progress updated (this file)
+9. Progress updated (second intermediate)
+10. WindowsUpdate-GetLastUpdate.ps1 upgraded to v3.0
+11. System-EnableMinidumps.ps1 upgraded to v3.0
+12. Security-SecureBootComplianceReport.ps1 upgraded to v3.0
+13. Progress updated (this file)
 
-**Total Commits**: 9
+**Total Commits**: 13
 
 ### Productivity Metrics
-- **Code Generated**: ~1,800 lines
-- **Documentation Written**: ~500 lines of help text
-- **Functions Created**: 18+ standardized functions
+- **Code Generated**: ~2,800 lines
+- **Documentation Written**: ~800 lines of help text
+- **Functions Created**: 27+ standardized functions
 - **Tests Run**: 0 (scripts validated via structure only)
-- **Average Lines per Script**: ~300 lines after upgrade
+- **Average Lines per Script**: ~310 lines after upgrade
 
 ## Next Steps
 
-1. **Continue High-Priority Scripts**: Focus on Security-* category
+1. **Continue High-Priority Scripts**: Focus on remaining Security-* category (15 scripts)
 2. **Complete AD Scripts**: Finish remaining 12 AD management scripts
 3. **Process Monitoring Scripts**: Upgrade 7 monitoring scripts
 4. **Create Templates**: Document reusable templates for each pattern
@@ -293,6 +365,13 @@ All upgraded scripts now include:
 4. **Test-IsElevated**: Administrator privilege checking
 5. **Helper Functions**: Script-specific validation and processing
 
+### New Patterns Discovered
+- **Registry Operations**: Set-RegistryValue function for consistent registry handling
+- **Compliance Scoring**: Issue counter with threshold-based status determination
+- **COM Object Handling**: Enhanced error handling for Windows COM objects
+- **Certificate Validation**: UEFI database string searching for certificate audit
+- **Reboot Tracking**: Boolean flag for reboot requirement notifications
+
 ## Resources
 
 - [README.md](README.md) - Quick start and overview
@@ -304,8 +383,8 @@ All upgraded scripts now include:
 ---
 
 **Project Status**: IN PROGRESS - WAF v3.0 Compliance Upgrade  
-**Completion**: 3.7% (8 of 219+ scripts)  
-**Last Updated**: February 9, 2026, 11:41 PM CET  
+**Completion**: 5.0% (11 of 219+ scripts)  
+**Last Updated**: February 9, 2026, 11:47 PM CET  
 **Framework Version**: 3.0  
 **Repository**: Xore/waf  
-**Session Commits**: 9
+**Session Commits**: 13

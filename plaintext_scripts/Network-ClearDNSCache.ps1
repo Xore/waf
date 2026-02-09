@@ -1,100 +1,388 @@
+#Requires -Version 5.1
+#Requires -RunAsAdministrator
 
 <#
 .SYNOPSIS
-    Clear's the DNS Cache the number of times you specify (defaults to 3).
+    Clears the DNS resolver cache multiple times
+
 .DESCRIPTION
-    Clear's the DNS Cache the number of times you specify (defaults to 3).
-.EXAMPLE
-    (No Parameters)
-
-    DNS Cache clearing attempt 1.
-    DNS Cache cleared successfully!
-
-    DNS Cache clearing attempt 2.
-    DNS Cache cleared successfully!
-
-    DNS Cache clearing attempt 3.
-    DNS Cache cleared successfully!
-
-PARAMETER: -Attempts "1"
-    Replace 1 with the number of times you'd like to clear the dns cache.
-
-.EXAMPLE
-    -Attempts "1"
+    Flushes the DNS client cache the specified number of times to resolve
+    DNS-related connectivity issues. Supports both modern PowerShell cmdlets
+    and legacy ipconfig fallback.
     
-    DNS Cache clearing attempt 1.
-    DNS Cache cleared successfully!
+    The script performs the following:
+    - Validates administrator privileges
+    - Clears DNS cache using Clear-DnsClientCache or ipconfig /flushdns
+    - Retries specified number of times with delays
+    - Displays current DNS cache after clearing
+    - Reports success or failure to NinjaRMM
+    
+    This script runs unattended without user interaction.
 
-.OUTPUTS
-    None
+.PARAMETER Attempts
+    Number of times to clear the DNS cache.
+    Default: 3
+    Range: 1-10
+
+.PARAMETER DelaySeconds
+    Seconds to wait between clearing attempts.
+    Default: 1
+    Range: 0-5
+
+.EXAMPLE
+    .\Network-ClearDNSCache.ps1
+    
+    Clears DNS cache 3 times with 1 second delay between attempts.
+
+.EXAMPLE
+    .\Network-ClearDNSCache.ps1 -Attempts 5
+    
+    Clears DNS cache 5 times.
+
+.EXAMPLE
+    .\Network-ClearDNSCache.ps1 -Attempts 1 -DelaySeconds 0
+    
+    Clears DNS cache once with no delay.
+
 .NOTES
-    Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Version: 1.1
-    Release Notes: Renamed script and added Script Variable support
+    Script Name:    Network-ClearDNSCache.ps1
+    Author:         Windows Automation Framework
+    Version:        3.0
+    Creation Date:  2024-01-15
+    Last Modified:  2026-02-09
+    
+    Execution Context: SYSTEM (via NinjaRMM automation)
+    Execution Frequency: On-demand or when DNS issues detected
+    Typical Duration: ~3-10 seconds (depends on attempts)
+    Timeout Setting: 60 seconds recommended
+    
+    User Interaction: NONE (fully automated, no prompts)
+    Restart Behavior: N/A (no restart required)
+    
+    Fields Updated:
+        - dnsCacheStatus (Cleared/Failed)
+        - dnsCacheLastClear (timestamp)
+        - dnsCacheAttempts (number of attempts made)
+    
+    Dependencies:
+        - Windows PowerShell 5.1 or higher
+        - Administrator privileges (SYSTEM context)
+        - NinjaRMM Agent installed
+        - Windows 10 / Server 2016 or higher
+    
+    Environment Variables (Optional):
+        - numberOfTimesToClearCache: Override -Attempts parameter
+        - delaybetweenAttempts: Override -DelaySeconds parameter
+    
+    Exit Codes:
+        0 - Success (DNS cache cleared)
+        1 - Failure (could not clear cache or script error)
+
+.LINK
+    https://github.com/Xore/waf
+    https://docs.microsoft.com/powershell/module/dnsclient/clear-dnsclientcache
 #>
 
 [CmdletBinding()]
 param (
-    [Parameter()]
-    [int]$Attempts = 3
+    [Parameter(Mandatory=$false, HelpMessage="Number of times to clear DNS cache")]
+    [ValidateRange(1,10)]
+    [int]$Attempts = 3,
+    
+    [Parameter(Mandatory=$false, HelpMessage="Seconds to wait between attempts")]
+    [ValidateRange(0,5)]
+    [int]$DelaySeconds = 1
 )
 
-begin {
-    # If script form is used overwrite the parameter
-    if ($env:numberOfTimesToClearCache -and $env:numberOfTimesToClearCache -notlike "null") { $Attempts = $env:numberOfTimesToClearCache }
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+
+$ScriptVersion = "3.0"
+$ScriptName = "Network-ClearDNSCache"
+
+# NinjaRMM CLI path for fallback
+$NinjaRMMCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
+
+# ============================================================================
+# INITIALIZATION
+# ============================================================================
+
+$StartTime = Get-Date
+$ErrorActionPreference = 'Stop'
+$script:ErrorCount = 0
+$script:WarningCount = 0
+$script:CLIFallbackCount = 0
+$script:ClearAttempts = 0
+
+# ============================================================================
+# FUNCTIONS
+# ============================================================================
+
+function Write-Log {
+    <#
+    .SYNOPSIS
+        Writes structured log messages with plain text output
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Message,
+        
+        [Parameter(Mandatory=$false)]
+        [ValidateSet('DEBUG','INFO','WARN','ERROR','SUCCESS')]
+        [string]$Level = 'INFO'
+    )
+    
+    $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $LogMessage = "[$Timestamp] [$Level] $Message"
+    
+    # Plain text output only - no colors
+    Write-Output $LogMessage
+    
+    # Track counts
+    switch ($Level) {
+        'WARN'  { $script:WarningCount++ }
+        'ERROR' { $script:ErrorCount++ }
+    }
 }
-process {
 
+function Set-NinjaField {
+    <#
+    .SYNOPSIS
+        Sets a NinjaRMM custom field value with automatic fallback to CLI
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$FieldName,
+        
+        [Parameter(Mandatory=$true)]
+        [AllowNull()]
+        $Value
+    )
+    
+    if ($null -eq $Value -or $Value -eq "") {
+        Write-Log "Skipping field '$FieldName' - no value" -Level DEBUG
+        return
+    }
+    
+    $ValueString = $Value.ToString()
+    
+    # Method 1: Try Ninja-Property-Set cmdlet
     try {
-        # Settiing $i to 1 for readability purposes
-        $i = 1
-
-        # Adding 1 to attempts again for readability purposes
-        if ($Attempts -ne 0) { $Attempts = $Attempts + 1 }
-
-        # Loop through flush dns command
-        For ($i; $i -lt $Attempts; $i++) {
-            Start-Sleep -Seconds 1
-            Write-Host "DNS Cache clearing attempt $i."
-            if ((Get-Command Clear-DNSClientCache -ErrorAction SilentlyContinue)) {
-                Clear-DnsClientCache -ErrorAction Stop
-                Write-Host "DNS Cache cleared successfully!`n"
+        if (Get-Command Ninja-Property-Set -ErrorAction SilentlyContinue) {
+            Ninja-Property-Set $FieldName $ValueString -ErrorAction Stop
+            Write-Log "Field '$FieldName' set successfully" -Level DEBUG
+            return
+        } else {
+            throw "Ninja-Property-Set cmdlet not available"
+        }
+    } catch {
+        Write-Log "Ninja-Property-Set failed, using CLI fallback" -Level DEBUG
+        
+        # Method 2: Fall back to NinjaRMM CLI
+        try {
+            if (-not (Test-Path $NinjaRMMCLI)) {
+                throw "NinjaRMM CLI not found at: $NinjaRMMCLI"
             }
-            else {
-                $dnsflush = ipconfig.exe /flushdns | Where-Object { $_ } | Out-String
-                Write-Host "$dnsflush"
-
-                if ($dnsflush -like "*Could not flush the DNS Resolver Cache*") {
-                    throw "Could not flush the DNS Resolver Cache."
-                }
+            
+            $CLIArgs = @("set", $FieldName, $ValueString)
+            $CLIResult = & $NinjaRMMCLI $CLIArgs 2>&1
+            
+            if ($LASTEXITCODE -ne 0) {
+                throw "CLI exit code: $LASTEXITCODE, Output: $CLIResult"
             }
+            
+            Write-Log "Field '$FieldName' set via CLI" -Level DEBUG
+            $script:CLIFallbackCount++
+            
+        } catch {
+            Write-Log "Failed to set field '$FieldName': $_" -Level ERROR
         }
     }
-    catch {
-        Write-Error "Failed to clear DNS Cache?"
-        exit 1
-    }
+}
 
-    # Write out the current dns cache
-    Write-Host "### Current DNS Cache ###"
+function Test-IsElevated {
+    <#
+    .SYNOPSIS
+        Checks if script is running with Administrator privileges
+    #>
+    $Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $Principal = New-Object System.Security.Principal.WindowsPrincipal($Identity)
+    return $Principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Clear-DNSCache {
+    <#
+    .SYNOPSIS
+        Clears DNS cache using available method
+    #>
+    [CmdletBinding()]
+    param()
     
-    # Get-DNSClientCache isn't a thing in PowerShell 2.0
-    if ((Get-Command Get-DNSClientCache -ErrorAction SilentlyContinue)) {
-        $currentcache = Get-DnsClientCache | Format-Table Entry, TimeToLive, Data | Out-String
-    }
-    else {
-        $currentcache = ipconfig.exe /displaydns
-        $currentcache = $currentcache -replace "Windows IP Configuration" | Where-Object { $_ } | Out-String
-    }
-    if (-not $currentcache -or $currentcache -like "*Could not display the DNS Resolver Cache.*") {
-        Write-Warning "DNS Cache is currently empty."
-    }
-    else {
-        Write-Host $currentcache
+    try {
+        # Try modern PowerShell cmdlet first
+        if (Get-Command Clear-DnsClientCache -ErrorAction SilentlyContinue) {
+            Clear-DnsClientCache -ErrorAction Stop
+            Write-Log "DNS cache cleared using Clear-DnsClientCache" -Level DEBUG
+            return $true
+        } else {
+            # Fallback to ipconfig
+            Write-Log "Clear-DnsClientCache not available, using ipconfig" -Level DEBUG
+            $Result = ipconfig.exe /flushdns 2>&1 | Out-String
+            
+            if ($Result -like "*Could not flush the DNS Resolver Cache*") {
+                throw "ipconfig /flushdns failed: $Result"
+            }
+            
+            Write-Log "DNS cache cleared using ipconfig /flushdns" -Level DEBUG
+            return $true
+        }
+    } catch {
+        Write-Log "Failed to clear DNS cache: $_" -Level ERROR
+        return $false
     }
 }
-end {
+
+function Get-CurrentDNSCache {
+    <#
+    .SYNOPSIS
+        Retrieves current DNS cache entries
+    #>
+    [CmdletBinding()]
+    param()
     
+    try {
+        # Try modern PowerShell cmdlet first
+        if (Get-Command Get-DnsClientCache -ErrorAction SilentlyContinue) {
+            $Cache = Get-DnsClientCache -ErrorAction Stop
+            if ($Cache) {
+                return ($Cache | Select-Object Entry, TimeToLive, Data | Format-Table | Out-String)
+            } else {
+                return "DNS cache is empty"
+            }
+        } else {
+            # Fallback to ipconfig
+            $Cache = ipconfig.exe /displaydns 2>&1
+            $Cache = $Cache -replace "Windows IP Configuration" | Where-Object { $_ } | Out-String
+            
+            if ($Cache -like "*Could not display the DNS Resolver Cache*" -or [string]::IsNullOrWhiteSpace($Cache)) {
+                return "DNS cache is empty"
+            }
+            
+            return $Cache
+        }
+    } catch {
+        Write-Log "Failed to retrieve DNS cache: $_" -Level WARN
+        return "Unable to retrieve DNS cache"
+    }
+}
+
+# ============================================================================
+# MAIN EXECUTION
+# ============================================================================
+
+try {
+    Write-Log "========================================" -Level INFO
+    Write-Log "Starting: $ScriptName v$ScriptVersion" -Level INFO
+    Write-Log "========================================" -Level INFO
     
+    # Check for environment variable overrides
+    if ($env:numberOfTimesToClearCache -and $env:numberOfTimesToClearCache -notlike "null") {
+        $Attempts = [int]$env:numberOfTimesToClearCache
+        Write-Log "Using attempts from environment: $Attempts" -Level INFO
+    }
     
+    if ($env:delayBetweenAttempts -and $env:delayBetweenAttempts -notlike "null") {
+        $DelaySeconds = [int]$env:delayBetweenAttempts
+        Write-Log "Using delay from environment: $DelaySeconds seconds" -Level INFO
+    }
+    
+    Write-Log "Configuration: $Attempts attempt(s) with $DelaySeconds second delay" -Level INFO
+    
+    # Check Administrator privileges
+    if (-not (Test-IsElevated)) {
+        throw "Administrator privileges required to clear DNS cache"
+    }
+    Write-Log "Administrator privileges verified" -Level INFO
+    
+    # Clear DNS cache multiple times
+    $SuccessCount = 0
+    $FailureCount = 0
+    
+    for ($i = 1; $i -le $Attempts; $i++) {
+        $script:ClearAttempts++
+        Write-Log "DNS cache clearing attempt $i of $Attempts" -Level INFO
+        
+        if (Clear-DNSCache) {
+            $SuccessCount++
+            Write-Log "DNS cache cleared successfully (attempt $i)" -Level SUCCESS
+        } else {
+            $FailureCount++
+            Write-Log "Failed to clear DNS cache (attempt $i)" -Level ERROR
+        }
+        
+        # Add delay between attempts (except after last attempt)
+        if ($i -lt $Attempts -and $DelaySeconds -gt 0) {
+            Write-Log "Waiting $DelaySeconds second(s) before next attempt" -Level DEBUG
+            Start-Sleep -Seconds $DelaySeconds
+        }
+    }
+    
+    # Report results
+    Write-Log "Clearing complete: $SuccessCount successful, $FailureCount failed" -Level INFO
+    
+    if ($FailureCount -gt 0) {
+        throw "Failed to clear DNS cache on $FailureCount attempt(s)"
+    }
+    
+    # Get and display current DNS cache
+    Write-Log "Retrieving current DNS cache contents" -Level INFO
+    $CurrentCache = Get-CurrentDNSCache
+    
+    Write-Log "Current DNS Cache:" -Level INFO
+    Write-Log $CurrentCache -Level INFO
+    
+    # Update NinjaRMM fields
+    Set-NinjaField -FieldName "dnsCacheStatus" -Value "Cleared"
+    Set-NinjaField -FieldName "dnsCacheLastClear" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+    Set-NinjaField -FieldName "dnsCacheAttempts" -Value $Attempts
+    
+    Write-Log "DNS cache clearing completed successfully" -Level SUCCESS
+    
+} catch {
+    Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
+    Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
+    
+    # Update failure status
+    Set-NinjaField -FieldName "dnsCacheStatus" -Value "Failed"
+    Set-NinjaField -FieldName "dnsCacheLastClear" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+    
+    exit 1
+    
+} finally {
+    # Calculate and log execution time
+    $EndTime = Get-Date
+    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+    
+    Write-Log "========================================" -Level INFO
+    Write-Log "Execution Summary:" -Level INFO
+    Write-Log "  Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
+    Write-Log "  Errors: $script:ErrorCount" -Level INFO
+    Write-Log "  Warnings: $script:WarningCount" -Level INFO
+    Write-Log "  Clear Attempts: $script:ClearAttempts" -Level INFO
+    
+    if ($script:CLIFallbackCount -gt 0) {
+        Write-Log "  CLI Fallbacks: $script:CLIFallbackCount" -Level INFO
+    }
+    
+    Write-Log "========================================" -Level INFO
+}
+
+# Exit with appropriate code
+if ($script:ErrorCount -gt 0) {
+    exit 1
+} else {
+    exit 0
 }

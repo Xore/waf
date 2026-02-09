@@ -2,7 +2,7 @@
 
 **Document Type:** Refactoring Guide  
 **Audience:** Script Developers, Maintainers  
-**Version:** 1.1  
+**Version:** 1.2  
 **Last Updated:** February 9, 2026
 
 ---
@@ -19,8 +19,10 @@ This guide provides a systematic approach to refactoring existing WAF scripts to
 
 1. ✅ **Execution Time Tracking** - `$StartTime` in initialization, logged in finally block
 2. ✅ **Set-NinjaField with CLI Fallback** - Never call `Ninja-Property-Set` directly
-3. ✅ **Structured Logging** - Write-Log function with levels
-4. ✅ **Error Handling** - Try-catch on all critical operations
+3. ✅ **No User Interaction** - Never use Read-Host, Pause, or interactive prompts
+4. ✅ **No Restarts Without Parameter** - Require explicit `-AllowRestart` parameter
+5. ✅ **Structured Logging** - Write-Log function with levels
+6. ✅ **Error Handling** - Try-catch on all critical operations
 
 ---
 
@@ -36,6 +38,8 @@ This guide provides a systematic approach to refactoring existing WAF scripts to
 - Script is being modified for new features
 - **Script doesn't track execution time**
 - **Script calls Ninja-Property-Set directly**
+- **Script uses Read-Host or waits for user input**
+- **Script restarts device without parameter check**
 
 **Recommended:**
 - Script lacks proper logging
@@ -89,12 +93,16 @@ Total Time: 75-105 minutes per script
 - Uses CIM or WMI: CIM/WMI/Mixed
 - Execution time tracked: Yes/No (CRITICAL)
 - Uses Set-NinjaField: Yes/No (CRITICAL)
+- Has user input commands: Yes/No (CRITICAL)
+- Restarts device: Yes/No (needs parameter check)
 - Execution time: XX seconds
 - Failure rate: X%
 
 ### Critical Issues (Must Fix)
 - [ ] No execution time tracking
 - [ ] Calls Ninja-Property-Set directly
+- [ ] Uses Read-Host or Pause commands
+- [ ] Restarts device without parameter
 - [ ] No error handling
 - [ ] No structured logging
 
@@ -132,6 +140,8 @@ Total Time: 75-105 minutes per script
 - [ ] Execution time tracked and logged
 - [ ] Set-NinjaField with CLI fallback implemented
 - [ ] No direct Ninja-Property-Set calls
+- [ ] No user input commands (Read-Host, Pause, etc.)
+- [ ] Restarts require -AllowRestart parameter
 - [ ] All critical operations have error handling
 - [ ] Structured logging implemented
 
@@ -141,6 +151,7 @@ Total Time: 75-105 minutes per script
 - [ ] Failure rate < 2%
 - [ ] All tests pass
 - [ ] Code review approved
+- [ ] Runs unattended without hanging
 ```
 
 ---
@@ -180,6 +191,8 @@ git commit -m "[Refactor] Backup before refactoring ScriptName.ps1"
 - [ ] Timeout simulation
 - [ ] Low resources simulation
 - [ ] Field setting methods (both Ninja-Property-Set and CLI)
+- [ ] Unattended execution (no hang)
+- [ ] Restart parameter behavior
 ```
 
 ---
@@ -201,6 +214,12 @@ git commit -m "[Refactor] Backup before refactoring ScriptName.ps1"
     - What calculations are performed
     - What fields are updated
     - Any important behavior notes]
+    
+    This script runs unattended without user interaction.
+
+.PARAMETER AllowRestart
+    (If applicable) Authorizes the script to restart the device if required.
+    Without this parameter, script will only flag restart requirement.
 
 .NOTES
     Script Name:    [ExactFileName.ps1]
@@ -213,6 +232,9 @@ git commit -m "[Refactor] Backup before refactoring ScriptName.ps1"
     Execution Frequency: [Daily/Weekly/On-demand]
     Typical Duration: ~XX seconds (REQUIRED - from actual measurements)
     Timeout Setting: XXX seconds
+    
+    User Interaction: NONE (fully automated, no prompts)
+    Restart Behavior: Never restarts unless -AllowRestart parameter provided
     
     Fields Updated:
         - [fieldName1] (description)
@@ -242,6 +264,8 @@ git commit -m "[Refactor] Backup before refactoring ScriptName.ps1"
 - [ ] All updated fields are listed
 - [ ] Dependencies are documented
 - [ ] **Typical Duration documented from testing**
+- [ ] **User Interaction: NONE documented**
+- [ ] **Restart Behavior documented**
 - [ ] Exit codes are documented
 
 ---
@@ -254,6 +278,10 @@ git commit -m "[Refactor] Backup before refactoring ScriptName.ps1"
 [CmdletBinding()]
 param(
     # Add parameters if needed
+    
+    # If script may need to restart device, add this parameter:
+    # [Parameter(Mandatory=$false)]
+    # [switch]$AllowRestart
 )
 
 #Requires -Version 5.1
@@ -489,59 +517,110 @@ if ($script:ErrorCount -gt 0) {
 
 ---
 
-### Step 3.7: Add Error Handling to Critical Operations (15 min)
+### Step 3.7: Remove User Interaction Commands (10 min)
 
-**Identify critical operations:**
-- WMI/CIM queries
-- File operations
-- Registry access
-- Service queries
-- Event log queries
-
-**Wrap each in try-catch:**
+**CRITICAL: Find and remove ALL user interaction**
 
 ```powershell
-# Before:
-$OS = Get-CimInstance Win32_OperatingSystem
-$FreeMemory = $OS.FreePhysicalMemory
+# FORBIDDEN - Find and remove these:
+Read-Host "Press Enter to continue"
+$UserInput = Read-Host "Enter option"
+Pause
+[Console]::ReadKey()
+$Host.UI.ReadLine()
+cmd /c pause
 
-# After:
-try {
-    $OS = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
-    $FreeMemory = $OS.FreePhysicalMemory
-    Write-Log "Retrieved OS information" -Level DEBUG
-    
-} catch {
-    Write-Log "Failed to get OS info: $_" -Level ERROR
-    $FreeMemory = 0  # Graceful degradation
+# Replace with logging:
+Write-Log "Processing completed" -Level INFO
+
+# Or use parameters with defaults:
+[Parameter(Mandatory=$false)]
+[string]$Mode = "Auto"  # Default value, no user prompt
+```
+
+**Search Strategy:**
+
+1. Search for: `Read-Host`
+2. Search for: `Pause`
+3. Search for: `ReadKey`
+4. Search for: `ReadLine`
+5. Remove all instances
+6. Verify zero occurrences remain
+
+**Validation:**
+```powershell
+# Verify no user input commands remain
+Select-String -Path "ScriptName.ps1" -Pattern "Read-Host|Pause|ReadKey|ReadLine"
+# Should return no results
+```
+
+---
+
+### Step 3.8: Add Restart Parameter Protection (10 min)
+
+**CRITICAL: Protect all restart commands**
+
+```powershell
+# Before (FORBIDDEN):
+if ($UpdatesNeedRestart) {
+    Restart-Computer -Force
+}
+
+Restart-Computer  # Unprotected
+Shutdown /r /t 0  # Unprotected
+
+# After (REQUIRED):
+if ($UpdatesNeedRestart) {
+    if ($AllowRestart) {
+        Write-Log "Restart authorized via parameter" -Level WARN
+        Write-Log "Restarting in 60 seconds..." -Level WARN
+        
+        # Set fields before restart
+        Set-NinjaField -FieldName "opsRestartInitiated" -Value "Yes"
+        Set-NinjaField -FieldName "opsRestartReason" -Value "Windows Updates"
+        Start-Sleep -Seconds 5  # Allow field sync
+        
+        Restart-Computer -Force
+    } else {
+        Write-Log "Restart required but NOT authorized" -Level WARN
+        Write-Log "Use -AllowRestart parameter to enable" -Level WARN
+        
+        # Flag for admin review
+        Set-NinjaField -FieldName "opsRestartRequired" -Value "Yes"
+        Set-NinjaField -FieldName "opsRestartReason" -Value "Windows Updates"
+    }
 }
 ```
 
+**Search Strategy:**
+
+1. Search for: `Restart-Computer`
+2. Search for: `Stop-Computer`
+3. Search for: `shutdown`
+4. Search for: `wmic.*reboot`
+5. Wrap all with parameter check
+
 ---
 
-### Step 3.8: Replace Write-Host with Write-Log (10 min)
+### Step 3.9: Suppress Confirmations (5 min)
 
-**Find and replace all output:**
+**Add -Confirm:$false to interactive cmdlets:**
 
 ```powershell
-# Before:
-Write-Host "Processing..."
-Write-Host "Error: Something failed" -ForegroundColor Red
+# Before - May hang waiting for confirmation:
+Remove-Item $TempFile
+Stop-Service $ServiceName
+Restart-Service $ServiceName
 
-# After:
-Write-Log "Processing..." -Level INFO
-Write-Log "Something failed" -Level ERROR
+# After - No user interaction:
+Remove-Item $TempFile -Confirm:$false -Force -ErrorAction Stop
+Stop-Service $ServiceName -Confirm:$false -Force -ErrorAction Stop
+Restart-Service $ServiceName -Confirm:$false -Force -ErrorAction Stop
 ```
-
-**Search for:**
-- `Write-Host`
-- `Write-Output` (if used for logging)
-- `Write-Warning` (keep, but ensure counted)
-- `Write-Error` (keep, but ensure counted)
 
 ---
 
-### Step 3.9: Replace Direct Field Setting (15 min)
+### Step 3.10: Replace Direct Field Setting (15 min)
 
 **CRITICAL: Find and replace ALL Ninja-Property-Set calls**
 
@@ -557,13 +636,6 @@ Set-NinjaField -FieldName "opsHealthScore" -Value $Score
 Set-NinjaField -FieldName "field" -Value $Value  # Handles null check internally
 ```
 
-**Search Strategy:**
-
-1. Search for: `Ninja-Property-Set`
-2. Count occurrences
-3. Replace each with: `Set-NinjaField -FieldName "[field]" -Value [value]`
-4. Verify zero occurrences remain
-
 **Validation:**
 ```powershell
 # Run this to verify no direct calls remain
@@ -573,7 +645,7 @@ Select-String -Path "ScriptName.ps1" -Pattern "Ninja-Property-Set"
 
 ---
 
-### Step 3.10: Optimize Performance (15 min)
+### Step 3.11: Optimize Performance (15 min)
 
 **Replace WMI with CIM:**
 
@@ -600,29 +672,9 @@ $Errors = Get-WinEvent -FilterHashtable @{
 } -MaxEvents 100
 ```
 
-**Optimize loops:**
-
-```powershell
-# Before:
-foreach ($Item in $Items) {
-    $Threshold = Get-ConfigValue "Threshold"  # Called every iteration!
-    if ($Item.Value -gt $Threshold) {
-        Process-Item $Item
-    }
-}
-
-# After:
-$Threshold = Get-ConfigValue "Threshold"  # Called once
-foreach ($Item in $Items) {
-    if ($Item.Value -gt $Threshold) {
-        Process-Item $Item
-    }
-}
-```
-
 ---
 
-### Step 3.11: Improve Variable Naming (10 min)
+### Step 3.12: Improve Variable Naming (10 min)
 
 **Apply PascalCase and descriptive names:**
 
@@ -638,26 +690,6 @@ $ComputerName = $env:COMPUTERNAME
 $TotalMemoryGB = Get-TotalMemory
 $UsedPercent = ($UsedSpace / $TotalSpace) * 100
 $StartTime = Get-Date  # REQUIRED name for clarity
-```
-
----
-
-### Step 3.12: Add Code Comments (5 min)
-
-**Add comments for complex logic:**
-
-```powershell
-# Calculate free space percentage
-# Note: CIM returns bytes, so divide by 1GB for readability
-$FreeSpaceGB = [math]::Round($Disk.FreeSpace / 1GB, 2)
-$TotalSpaceGB = [math]::Round($Disk.Size / 1GB, 2)
-$FreePercent = [math]::Round(($FreeSpaceGB / $TotalSpaceGB) * 100, 1)
-
-# Skip system reserved partitions (< 100MB)
-if ($TotalSpaceGB -lt 0.1) {
-    Write-Log "Skipping small partition: $($Disk.DeviceID)" -Level DEBUG
-    continue
-}
 ```
 
 ---
@@ -682,7 +714,26 @@ if ($Errors) {
 }
 ```
 
-### Step 4.2: Dry Run Test (5 min)
+### Step 4.2: Unattended Execution Test (5 min)
+
+**CRITICAL: Verify script doesn't hang**
+
+```powershell
+# Test that script runs without user interaction
+$Job = Start-Job -ScriptBlock { .\ScriptName.ps1 }
+
+if (-not (Wait-Job $Job -Timeout 300)) {
+    Write-Host "FAIL: Script hung (waiting for input)" -ForegroundColor Red
+    Stop-Job $Job
+    Remove-Job $Job
+} else {
+    Write-Host "PASS: Script completed unattended" -ForegroundColor Green
+    Receive-Job $Job
+    Remove-Job $Job
+}
+```
+
+### Step 4.3: Dry Run Test (5 min)
 
 ```powershell
 # Test execution
@@ -692,11 +743,11 @@ if ($Errors) {
 # - No errors thrown
 # - Logging works
 # - Execution time is logged in finally block
+# - No hang or wait for user input
 # - Output looks correct
-# - CLI fallback tracked (if used)
 ```
 
-### Step 4.3: Field Population Test (5 min)
+### Step 4.4: Field Population Test (5 min)
 
 ```powershell
 # After running script, check NinjaRMM
@@ -709,7 +760,7 @@ if ($Errors) {
 # - Set-NinjaField wrapper worked
 ```
 
-### Step 4.4: Execution Time Test (5 min)
+### Step 4.5: Execution Time Test (5 min)
 
 **CRITICAL: Measure execution time multiple times**
 
@@ -731,22 +782,19 @@ for ($i = 1; $i -le 5; $i++) {
 # Update script header with average time
 ```
 
-### Step 4.5: Error Scenario Testing (3 min)
+### Step 4.6: Restart Parameter Test (3 min)
 
-**Test error handling:**
+**Test restart behavior (if applicable):**
 
 ```powershell
-# Simulate various failures
-# - WMI/CIM unavailable
-# - Missing permissions
-# - Missing data (e.g., no D: drive)
-# - Both field setting methods failing
+# Test 1: Without parameter (should NOT restart)
+.\ScriptName.ps1
+# Verify: Device still running
+# Verify: opsRestartRequired field set if applicable
 
-# Verify:
-# - Script doesn't crash
-# - Errors logged appropriately
-# - Execution time still logged
-# - Graceful degradation works
+# Test 2: With parameter (only on test VM!)
+.\ScriptName.ps1 -AllowRestart
+# Verify: Device restarts only if actually needed
 ```
 
 ---
@@ -765,12 +813,17 @@ for ($i = 1; $i -le 5; $i++) {
 - [ ] Execution time logged in finally block
 - [ ] Set-NinjaField function included
 - [ ] Zero direct Ninja-Property-Set calls
+- [ ] Zero user input commands (Read-Host, Pause, etc.)
+- [ ] Restarts require -AllowRestart parameter
+- [ ] -Confirm:$false on interactive cmdlets
 - [ ] CLI fallback logic implemented
 
 #### Structure
 - [ ] Uses standard template format
 - [ ] Comment-based help complete
 - [ ] Typical duration documented
+- [ ] User Interaction: NONE documented
+- [ ] Restart Behavior documented
 - [ ] All sections present
 - [ ] Logical flow maintained
 
@@ -788,9 +841,11 @@ for ($i = 1; $i -le 5; $i++) {
 
 #### Testing
 - [ ] All tests passed
+- [ ] Runs unattended without hanging
 - [ ] Fields populate correctly
 - [ ] Execution time measured (5 runs)
 - [ ] Error handling verified
+- [ ] Restart parameter tested (if applicable)
 - [ ] Performance acceptable
 ```
 
@@ -807,6 +862,8 @@ for ($i = 1; $i -le 5; $i++) {
                        - Added execution time tracking
                        - Implemented Set-NinjaField with CLI fallback
                        - Replaced all Ninja-Property-Set calls
+                       - Removed all user interaction commands
+                       - Added restart parameter protection
                        - Added structured logging
                        - Added comprehensive error handling
                        - Improved performance (WMI -> CIM)
@@ -819,12 +876,15 @@ for ($i = 1; $i -le 5; $i++) {
 
 ```bash
 git add ScriptName.ps1
-git commit -m "[Refactor] ScriptName.ps1 - Apply coding standards v1.1
+git commit -m "[Refactor] ScriptName.ps1 - Apply coding standards v1.2
 
 Critical Changes:
 - Added execution time tracking (StartTime + finally block)
 - Implemented Set-NinjaField with ninjarmm-cli.exe fallback
 - Replaced all Ninja-Property-Set direct calls (0 remaining)
+- Removed all user interaction commands (Read-Host, Pause)
+- Added restart parameter protection (-AllowRestart required)
+- Added -Confirm:false to interactive cmdlets
 - Added comprehensive error handling
 
 Other Changes:
@@ -836,11 +896,13 @@ Other Changes:
 
 Testing:
 - Tested on Windows 10, 11, Server 2022
+- Runs unattended without hanging
 - All fields populate correctly
 - Error handling verified
 - Execution time: 15.2s avg (was 23.4s)
 - No failures in 10 test runs
 - CLI fallback tested and working
+- Restart parameter tested
 
 Fields affected:
 - fieldName1
@@ -859,7 +921,7 @@ git push origin refactor/script-name
 - Device 2: Windows 11 workstation  
 - Device 3: Windows Server 2022
 - Duration: 48 hours
-- Monitor: Execution success, field updates, execution time, CLI usage
+- Monitor: Execution success, field updates, execution time, CLI usage, no hangs
 
 ### Phase 2: 10% of Fleet
 - 15 devices (10% of 150)
@@ -888,6 +950,8 @@ git push origin refactor/script-name
 - [ ] Issues documented
 - [ ] Execution time tracking: Yes/No
 - [ ] Direct Ninja-Property-Set calls: X found
+- [ ] User input commands: X found
+- [ ] Unprotected restarts: X found
 - [ ] Effort estimated: XX minutes
 - [ ] Success criteria defined
 
@@ -904,25 +968,30 @@ git push origin refactor/script-name
 - [ ] Set-NinjaField function added
 - [ ] All Ninja-Property-Set replaced (0 remaining)
 - [ ] CLI fallback logic implemented
+- [ ] All user input commands removed (0 remaining)
+- [ ] Restart parameter protection added
+- [ ] -Confirm:$false added to interactive cmdlets
 
 ### Standard Changes
 - [ ] Comment-based help added
+- [ ] User Interaction and Restart Behavior documented
 - [ ] CmdletBinding added
 - [ ] Configuration section added
 - [ ] Initialization section added
 - [ ] Write-Log function added
 - [ ] Main logic wrapped in try-catch-finally
 - [ ] Error handling on critical operations
-- [ ] Write-Host replaced with Write-Log
 - [ ] Performance optimized
 - [ ] Variable naming improved
 - [ ] Code comments added
 
 ## Phase 4: Testing
 - [ ] Syntax validated
+- [ ] Unattended execution test passed (no hang)
 - [ ] Dry run test passed
 - [ ] Field population verified
 - [ ] Execution time measured (5 runs)
+- [ ] Restart parameter tested (if applicable)
 - [ ] Error scenarios tested
 - [ ] Performance acceptable
 - [ ] CLI fallback tested
@@ -939,6 +1008,8 @@ git push origin refactor/script-name
 - **Execution Time:** Before: XXs | After: XXs (avg of 5 runs)
 - **Failure Rate:** Before: X% | After: X%
 - **Direct Calls Removed:** X Ninja-Property-Set calls
+- **User Input Removed:** X Read-Host/Pause commands
+- **Restarts Protected:** X restart commands
 - **CLI Fallbacks Used:** X times (in testing)
 - **Standards Compliance:** 100%
 
@@ -950,7 +1021,58 @@ git push origin refactor/script-name
 
 ## Common Refactoring Patterns
 
-### Pattern 1: Add Execution Time Tracking
+### Pattern 1: Remove User Input
+
+```powershell
+# Before (FORBIDDEN - will hang):
+$UserChoice = Read-Host "Select option (1-3)"
+Read-Host "Press Enter to continue"
+Pause
+
+# After (REQUIRED - use parameters):
+[Parameter(Mandatory=$false)]
+[ValidateSet('Option1','Option2','Option3')]
+[string]$Mode = 'Option1'  # Default value
+
+# Continue automatically
+Write-Log "Processing with mode: $Mode" -Level INFO
+```
+
+### Pattern 2: Protect Restart Commands
+
+```powershell
+# Before (FORBIDDEN):
+if ($UpdatesInstalled) {
+    Restart-Computer -Force
+}
+
+# After (REQUIRED):
+if ($UpdatesInstalled) {
+    if ($AllowRestart) {
+        Write-Log "Restart authorized" -Level WARN
+        Set-NinjaField -FieldName "opsRestartInitiated" -Value "Yes"
+        Start-Sleep -Seconds 5  # Allow field sync
+        Restart-Computer -Force
+    } else {
+        Write-Log "Restart required but not authorized" -Level WARN
+        Set-NinjaField -FieldName "opsRestartRequired" -Value "Yes"
+    }
+}
+```
+
+### Pattern 3: Suppress Confirmations
+
+```powershell
+# Before (may hang):
+Remove-Item $TempFile
+Stop-Service $ServiceName
+
+# After (no hang):
+Remove-Item $TempFile -Confirm:$false -Force -ErrorAction Stop
+Stop-Service $ServiceName -Confirm:$false -Force -ErrorAction Stop
+```
+
+### Pattern 4: Add Execution Time Tracking
 
 ```powershell
 # Before (MISSING CRITICAL REQUIREMENT):
@@ -973,7 +1095,7 @@ try {
 }
 ```
 
-### Pattern 2: Replace Direct Field Setting
+### Pattern 5: Replace Direct Field Setting
 
 ```powershell
 # Before (FORBIDDEN):
@@ -983,81 +1105,45 @@ if ($DiskSpace) {
     Ninja-Property-Set "capDiskCFreeGB" $DiskSpace
 }
 
-try {
-    Ninja-Property-Set "statLastUpdate" (Get-Date -Format "yyyy-MM-dd")
-} catch {
-    Write-Host "Failed to set field"
-}
-
 # After (REQUIRED):
 Set-NinjaField -FieldName "opsHealthScore" -Value $HealthScore
 
 # No need for null check - function handles it
 Set-NinjaField -FieldName "capDiskCFreeGB" -Value $DiskSpace
-
-# Error handling built into function
-Set-NinjaField -FieldName "statLastUpdate" -Value (Get-Date -Format "yyyy-MM-dd")
-```
-
-### Pattern 3: Add Set-NinjaField Function
-
-```powershell
-# Add this function to EVERY script
-function Set-NinjaField {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$FieldName,
-        
-        [Parameter(Mandatory=$true)]
-        [AllowNull()]
-        $Value
-    )
-    
-    if ($null -eq $Value -or $Value -eq "") {
-        Write-Log "Skipping field '$FieldName' - no value" -Level DEBUG
-        return
-    }
-    
-    $ValueString = $Value.ToString()
-    
-    # Try primary method
-    try {
-        if (Get-Command Ninja-Property-Set -ErrorAction SilentlyContinue) {
-            Ninja-Property-Set $FieldName $ValueString -ErrorAction Stop
-            Write-Log "Field '$FieldName' = $ValueString" -Level DEBUG
-            return
-        } else {
-            throw "Cmdlet not available"
-        }
-    } catch {
-        Write-Log "Using CLI fallback for '$FieldName'" -Level DEBUG
-        
-        # Fallback to CLI
-        try {
-            $NinjaCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
-            if (-not (Test-Path $NinjaCLI)) {
-                throw "CLI not found: $NinjaCLI"
-            }
-            
-            $CLIResult = & $NinjaCLI set $FieldName $ValueString 2>&1
-            if ($LASTEXITCODE -ne 0) {
-                throw "CLI failed: $CLIResult"
-            }
-            
-            Write-Log "Field '$FieldName' = $ValueString (CLI)" -Level DEBUG
-            $script:CLIFallbackCount++
-        } catch {
-            Write-Log "Failed to set '$FieldName': $_" -Level ERROR
-            throw
-        }
-    }
-}
 ```
 
 ---
 
 ## Troubleshooting Refactoring Issues
+
+### Issue: Script hangs during testing
+
+**Check:**
+- Did you remove ALL Read-Host commands?
+- Did you remove ALL Pause commands?
+- Are there any -Confirm parameters without :$false?
+- Check for [Console]::ReadKey() or similar
+
+**Fix:**
+```powershell
+# Search for all interactive commands
+Select-String -Path "ScriptName.ps1" -Pattern "Read-Host|Pause|ReadKey|ReadLine|\-Confirm(?!:\$false)"
+# Remove all instances
+```
+
+### Issue: Device restarted unexpectedly
+
+**Check:**
+- Did you add parameter check to ALL restart commands?
+- Is -AllowRestart parameter defined?
+- Are there any shutdown.exe or wmic commands?
+
+**Fix:**
+```powershell
+# Search for all restart commands
+Select-String -Path "ScriptName.ps1" -Pattern "Restart-Computer|Stop-Computer|shutdown|wmic.*reboot"
+# Verify all are wrapped in parameter check
+```
 
 ### Issue: Execution time not appearing in logs
 
@@ -1092,87 +1178,6 @@ Select-String -Path "ScriptName.ps1" -Pattern "Ninja-Property-Set"
 # Should return ZERO results
 ```
 
-### Issue: CLI fallback not working
-
-**Check:**
-- Is path correct? `C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe`
-- Does file exist on test system?
-- Is `$script:CLIFallbackCount` incrementing?
-- Check LASTEXITCODE after CLI execution
-
-**Debug:**
-```powershell
-# Test CLI manually
-& "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe" set testField "testValue"
-Write-Host "Exit code: $LASTEXITCODE"
-```
-
-### Issue: Script slower after refactoring
-
-**Check:**
-- Is logging level set to DEBUG? (Change to INFO)
-- Are you calling functions inside loops unnecessarily?
-- Did error handling add significant overhead?
-
-**Optimize:**
-```powershell
-# Set logging to INFO (not DEBUG)
-$LogLevel = "INFO"
-
-# Move function calls outside loops
-$Threshold = Get-Value
-foreach ($Item in $Items) {
-    # Use $Threshold here
-}
-```
-
----
-
-## Batch Refactoring
-
-### Priority Order
-
-1. **Critical Scripts First:**
-   - Scripts with NO execution time tracking
-   - Scripts with direct Ninja-Property-Set calls
-   - High failure rate scripts
-   - High frequency scripts
-
-2. **Group by Similarity:**
-   - Disk monitoring scripts
-   - Security monitoring scripts
-   - Performance scripts
-
-3. **Refactor in Batches:**
-   - 5 scripts per week
-   - Test thoroughly between batches
-   - Document lessons learned
-
-### Progress Tracking
-
-```markdown
-## Refactoring Progress
-
-### Priority 1: Critical Fixes (20 scripts)
-- [ ] Scripts without execution time tracking (12 scripts)
-- [ ] Scripts with direct Ninja-Property-Set (8 scripts)
-- Target: Week 1-2
-
-### Priority 2: Phase 7.1 Core Scripts (50 scripts)
-- [ ] Disk monitoring (5 scripts) - Week 3
-- [ ] Memory monitoring (3 scripts) - Week 3
-- [ ] Security monitoring (8 scripts) - Week 4
-- [ ] Performance monitoring (10 scripts) - Week 5
-- [ ] Update monitoring (6 scripts) - Week 6
-- [ ] Miscellaneous (18 scripts) - Week 7-8
-
-### Priority 3: Phase 7.2 Extended Scripts (40 scripts)
-- Target: Week 9-14
-
-### Priority 4: Phase 7.3 Server Scripts (20 scripts)
-- Target: Week 15-18
-```
-
 ---
 
 ## Summary
@@ -1181,8 +1186,10 @@ foreach ($Item in $Items) {
 
 1. ✅ **Execution Time Tracking** - `$StartTime` in init, logged in finally
 2. ✅ **Set-NinjaField with CLI Fallback** - Never call Ninja-Property-Set directly
-3. ✅ **Structured Logging** - Write-Log function
-4. ✅ **Error Handling** - Try-catch-finally structure
+3. ✅ **No User Interaction** - Never use Read-Host, Pause, or prompts
+4. ✅ **No Restarts Without Parameter** - Require `-AllowRestart` parameter
+5. ✅ **Structured Logging** - Write-Log function
+6. ✅ **Error Handling** - Try-catch-finally structure
 
 **Time Investment:**
 - Simple script: 30-45 minutes
@@ -1192,15 +1199,19 @@ foreach ($Item in $Items) {
 **Benefits:**
 - Performance monitoring enabled
 - Reliable field setting in all contexts
+- Fully automated unattended operation
+- Controlled restart behavior
 - Improved error handling
 - Better maintainability
 - Consistent code quality
 
 **Remember:**
-- Don't skip critical requirements (execution time, Set-NinjaField)
+- Don't skip critical requirements
 - Test execution time 5+ times for accurate average
 - Verify ZERO direct Ninja-Property-Set calls remain
-- Test CLI fallback if possible
+- Verify ZERO user input commands remain
+- Test unattended execution (no hang)
+- Test restart parameter if applicable
 - Document typical duration in script header
 
 ---
@@ -1209,11 +1220,10 @@ foreach ($Item in $Items) {
 
 - [Coding Standards](CODING_STANDARDS.md) - Standards to follow
 - [Script Header Template](SCRIPT_HEADER_TEMPLATE.ps1) - Template to use
-- [Troubleshooting Flowcharts](../troubleshooting/FLOWCHARTS.md) - Debug issues
 
 ---
 
-**Document Version:** 1.1  
+**Document Version:** 1.2  
 **Last Updated:** February 9, 2026  
-**Changes:** Added critical requirements for execution time tracking and CLI fallback  
+**Changes:** Added requirements for no user interaction and restart parameter protection  
 **Next Review:** After first 10 script refactorings completed

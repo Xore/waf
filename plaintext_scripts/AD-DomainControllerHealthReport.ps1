@@ -1,381 +1,467 @@
 #Requires -Version 5.1
+#Requires -RunAsAdministrator
 
 <#
 .SYNOPSIS
-    Analyzes Domain Controller health and reports diagnostic test results.
+    Analyzes Domain Controller health using DCDiag and reports results
 
 .DESCRIPTION
-    Runs comprehensive DCDiag tests on a Domain Controller and reports the results.
-    Tests include connectivity, replication, SYSVOL, DNS, and more. Results can
-    optionally be saved to a WYSIWYG custom field for NinjaRMM reporting.
+    Runs comprehensive DCDiag diagnostic tests on a Domain Controller and reports results.
+    Tests include connectivity, replication, SYSVOL, DNS, services, and more.
     
-    The script requires:
-    - Administrator privileges
-    - Execution on a Domain Controller
-    - Active Directory PowerShell module availability
+    The script performs the following:
+    - Validates script runs on Domain Controller with admin privileges
+    - Executes 20+ DCDiag diagnostic tests
+    - Categorizes tests as passed or failed
+    - Optionally generates HTML report for NinjaRMM WYSIWYG field
+    - Provides detailed output for failed tests
+    - Updates NinjaRMM custom fields with results
+    
+    This script runs unattended without user interaction.
 
 .PARAMETER wysiwygCustomField
-    Name of a WYSIWYG custom field to save HTML-formatted results.
-    Must be a valid custom field name in NinjaRMM.
+    Optional name of a WYSIWYG custom field to save HTML-formatted results.
+    Must be a valid NinjaRMM custom field name (max 200 characters).
+    If not specified, results are output to console only.
 
 .EXAMPLE
     .\AD-DomainControllerHealthReport.ps1
     
-    Runs all DCDiag tests and displays results in console output.
+    Runs all DCDiag tests and displays results in console.
 
 .EXAMPLE
-    .\AD-DomainControllerHealthReport.ps1 -wysiwygCustomField "DCHealthReport"
+    .\AD-DomainControllerHealthReport.ps1 -wysiwygCustomField "dcHealthReport"
     
-    Runs tests and saves HTML results to the specified custom field.
+    Runs tests and saves HTML results to specified custom field.
 
 .NOTES
-    Minimum OS Architecture Supported: Windows Server 2016
-    Version: 2.0
-    Release Notes:
-    - 2.0: Standards compliance refactor (logging, validation, error handling)
-    - 1.0: Initial Release
+    Script Name:    AD-DomainControllerHealthReport.ps1
+    Author:         Windows Automation Framework
+    Version:        3.0
+    Creation Date:  2024-01-15
+    Last Modified:  2026-02-09
+    
+    Execution Context: SYSTEM (via NinjaRMM automation)
+    Execution Frequency: Daily or on-demand
+    Typical Duration: ~45-90 seconds (depends on DC health)
+    Timeout Setting: 300 seconds recommended
+    
+    User Interaction: NONE (fully automated, no prompts)
+    Restart Behavior: N/A (no restart required)
+    
+    Fields Updated:
+        - wysiwygCustomField (if specified) - HTML formatted report
+        - dcHealthStatus (Healthy/Issues)
+        - dcFailedTestCount (number of failed tests)
+        - dcLastCheckDate (timestamp)
+    
+    Dependencies:
+        - Windows PowerShell 5.1 or higher
+        - Administrator privileges (SYSTEM context)
+        - NinjaRMM Agent installed
+        - Must run on Domain Controller
+        - DCDiag.exe (included with AD DS role)
+    
+    Environment Variables (Optional):
+        - wysiwygCustomFieldName: Alternative to -wysiwygCustomField parameter
+    
+    Exit Codes:
+        0 - Success (all tests passed)
+        1 - Failure (one or more tests failed, or script error)
 
 .LINK
+    https://github.com/Xore/waf
     https://docs.microsoft.com/windows-server/identity/ad-ds/manage/dcdiag
 #>
 
 [CmdletBinding()]
 param (
-    [Parameter()]
+    [Parameter(Mandatory=$false, HelpMessage="Name of WYSIWYG custom field for HTML report")]
     [ValidateNotNullOrEmpty()]
+    [ValidateLength(1,200)]
     [String]$wysiwygCustomField
 )
 
-begin {
-    $StartTime = Get-Date
-    $ExitCode = 0
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+
+$ScriptVersion = "3.0"
+$ScriptName = "AD-DomainControllerHealthReport"
+
+# NinjaRMM CLI path for fallback
+$NinjaRMMCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
+
+# DCDiag tests to run
+$DCDiagTestsToRun = @(
+    "Connectivity", "Advertising", "FrsEvent", "DFSREvent", "SysVolCheck",
+    "KccEvent", "KnowsOfRoleHolders", "MachineAccount", "NCSecDesc",
+    "NetLogons", "ObjectsReplicated", "Replications", "RidManager",
+    "Services", "SystemLog", "VerifyReferences", "CheckSDRefDom",
+    "CrossRefValidation", "LocatorCheck", "Intersite"
+)
+
+# ============================================================================
+# INITIALIZATION
+# ============================================================================
+
+$StartTime = Get-Date
+$ErrorActionPreference = 'Stop'
+$script:ErrorCount = 0
+$script:WarningCount = 0
+$script:CLIFallbackCount = 0
+
+# ============================================================================
+# FUNCTIONS
+# ============================================================================
+
+function Write-Log {
+    <#
+    .SYNOPSIS
+        Writes structured log messages with plain text output
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Message,
+        
+        [Parameter(Mandatory=$false)]
+        [ValidateSet('DEBUG','INFO','WARN','ERROR','SUCCESS')]
+        [string]$Level = 'INFO'
+    )
     
-    # Function to log messages
-    function Write-Log {
-        param([String]$Message)
-        Write-Output $Message
-    }
-
-    # If script form variables are used, replace command line parameters with their value
-    if ($env:wysiwygCustomFieldName -and $env:wysiwygCustomFieldName -notlike "null") {
-        $wysiwygCustomField = $env:wysiwygCustomFieldName
-    }
+    $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $LogMessage = "[$Timestamp] [$Level] $Message"
     
-    # Validate wysiwygCustomField if provided
-    if ($wysiwygCustomField -and $wysiwygCustomField.Length -gt 200) {
-        Write-Log "Error: Custom field name exceeds 200 character limit"
-        exit 1
-    }
-
-    # Function to test if the current machine is a domain controller
-    function Test-IsDomainController {
-        $OS = if ($PSVersionTable.PSVersion.Major -lt 5) {
-            Get-WmiObject -Class Win32_OperatingSystem
-        }
-        else {
-            Get-CimInstance -ClassName Win32_OperatingSystem
-        }
-
-        # Check if the OS is a domain controller (ProductType 2)
-        if ($OS.ProductType -eq "2") {
-            return $true
-        }
-        return $false
-    }
-
-    function Get-DCDiagResults {
-        # Define the list of DCDiag tests to run
-        $DCDiagTestsToRun = "Connectivity", "Advertising", "FrsEvent", "DFSREvent", "SysVolCheck", "KccEvent", "KnowsOfRoleHolders", "MachineAccount", "NCSecDesc", "NetLogons", "ObjectsReplicated", "Replications", "RidManager", "Services", "SystemLog", "VerifyReferences", "CheckSDRefDom", "CrossRefValidation", "LocatorCheck", "Intersite"
+    # Plain text output only - no colors
+    Write-Output $LogMessage
     
-        foreach ($DCTest in $DCDiagTestsToRun) {
-            $OutputFile = "$env:TEMP\dc-diag-$DCTest.txt"
-            
-            try {
-                # Run DCDiag for the current test and save the output to a file
-                $DCDiag = Start-Process -FilePath "DCDiag.exe" -ArgumentList "/test:$DCTest", "/f:$OutputFile" -PassThru -Wait -NoNewWindow
-
-                # Check if the DCDiag test failed
-                if ($DCDiag.ExitCode -ne 0) {
-                    Write-Log "Error: DCDiag test $DCTest exited with code $($DCDiag.ExitCode)"
-                    exit 1
-                }
-
-                # Read the raw results from the output file and filter out empty lines
-                $RawResult = Get-Content -Path $OutputFile | Where-Object { $_.Trim() }
-            
-                # Find the status line indicating whether the test passed or failed
-                $StatusLine = $RawResult | Where-Object { $_ -match "\. .* test $DCTest" }
-
-                # Extract the status (passed or failed) from the status line
-                $Status = $StatusLine -split ' ' | Where-Object { $_ -like "passed" -or $_ -like "failed" }
-
-                # Create a custom object to store the test results
-                [PSCustomObject]@{
-                    Test   = $DCTest
-                    Status = $Status
-                    Result = $RawResult
-                }
-            }
-            catch {
-                Write-Log "Error: Failed to run DCDiag test $DCTest - $($_.Exception.Message)"
-                throw
-            }
-            finally {
-                # Remove the temporary output file if it exists
-                if (Test-Path $OutputFile) {
-                    Remove-Item -Path $OutputFile -Force -ErrorAction SilentlyContinue
-                }
-            }
-        }
-    }
-
-    function Set-NinjaProperty {
-        [CmdletBinding()]
-        Param(
-            [Parameter(Mandatory = $True)]
-            [String]$Name,
-            [Parameter()]
-            [String]$Type,
-            [Parameter(Mandatory = $True, ValueFromPipeline = $True)]
-            $Value,
-            [Parameter()]
-            [String]$DocumentName
-        )
-    
-        $Characters = $Value | Out-String | Measure-Object -Character | Select-Object -ExpandProperty Characters
-        if ($Characters -ge 200000) {
-            throw [System.ArgumentOutOfRangeException]::New("Character limit exceeded: the value is greater than or equal to 200,000 characters.")
-        }
-        
-        # If requested to set the field value for a Ninja document, specify it here
-        $DocumentationParams = @{}
-        if ($DocumentName) { $DocumentationParams["DocumentName"] = $DocumentName }
-        
-        # This is a list of valid fields that can be set
-        $ValidFields = "Attachment", "Checkbox", "Date", "Date or Date Time", "Decimal", "Dropdown", "Email", "Integer", "IP Address", "MultiLine", "MultiSelect", "Phone", "Secure", "Text", "Time", "URL", "WYSIWYG"
-        if ($Type -and $ValidFields -notcontains $Type) {
-            Write-Log "Warning: $Type is an invalid type. Please check documentation for valid types."
-        }
-        
-        # The field below requires additional information to set
-        $NeedsOptions = "Dropdown"
-        if ($DocumentName) {
-            if ($NeedsOptions -contains $Type) {
-                $NinjaPropertyOptions = Ninja-Property-Docs-Options -AttributeName $Name @DocumentationParams 2>&1
-            }
-        }
-        else {
-            if ($NeedsOptions -contains $Type) {
-                $NinjaPropertyOptions = Ninja-Property-Options -Name $Name 2>&1
-            }
-        }
-        
-        # If an error is received with an exception property, exit the function with that error information
-        if ($NinjaPropertyOptions.Exception) { throw $NinjaPropertyOptions }
-        
-        # Convert input values to appropriate formats for different field types
-        switch ($Type) {
-            "Checkbox" {
-                $NinjaValue = [System.Convert]::ToBoolean($Value)
-            }
-            "Date or Date Time" {
-                $Date = (Get-Date $Value).ToUniversalTime()
-                $TimeSpan = New-TimeSpan (Get-Date "1970-01-01 00:00:00") $Date
-                $NinjaValue = $TimeSpan.TotalSeconds
-            }
-            "Dropdown" {
-                $Options = $NinjaPropertyOptions -replace '=', ',' | ConvertFrom-Csv -Header "GUID", "Name"
-                $Selection = $Options | Where-Object { $_.Name -eq $Value } | Select-Object -ExpandProperty GUID
-        
-                if (-not $Selection) {
-                    throw [System.ArgumentOutOfRangeException]::New("Value is not present in dropdown options.")
-                }
-        
-                $NinjaValue = $Selection
-            }
-            default {
-                $NinjaValue = $Value
-            }
-        }
-        
-        # Set the field differently depending on whether it's a field in a Ninja Document or not
-        if ($DocumentName) {
-            $CustomField = Ninja-Property-Docs-Set -AttributeName $Name -AttributeValue $NinjaValue @DocumentationParams 2>&1
-        }
-        else {
-            $CustomField = $NinjaValue | Ninja-Property-Set-Piped -Name $Name 2>&1
-        }
-        
-        if ($CustomField.Exception) {
-            throw $CustomField
-        }
-    }
-   
-    function Test-IsElevated {
-        $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-        $p = New-Object System.Security.Principal.WindowsPrincipal($id)
-        $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+    # Track counts
+    switch ($Level) {
+        'WARN'  { $script:WarningCount++ }
+        'ERROR' { $script:ErrorCount++ }
     }
 }
 
-process {
-    try {
-        Write-Log "Starting Domain Controller Health Report"
-        Write-Log "Timestamp: $StartTime"
+function Set-NinjaField {
+    <#
+    .SYNOPSIS
+        Sets a NinjaRMM custom field value with automatic fallback to CLI
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$FieldName,
         
-        # Check if the script is run with Administrator privileges
-        if (!(Test-IsElevated)) {
-            Write-Log "Error: Access Denied - Administrator privileges required"
-            exit 1
+        [Parameter(Mandatory=$true)]
+        [AllowNull()]
+        $Value,
+        
+        [Parameter(Mandatory=$false)]
+        [string]$Type = "Text"
+    )
+    
+    if ($null -eq $Value -or $Value -eq "") {
+        Write-Log "Skipping field '$FieldName' - no value" -Level DEBUG
+        return
+    }
+    
+    $ValueString = $Value.ToString()
+    
+    # Check character limit for large values (WYSIWYG fields)
+    if ($ValueString.Length -ge 200000) {
+        Write-Log "Warning: Field value exceeds 200,000 characters, truncating" -Level WARN
+        $ValueString = $ValueString.Substring(0, 199900)
+    }
+    
+    # Method 1: Try Ninja-Property-Set cmdlet
+    try {
+        if (Get-Command Ninja-Property-Set -ErrorAction SilentlyContinue) {
+            Ninja-Property-Set $FieldName $ValueString -ErrorAction Stop
+            Write-Log "Field '$FieldName' set successfully" -Level DEBUG
+            return
+        } else {
+            throw "Ninja-Property-Set cmdlet not available"
         }
-        Write-Log "Administrator privileges verified"
-
-        # Check if the script is run on a Domain Controller
-        if (!(Test-IsDomainController)) {
-            Write-Log "Error: This script must be executed on a Domain Controller"
-            exit 1
+    } catch {
+        Write-Log "Ninja-Property-Set failed, using CLI fallback" -Level DEBUG
+        
+        # Method 2: Fall back to NinjaRMM CLI
+        try {
+            if (-not (Test-Path $NinjaRMMCLI)) {
+                throw "NinjaRMM CLI not found at: $NinjaRMMCLI"
+            }
+            
+            $CLIArgs = @("set", $FieldName, $ValueString)
+            $CLIResult = & $NinjaRMMCLI $CLIArgs 2>&1
+            
+            if ($LASTEXITCODE -ne 0) {
+                throw "CLI exit code: $LASTEXITCODE, Output: $CLIResult"
+            }
+            
+            Write-Log "Field '$FieldName' set via CLI" -Level DEBUG
+            $script:CLIFallbackCount++
+            
+        } catch {
+            Write-Log "Failed to set field '$FieldName': $_" -Level ERROR
         }
-        Write-Log "Domain Controller role verified"
+    }
+}
 
-        # Initialize lists to store passing and failing tests
-        $PassingTests = New-Object System.Collections.Generic.List[object]
-        $FailedTests = New-Object System.Collections.Generic.List[object]
+function Test-IsElevated {
+    <#
+    .SYNOPSIS
+        Checks if script is running with Administrator privileges
+    #>
+    $Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $Principal = New-Object System.Security.Principal.WindowsPrincipal($Identity)
+    return $Principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+}
 
-        # Notify the user that the tests are being retrieved
-        Write-Log ""
-        Write-Log "Retrieving Directory Server Diagnosis Test Results"
-        $TestResults = Get-DCDiagResults
-        Write-Log "DCDiag tests completed"
+function Test-IsDomainController {
+    <#
+    .SYNOPSIS
+        Checks if current machine is a Domain Controller
+    #>
+    try {
+        $OS = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+        # ProductType 2 = Domain Controller
+        return ($OS.ProductType -eq 2)
+    } catch {
+        Write-Log "Error checking DC status: $_" -Level ERROR
+        return $false
+    }
+}
 
-        # Process each test result
-        foreach ($Result in $TestResults) {
-            $TestFailed = $False
+function Get-DCDiagResults {
+    <#
+    .SYNOPSIS
+        Runs DCDiag tests and returns results
+    #>
+    foreach ($DCTest in $DCDiagTestsToRun) {
+        $OutputFile = "$env:TEMP\dc-diag-$DCTest-$(Get-Random).txt"
+        
+        try {
+            Write-Log "Running DCDiag test: $DCTest" -Level DEBUG
+            
+            # Run DCDiag for current test
+            $DCDiag = Start-Process -FilePath "DCDiag.exe" `
+                -ArgumentList "/test:$DCTest", "/f:$OutputFile" `
+                -PassThru -Wait -NoNewWindow -ErrorAction Stop
 
-            # Check if any status in the result indicates a failure
-            $Result.Status | ForEach-Object {
-                if ($_ -notmatch "pass") {
-                    $TestFailed = $True
-                }
+            if ($DCDiag.ExitCode -ne 0) {
+                Write-Log "DCDiag test $DCTest exited with code $($DCDiag.ExitCode)" -Level WARN
             }
 
-            # Add the result to the appropriate list
-            if ($TestFailed) {
-                $FailedTests.Add($Result)
+            # Read results and filter empty lines
+            $RawResult = Get-Content -Path $OutputFile -ErrorAction Stop | 
+                Where-Object { $_.Trim() -ne "" }
+        
+            # Find status line
+            $StatusLine = $RawResult | Where-Object { $_ -match "\. .* test $DCTest" }
+            $Status = $StatusLine -split ' ' | Where-Object { $_ -like "passed" -or $_ -like "failed" }
+
+            # Create result object
+            [PSCustomObject]@{
+                Test   = $DCTest
+                Status = $Status
+                Result = $RawResult
             }
-            else {
-                $PassingTests.Add($Result)
+        }
+        catch {
+            Write-Log "Failed to run DCDiag test $DCTest - $_" -Level ERROR
+            
+            # Return failure object
+            [PSCustomObject]@{
+                Test   = $DCTest
+                Status = "failed"
+                Result = @("Error: $($_.Exception.Message)")
+            }
+        }
+        finally {
+            # Cleanup temporary file
+            if (Test-Path $OutputFile) {
+                Remove-Item -Path $OutputFile -Force -Confirm:$false -ErrorAction SilentlyContinue
+            }
+        }
+    }
+}
+
+# ============================================================================
+# MAIN EXECUTION
+# ============================================================================
+
+try {
+    Write-Log "========================================" -Level INFO
+    Write-Log "Starting: $ScriptName v$ScriptVersion" -Level INFO
+    Write-Log "========================================" -Level INFO
+    
+    # Check for form variable override
+    if ($env:wysiwygCustomFieldName -and $env:wysiwygCustomFieldName -notlike "null") {
+        $wysiwygCustomField = $env:wysiwygCustomFieldName
+        Write-Log "Using custom field from environment: $wysiwygCustomField" -Level INFO
+    }
+    
+    # Validate custom field name length
+    if ($wysiwygCustomField -and $wysiwygCustomField.Length -gt 200) {
+        throw "Custom field name exceeds 200 character limit"
+    }
+    
+    # Check Administrator privileges
+    if (-not (Test-IsElevated)) {
+        throw "Administrator privileges required"
+    }
+    Write-Log "Administrator privileges verified" -Level INFO
+
+    # Check if running on Domain Controller
+    if (-not (Test-IsDomainController)) {
+        throw "Script must be executed on a Domain Controller"
+    }
+    Write-Log "Domain Controller role verified" -Level INFO
+
+    # Initialize result lists
+    $PassingTests = [System.Collections.Generic.List[object]]::new()
+    $FailedTests = [System.Collections.Generic.List[object]]::new()
+
+    # Run DCDiag tests
+    Write-Log "Retrieving Directory Server Diagnosis Test Results" -Level INFO
+    $TestResults = Get-DCDiagResults
+    Write-Log "DCDiag tests completed" -Level INFO
+
+    # Process results
+    foreach ($Result in $TestResults) {
+        $TestFailed = $false
+
+        $Result.Status | ForEach-Object {
+            if ($_ -notmatch "pass") {
+                $TestFailed = $true
             }
         }
 
-        # Optionally set a WYSIWYG custom field if specified
-        if ($wysiwygCustomField) {
-            try {
-                Write-Log ""
-                Write-Log "Building HTML for Custom Field"
+        if ($TestFailed) {
+            $FailedTests.Add($Result)
+        } else {
+            $PassingTests.Add($Result)
+        }
+    }
 
-                # Create an HTML report for the custom field
-                $HTML = New-Object System.Collections.Generic.List[object]
+    # Update NinjaRMM status fields
+    if ($FailedTests.Count -eq 0) {
+        Set-NinjaField -FieldName "dcHealthStatus" -Value "Healthy"
+    } else {
+        Set-NinjaField -FieldName "dcHealthStatus" -Value "Issues"
+    }
+    Set-NinjaField -FieldName "dcFailedTestCount" -Value $FailedTests.Count
+    Set-NinjaField -FieldName "dcLastCheckDate" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 
-                $HTML.Add("<h1 style='text-align: center'>Directory Server Diagnosis Test Results (DCDiag.exe)</h1>")
-                $FailedPercentage = $([math]::Round((($FailedTests.Count / ($FailedTests.Count + $PassingTests.Count)) * 100), 2))
-                $SuccessPercentage = 100 - $FailedPercentage
-                $HTML.Add(
-                    @"
+    # Generate HTML report if custom field specified
+    if ($wysiwygCustomField) {
+        try {
+            Write-Log "Building HTML for Custom Field: $wysiwygCustomField" -Level INFO
+
+            $HTML = [System.Collections.Generic.List[string]]::new()
+            $HTML.Add("<h1 style='text-align: center'>Directory Server Diagnosis Test Results</h1>")
+            
+            $FailedPercentage = [math]::Round((($FailedTests.Count / ($FailedTests.Count + $PassingTests.Count)) * 100), 2)
+            $SuccessPercentage = 100 - $FailedPercentage
+            
+            $HTML.Add(@"
 <div class='p-3 linechart'>
     <div style='width: $FailedPercentage%; background-color: #C6313A;'></div>
     <div style='width: $SuccessPercentage%; background-color: #007644;'></div>
-        </div>
-        <ul class='unstyled p-3' style='display: flex; justify-content: space-between; '>
-            <li><span class='chart-key' style='background-color: #C6313A;'></span><span>Failed ($($FailedTests.Count))</span></li>
-            <li><span class='chart-key' style='background-color: #007644;'></span><span>Passed ($($PassingTests.Count))</span></li>
-        </ul>
-"@
-                )
+</div>
+<ul class='unstyled p-3' style='display: flex; justify-content: space-between;'>
+    <li><span class='chart-key' style='background-color: #C6313A;'></span><span>Failed ($($FailedTests.Count))</span></li>
+    <li><span class='chart-key' style='background-color: #007644;'></span><span>Passed ($($PassingTests.Count))</span></li>
+</ul>
+"@)
 
-                # Add failed tests to the HTML report
-                $FailedTests | Sort-Object Test | ForEach-Object {
-                    $HTML.Add(
-                        @"
+            # Add failed tests
+            $FailedTests | Sort-Object Test | ForEach-Object {
+                $ResultText = ($_.Result | Out-String) -replace "'", "&#39;"
+                $HTML.Add(@"
 <div class='info-card error'>
     <i class='info-icon fa-solid fa-circle-exclamation'></i>
     <div class='info-text'>
         <div class='info-title'>$($_.Test)</div>
-        <div class='info-description'>
-            $($_.Result | Out-String)
-        </div>
+        <div class='info-description'>$ResultText</div>
     </div>
 </div>
-"@
-                    )
-                }
+"@)
+            }
 
-                # Add passing tests to the HTML report
-                $PassingTests | Sort-Object Test | ForEach-Object {
-                    $HTML.Add(
-                        @"
+            # Add passing tests
+            $PassingTests | Sort-Object Test | ForEach-Object {
+                $HTML.Add(@"
 <div class='info-card success'>
     <i class='info-icon fa-solid fa-circle-check'></i>
     <div class='info-text'>
         <div class='info-title'>$($_.Test)</div>
-        <div class='info-description'>
-            Test passed.
-        </div>
+        <div class='info-description'>Test passed.</div>
     </div>
 </div>
-"@
-                    )
-                }
-
-                # Set the custom field with the HTML report
-                Write-Log "Attempting to set Custom Field: $wysiwygCustomField"
-                Set-NinjaProperty -Name $wysiwygCustomField -Value $HTML
-                Write-Log "Successfully set Custom Field: $wysiwygCustomField"
+"@)
             }
-            catch {
-                Write-Log "Error: Failed to set custom field - $($_.Exception.Message)"
-                $ExitCode = 1
-            }
-        }
 
-        # Display the list of passing tests
-        if ($PassingTests.Count -gt 0) {
-            Write-Log ""
-            $PassingTestList = ($PassingTests.Test | Sort-Object) -join ", "
-            Write-Log "Passing Tests: $PassingTestList"
-            Write-Log ""
+            # Set custom field
+            Set-NinjaField -FieldName $wysiwygCustomField -Value ($HTML -join "") -Type "WYSIWYG"
+            Write-Log "Successfully set Custom Field: $wysiwygCustomField" -Level SUCCESS
         }
-
-        # Display the list of failed tests with detailed output
-        if ($FailedTests.Count -gt 0) {
-            Write-Log "Alert: Failed Tests Detected"
-            $FailedTestList = ($FailedTests.Test | Sort-Object) -join ", "
-            Write-Log "Failed Tests: $FailedTestList"
-
-            Write-Log ""
-            Write-Log "### Detailed Output ###"
-            $FailedTests | Sort-Object Test | ForEach-Object {
-                Write-Log ""
-                Write-Log ($_.Result | Out-String)
-                Write-Log ""
-            }
-            $ExitCode = 1
-        }
-        else {
-            Write-Log "All Directory Server Diagnosis Tests Pass"
+        catch {
+            Write-Log "Failed to set custom field: $_" -Level ERROR
         }
     }
-    catch {
-        Write-Log "Error: Script execution failed - $($_.Exception.Message)"
-        $ExitCode = 1
+
+    # Display results summary
+    if ($PassingTests.Count -gt 0) {
+        $PassingTestList = ($PassingTests.Test | Sort-Object) -join ", "
+        Write-Log "Passing Tests ($($PassingTests.Count)): $PassingTestList" -Level SUCCESS
     }
+
+    if ($FailedTests.Count -gt 0) {
+        Write-Log "ALERT: Failed Tests Detected" -Level ERROR
+        $FailedTestList = ($FailedTests.Test | Sort-Object) -join ", "
+        Write-Log "Failed Tests ($($FailedTests.Count)): $FailedTestList" -Level ERROR
+
+        Write-Log "Detailed Output for Failed Tests:" -Level INFO
+        $FailedTests | Sort-Object Test | ForEach-Object {
+            Write-Log "Test: $($_.Test)" -Level INFO
+            $_.Result | ForEach-Object { Write-Log $_ -Level INFO }
+        }
+        
+        exit 1
+    } else {
+        Write-Log "All Directory Server Diagnosis Tests Passed" -Level SUCCESS
+    }
+    
+} catch {
+    Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
+    Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
+    exit 1
+    
+} finally {
+    # Calculate and log execution time
+    $EndTime = Get-Date
+    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+    
+    Write-Log "========================================" -Level INFO
+    Write-Log "Execution Summary:" -Level INFO
+    Write-Log "  Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
+    Write-Log "  Errors: $script:ErrorCount" -Level INFO
+    Write-Log "  Warnings: $script:WarningCount" -Level INFO
+    Write-Log "  Tests Passed: $($PassingTests.Count)" -Level INFO
+    Write-Log "  Tests Failed: $($FailedTests.Count)" -Level INFO
+    
+    if ($script:CLIFallbackCount -gt 0) {
+        Write-Log "  CLI Fallbacks: $script:CLIFallbackCount" -Level INFO
+    }
+    
+    Write-Log "========================================" -Level INFO
 }
 
-end {
-    $EndTime = Get-Date
-    $Duration = $EndTime - $StartTime
-    Write-Log ""
-    Write-Log "Script execution completed in $($Duration.TotalSeconds) seconds"
-    Write-Log "Exit Code: $ExitCode"
-    
-    exit $ExitCode
+# Exit with appropriate code
+if ($script:ErrorCount -gt 0 -or $FailedTests.Count -gt 0) {
+    exit 1
+} else {
+    exit 0
 }

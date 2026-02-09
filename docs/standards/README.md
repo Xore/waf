@@ -31,16 +31,58 @@ Comprehensive coding standards covering:
 - Testing requirements
 
 **Critical Requirements:**
-- ✅ Track execution time in all scripts
-- ✅ Use Set-NinjaField wrapper (never direct Ninja-Property-Set)
-- ✅ No user interaction (Read-Host, Pause, confirmations)
-- ✅ No restarts without -AllowRestart parameter
-- ✅ Auto-install module dependencies
-- ✅ File naming: "Description Number.ps1"
+- Track execution time in all scripts
+- Use Set-NinjaField wrapper (never direct Ninja-Property-Set)
+- No user interaction (Read-Host, Pause, confirmations)
+- No restarts without -AllowRestart parameter
+- Auto-install module dependencies
+- File naming: "Description Number.ps1"
 
 ---
 
 ## Technical Guides
+
+### [OUTPUT_FORMATTING.md](OUTPUT_FORMATTING.md)
+**Output formatting standards for scripts**
+
+**Version:** 1.0
+
+Critical standards for script output to ensure compatibility and readability:
+
+**Key Requirements:**
+- **No emojis** (encoding issues, log corruption)
+- **No Unicode symbols** (checkmarks, arrows, bullets display incorrectly)
+- **No colors** (-ForegroundColor stripped in logs)
+- **No progress indicators** (Write-Progress not logged)
+- **Plain ASCII text only** (maximum compatibility)
+- Use Write-Log function for all output
+- Use severity levels instead of colors (INFO, WARN, ERROR, DEBUG)
+- Log milestone percentages instead of progress bars
+
+**Critical Requirement:**
+- **ALL scripts MUST use plain text output only**
+- Never use Write-Host with -ForegroundColor
+- Never use emojis or special Unicode characters
+- Never use ANSI color codes
+- Never use Write-Progress for long operations
+- Use words instead of symbols ("Success" not "✓")
+
+**Rationale:**
+- NinjaRMM console displays plain text only
+- Log files corrupted by UTF-8 emojis
+- SIEM/monitoring tools require plain text
+- Accessibility (screen readers)
+- Cross-platform compatibility
+
+**Quick Reference:**
+| Prohibited | Alternative |
+|------------|-------------|
+| "Status: ✓" | "Status: Success" |
+| "CPU: 75%" | "CPU: 75 percent" |
+| Write-Host -ForegroundColor Green | Write-Log -Level INFO |
+| Write-Progress | Log milestone percentages |
+| "100 → 200" | "Changed from 100 to 200" |
+| "Temp: 45°C" | "Temperature: 45 degrees Celsius" |
 
 ### [LANGUAGE_AWARE_PATHS.md](LANGUAGE_AWARE_PATHS.md)
 **Language-aware path handling for German and English Windows**
@@ -60,11 +102,11 @@ Comprehensive guide for handling file system paths that vary between Windows lan
 - Best practices and anti-patterns
 
 **Critical Requirement:**
-- ✅ **ALL scripts MUST support both German and English path variants**
-- ✅ Never hardcode single-language paths
-- ✅ Use Get-LocalizedPath function for user folders
-- ✅ Prefer environment variables when available
-- ✅ Log which path variant was found
+- **ALL scripts MUST support both German and English path variants**
+- Never hardcode single-language paths
+- Use Get-LocalizedPath function for user folders
+- Prefer environment variables when available
+- Log which path variant was found
 
 **Common Folder Translations:**
 | English | German |
@@ -120,7 +162,17 @@ Starter template including:
    - Add module installation if needed
    - Add Get-LocalizedPath if using user folders
 
-4. **Implement language-aware paths:**
+4. **Implement output standards:**
+   ```powershell
+   # REQUIRED - Plain text only
+   Write-Log "Status: Success" -Level INFO
+   Write-Log "CPU usage: 75 percent" -Level INFO
+   
+   # FORBIDDEN - No emojis, symbols, or colors
+   # Write-Host "Status: ✓" -ForegroundColor Green  # NEVER do this
+   ```
+
+5. **Implement language-aware paths:**
    ```powershell
    # Include Get-LocalizedPath function from LANGUAGE_AWARE_PATHS.md
    
@@ -131,15 +183,16 @@ Starter template including:
    $AppData = $env:APPDATA  # Language-independent
    ```
 
-5. **Test thoroughly:**
-   - ✅ Runs without errors
-   - ✅ No user interaction
-   - ✅ Execution time logged
-   - ✅ Fields populate correctly
-   - ✅ Works on German Windows
-   - ✅ Works on English Windows
-   - ✅ Handles missing modules
-   - ✅ No unexpected restarts
+6. **Test thoroughly:**
+   - Runs without errors
+   - No user interaction
+   - Execution time logged
+   - Fields populate correctly
+   - Works on German Windows
+   - Works on English Windows
+   - Handles missing modules
+   - No unexpected restarts
+   - **No emojis, symbols, or colors in output**
 
 ---
 
@@ -162,7 +215,18 @@ Starter template including:
 - [ ] **No restarts without parameter** (-AllowRestart check implemented)
 - [ ] **Module dependencies** auto-install if needed
 - [ ] **Language-aware paths** if accessing user folders
+- [ ] **No emojis, symbols, or colors** in output
 - [ ] All operations use `-Confirm:$false`
+
+#### Output Formatting
+- [ ] Uses Write-Log function (not Write-Host with colors)
+- [ ] No emojis or Unicode symbols in messages
+- [ ] No -ForegroundColor or -BackgroundColor
+- [ ] No Write-Progress for long operations
+- [ ] Plain ASCII text only
+- [ ] Uses words not symbols ("Success" not "✓")
+- [ ] Percentages written as "75 percent" not "75%"
+- [ ] Status indicators are text ("Running" not "▶")
 
 #### Code Quality
 - [ ] Variables use PascalCase
@@ -180,6 +244,7 @@ Starter template including:
 - [ ] Fields populate correctly
 - [ ] Error scenarios tested
 - [ ] Module auto-installation tested
+- [ ] Log output verified (plain text, no symbols)
 
 ---
 
@@ -189,6 +254,9 @@ Starter template including:
 - **v1.4** (2026-02-09): Added module dependency auto-installation requirements
 - **v1.3** (2026-02-09): Added file naming schema with sequential numbering
 - **v1.2** (Earlier): Added execution time tracking and dual-method field setting
+
+### OUTPUT_FORMATTING.md
+- **v1.0** (2026-02-09): Initial release with emoji/symbol/color prohibition
 
 ### LANGUAGE_AWARE_PATHS.md
 - **v1.0** (2026-02-09): Initial release with German/English path support

@@ -4,6 +4,20 @@
 
 This directory contains PowerShell scripts for Windows automation, system management, and monitoring. All scripts follow a standardized naming convention and are organized by functional category.
 
+## Important: Standards Compliance
+
+**Action Required:** All scripts in this repository must comply with WAF coding standards defined in `docs/standards/`.
+
+**See:** [STANDARDS_COMPLIANCE_ACTION_PLAN.md](STANDARDS_COMPLIANCE_ACTION_PLAN.md) for the comprehensive action plan to verify and refactor all scripts for standards compliance.
+
+**Key Standards:**
+- No emojis or Unicode symbols in output
+- No colors or Write-Progress
+- Execution time tracking
+- Unattended operation (no user interaction)
+- Language-aware paths (German/English Windows support)
+- Dual-method field setting (Set-NinjaField wrapper)
+
 ## Naming Convention
 
 All scripts follow the format: `Category-ActionDescription.ps1`
@@ -289,6 +303,7 @@ Scripts that integrate with NinjaRMM use custom fields for data storage. Field n
 4. **Monitor Logs** - Review execution logs for errors
 5. **Version Control** - Track changes to scripts
 6. **Documentation** - Document custom modifications
+7. **Follow Standards** - Comply with WAF coding standards (see action plan)
 
 ## Script Standards
 
@@ -296,20 +311,35 @@ Scripts that integrate with NinjaRMM use custom fields for data storage. Field n
 
 - No checkmark/cross characters in scripts
 - No emojis in scripts
+- No colors or Write-Progress
 - Clear, descriptive output messages
 - Proper error handling with try/catch blocks
 - Exit codes (0 = success, 1 = failure)
+- Plain ASCII text only
 
 ### Code Structure
 
 ```powershell
 # Script header with description
 # Parameter definitions
+# Execution time tracking ($StartTime)
 # Main execution block wrapped in try/catch
-# Logging output
-# Custom field updates (if applicable)
+# Logging output (Write-Log function)
+# Custom field updates (Set-NinjaField wrapper)
+# Finally block with execution time logging
 # Exit with appropriate code
 ```
+
+### Critical Requirements
+
+All scripts MUST:
+- Track execution time
+- Use Set-NinjaField wrapper (not direct Ninja-Property-Set)
+- Operate unattended (no Read-Host, Pause, or confirmations)
+- Support German and English Windows (if using file paths)
+- Output plain text only (no emojis, symbols, or colors)
+
+**See [STANDARDS_COMPLIANCE_ACTION_PLAN.md](STANDARDS_COMPLIANCE_ACTION_PLAN.md) for complete requirements.**
 
 ## Migration Status
 
@@ -318,7 +348,8 @@ All scripts have been migrated from `.txt` to `.ps1` format with standardized na
 - **Total Scripts**: 219+
 - **Format**: `.ps1` (PowerShell)
 - **Naming**: `Category-ActionDescription.ps1`
-- **Status**: Complete
+- **PowerShell Compliance**: 100% (2 batch scripts converted)
+- **Standards Compliance**: In Progress (see action plan)
 
 See `MIGRATION_PROGRESS.md` for detailed migration tracking.
 
@@ -327,11 +358,12 @@ See `MIGRATION_PROGRESS.md` for detailed migration tracking.
 When adding new scripts:
 
 1. Follow the naming convention: `Category-ActionDescription.ps1`
-2. Add appropriate category if new functional area
-3. Include script header with synopsis and description
-4. Use consistent formatting and error handling
-5. Update this README if adding new categories
-6. Test thoroughly before committing
+2. Comply with all WAF coding standards (see `docs/standards/`)
+3. Add appropriate category if new functional area
+4. Include script header with synopsis and description
+5. Use consistent formatting and error handling
+6. Update this README if adding new categories
+7. Test thoroughly before committing (including German Windows)
 
 ## Support
 
@@ -341,15 +373,32 @@ For issues or questions about specific scripts:
 2. Review execution logs for detailed error messages
 3. Verify prerequisites (modules, permissions, connectivity)
 4. Test in isolated environment before production use
+5. Consult [STANDARDS_COMPLIANCE_ACTION_PLAN.md](STANDARDS_COMPLIANCE_ACTION_PLAN.md) for refactoring guidance
 
 ## Related Documentation
 
+### In This Directory
 - `MIGRATION_PROGRESS.md` - Script migration tracking
-- Individual script files - See script headers for detailed documentation
+- `SCRIPT_INDEX.md` - Complete script catalog
+- `BATCH_TO_POWERSHELL_CONVERSION.md` - Batch conversion log
+- `STANDARDS_COMPLIANCE_ACTION_PLAN.md` - **Standards compliance action plan**
+
+### Parent Directory Standards
+- `../docs/standards/README.md` - Standards overview
+- `../docs/standards/CODING_STANDARDS.md` - Coding standards (v1.4)
+- `../docs/standards/OUTPUT_FORMATTING.md` - Output standards (v1.0)
+- `../docs/standards/LANGUAGE_AWARE_PATHS.md` - Path handling (v1.0)
+- `../docs/standards/SCRIPT_REFACTORING_GUIDE.md` - Refactoring guide
+- `../docs/standards/SCRIPT_HEADER_TEMPLATE.ps1` - Script template
+
+### NinjaRMM Framework
 - NinjaRMM documentation files (in parent directory)
+- Custom field definitions
+- Dashboard templates
 
 ---
 
-**Repository**: Xore/waf
-**Last Updated**: February 9, 2026
-**Version**: 2.0
+**Repository**: Xore/waf  
+**Last Updated**: February 9, 2026, 11:09 PM CET  
+**Version**: 2.1  
+**Standards Compliance**: Action Plan Created

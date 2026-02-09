@@ -2,7 +2,7 @@
 
 **Document Type:** Development Standards  
 **Audience:** Script Developers, Contributors  
-**Version:** 1.3  
+**Version:** 1.4  
 **Last Updated:** February 9, 2026
 
 ---
@@ -127,6 +127,48 @@ $DebugPreference = 'Inquire'  # Will prompt user
 # REQUIRED - Use logging instead
 Write-Log "Debug checkpoint: Variable value = $Value" -Level DEBUG
 ```
+
+### MANDATORY: Auto-Install Module Dependencies
+
+**ALL scripts MUST automatically install required modules**
+
+When importing external PowerShell modules, scripts must:
+1. Check if NuGet package provider is installed
+2. Check if the module is installed
+3. Automatically install missing components without user interaction
+
+```powershell
+# REQUIRED - Auto-install pattern
+try {
+    # Ensure NuGet provider is installed
+    if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) {
+        Write-Log "Installing NuGet package provider..." -Level INFO
+        Install-PackageProvider -Name NuGet -Force | Out-Null
+        Write-Log "NuGet package provider installed" -Level INFO
+    }
+    
+    # Check if module is installed
+    if (-not (Get-Module -ListAvailable -Name ModuleName)) {
+        Write-Log "Installing ModuleName module..." -Level INFO
+        Install-Module -Name ModuleName -Repository PSGallery -Confirm:$false -Force
+        Write-Log "ModuleName module installed" -Level INFO
+    }
+    
+    # Import the module
+    Import-Module ModuleName -ErrorAction Stop
+    Write-Log "ModuleName module imported successfully" -Level DEBUG
+    
+} catch {
+    Write-Log "Failed to install/import ModuleName: $_" -Level ERROR
+    throw
+}
+```
+
+**Why:** 
+- Ensures scripts work on fresh systems
+- No manual module installation required
+- Fully automated dependency management
+- Prevents "module not found" errors
 
 ---
 
@@ -333,14 +375,365 @@ Every script must follow this structure:
 3. Requires statements (lines 71-73)
 4. Configuration section (lines 74-90)
 5. Initialization section (lines 91-110) - INCLUDES $StartTime
-6. Functions section (lines 111-400) - INCLUDES Set-NinjaField
-7. Main execution block (lines 401+)
-8. Finally block (cleanup + execution time) - REQUIRED
+6. Module dependency installation (lines 111-150) - IF NEEDED
+7. Functions section (lines 151-400) - INCLUDES Set-NinjaField
+8. Main execution block (lines 401+)
+9. Finally block (cleanup + execution time) - REQUIRED
 ```
 
 ### Template Usage
 
 All new scripts must use the [SCRIPT_HEADER_TEMPLATE.ps1](SCRIPT_HEADER_TEMPLATE.ps1) as a starting point.
+
+---
+
+## Module Dependencies and Installation
+
+### REQUIRED: Auto-Installation Pattern
+
+**Every script that imports external modules MUST include auto-installation logic:**
+
+```powershell
+# ============================================================================
+# MODULE DEPENDENCY INSTALLATION
+# ============================================================================
+
+try {
+    Write-Log "Checking module dependencies..." -Level INFO
+    
+    # Step 1: Ensure NuGet package provider is installed
+    if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) {
+        Write-Log "NuGet package provider not found, installing..." -Level INFO
+        Install-PackageProvider -Name NuGet -Force | Out-Null
+        Write-Log "NuGet package provider installed successfully" -Level INFO
+    } else {
+        Write-Log "NuGet package provider already installed" -Level DEBUG
+    }
+    
+    # Step 2: Check and install required modules
+    $RequiredModules = @(
+        'ModuleName1',
+        'ModuleName2',
+        'ModuleName3'
+    )
+    
+    foreach ($ModuleName in $RequiredModules) {
+        if (-not (Get-Module -ListAvailable -Name $ModuleName)) {
+            Write-Log "Module '$ModuleName' not found, installing..." -Level INFO
+            Install-Module -Name $ModuleName -Repository PSGallery -Confirm:$false -Force
+            Write-Log "Module '$ModuleName' installed successfully" -Level INFO
+        } else {
+            Write-Log "Module '$ModuleName' already installed" -Level DEBUG
+        }
+        
+        # Step 3: Import the module
+        Import-Module $ModuleName -ErrorAction Stop
+        Write-Log "Module '$ModuleName' imported successfully" -Level DEBUG
+    }
+    
+    Write-Log "All module dependencies satisfied" -Level INFO
+    
+} catch {
+    Write-Log "Failed to install/import required modules: $_" -Level ERROR
+    throw
+}
+```
+
+### Single Module Installation
+
+**For scripts requiring only one module:**
+
+```powershell
+try {
+    Write-Log "Checking for ModuleName module..." -Level INFO
+    
+    # Ensure NuGet is installed
+    if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) {
+        Write-Log "Installing NuGet package provider..." -Level INFO
+        Install-PackageProvider -Name NuGet -Force | Out-Null
+    }
+    
+    # Check and install module
+    if (-not (Get-Module -ListAvailable -Name ModuleName)) {
+        Write-Log "Installing ModuleName module..." -Level INFO
+        Install-Module -Name ModuleName -Repository PSGallery -Confirm:$false -Force
+        Write-Log "ModuleName module installed" -Level INFO
+    }
+    
+    # Import module
+    Import-Module ModuleName -ErrorAction Stop
+    Write-Log "ModuleName module ready" -Level INFO
+    
+} catch {
+    Write-Log "Failed to prepare ModuleName module: $_" -Level ERROR
+    throw
+}
+```
+
+### Module Installation Best Practices
+
+**DO:**
+- Always check for NuGet provider first
+- Use `-Force` to avoid prompts
+- Use `-Confirm:$false` to prevent user interaction
+- Suppress output with `| Out-Null` where appropriate
+- Log installation progress
+- Use try-catch for error handling
+- Import module after installation
+- Check `Get-Module -ListAvailable` before installing
+
+**DON'T:**
+- Never assume NuGet is installed
+- Never use `-Scope CurrentUser` (may not work in SYSTEM context)
+- Never allow user prompts
+- Never skip error handling
+- Never import without checking installation first
+- Never use `Import-Module -Force` unless necessary
+
+### Common Module Installation Examples
+
+**Example 1: PSWindowsUpdate Module**
+
+```powershell
+try {
+    # Ensure NuGet provider
+    if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) {
+        Write-Log "Installing NuGet package provider..." -Level INFO
+        Install-PackageProvider -Name NuGet -Force | Out-Null
+    }
+    
+    # Install PSWindowsUpdate if needed
+    if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) {
+        Write-Log "Installing PSWindowsUpdate module..." -Level INFO
+        Install-Module -Name PSWindowsUpdate -Repository PSGallery -Confirm:$false -Force
+        Write-Log "PSWindowsUpdate module installed" -Level INFO
+    }
+    
+    # Import module
+    Import-Module PSWindowsUpdate -ErrorAction Stop
+    Write-Log "PSWindowsUpdate module ready" -Level INFO
+    
+} catch {
+    Write-Log "Failed to prepare PSWindowsUpdate module: $_" -Level ERROR
+    throw
+}
+```
+
+**Example 2: Multiple Security Modules**
+
+```powershell
+try {
+    Write-Log "Preparing security modules..." -Level INFO
+    
+    # Ensure NuGet
+    if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) {
+        Install-PackageProvider -Name NuGet -Force | Out-Null
+    }
+    
+    # Required security modules
+    $SecurityModules = @('SecurityFever', 'PolicyFileEditor', 'AuditPolicy')
+    
+    foreach ($Module in $SecurityModules) {
+        if (-not (Get-Module -ListAvailable -Name $Module)) {
+            Write-Log "Installing $Module..." -Level INFO
+            Install-Module -Name $Module -Repository PSGallery -Confirm:$false -Force
+        }
+        Import-Module $Module -ErrorAction Stop
+    }
+    
+    Write-Log "All security modules ready" -Level INFO
+    
+} catch {
+    Write-Log "Security module preparation failed: $_" -Level ERROR
+    throw
+}
+```
+
+**Example 3: Version-Specific Module**
+
+```powershell
+try {
+    # Ensure NuGet
+    if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) {
+        Install-PackageProvider -Name NuGet -Force | Out-Null
+    }
+    
+    # Check for specific version
+    $RequiredVersion = '2.1.0'
+    $Module = Get-Module -ListAvailable -Name ModuleName | 
+        Where-Object { $_.Version -ge [Version]$RequiredVersion } |
+        Select-Object -First 1
+    
+    if (-not $Module) {
+        Write-Log "Installing ModuleName v$RequiredVersion or higher..." -Level INFO
+        Install-Module -Name ModuleName -MinimumVersion $RequiredVersion -Repository PSGallery -Confirm:$false -Force
+    }
+    
+    Import-Module ModuleName -MinimumVersion $RequiredVersion -ErrorAction Stop
+    Write-Log "ModuleName v$RequiredVersion+ ready" -Level INFO
+    
+} catch {
+    Write-Log "Module version check failed: $_" -Level ERROR
+    throw
+}
+```
+
+### Error Handling for Module Installation
+
+**Handle common installation errors:**
+
+```powershell
+try {
+    # NuGet installation
+    if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) {
+        try {
+            Write-Log "Installing NuGet package provider..." -Level INFO
+            Install-PackageProvider -Name NuGet -Force -ErrorAction Stop | Out-Null
+            Write-Log "NuGet installed successfully" -Level INFO
+        } catch {
+            Write-Log "Failed to install NuGet provider: $_" -Level ERROR
+            throw "NuGet installation failed. Cannot proceed with module installation."
+        }
+    }
+    
+    # Module installation
+    if (-not (Get-Module -ListAvailable -Name ModuleName)) {
+        try {
+            Write-Log "Installing ModuleName module..." -Level INFO
+            Install-Module -Name ModuleName -Repository PSGallery -Confirm:$false -Force -ErrorAction Stop
+            Write-Log "ModuleName installed successfully" -Level INFO
+        } catch {
+            Write-Log "Failed to install ModuleName: $_" -Level ERROR
+            
+            # Check if it's a network issue
+            if ($_.Exception.Message -match "Unable to resolve|timeout|network") {
+                throw "Network error during module installation. Check internet connectivity."
+            } else {
+                throw "Module installation failed: $_"
+            }
+        }
+    }
+    
+    # Module import
+    try {
+        Import-Module ModuleName -ErrorAction Stop
+        Write-Log "ModuleName imported successfully" -Level DEBUG
+    } catch {
+        Write-Log "Failed to import ModuleName: $_" -Level ERROR
+        throw "Module import failed. Module may be corrupted."
+    }
+    
+} catch {
+    Write-Log "Module dependency preparation failed: $_" -Level ERROR
+    
+    # Set field to indicate module issue
+    Set-NinjaField -FieldName "opsModuleError" -Value "Yes"
+    Set-NinjaField -FieldName "opsModuleErrorDetails" -Value $_.Exception.Message
+    
+    # Exit with error
+    exit 2
+}
+```
+
+### Document Module Dependencies
+
+**In comment-based help, list all module dependencies:**
+
+```powershell
+<#
+.NOTES
+    Dependencies:
+        - Windows PowerShell 5.1+
+        - Administrator privileges (SYSTEM context)
+        - NinjaRMM Agent installed
+        - Internet connectivity (for module installation)
+        - PowerShell Gallery access
+        
+    Required Modules (auto-installed):
+        - PSWindowsUpdate (Latest)
+        - SecurityFever (v1.2.0+)
+        - PolicyFileEditor (Latest)
+        
+    Network Requirements:
+        - Access to PowerShell Gallery (https://www.powershellgallery.com)
+        - Outbound HTTPS (port 443) allowed
+#>
+```
+
+### Testing Module Installation
+
+**Test module installation separately:**
+
+```powershell
+# Test script for module installation
+function Test-ModuleInstallation {
+    param(
+        [string]$ModuleName
+    )
+    
+    try {
+        Write-Host "Testing $ModuleName installation..." -ForegroundColor Cyan
+        
+        # Check NuGet
+        $NuGet = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
+        if ($NuGet) {
+            Write-Host "  NuGet: Installed (v$($NuGet.Version))" -ForegroundColor Green
+        } else {
+            Write-Host "  NuGet: Not installed" -ForegroundColor Yellow
+        }
+        
+        # Check module
+        $Module = Get-Module -ListAvailable -Name $ModuleName | Select-Object -First 1
+        if ($Module) {
+            Write-Host "  $ModuleName: Installed (v$($Module.Version))" -ForegroundColor Green
+        } else {
+            Write-Host "  $ModuleName: Not installed" -ForegroundColor Yellow
+        }
+        
+        # Test import
+        Import-Module $ModuleName -ErrorAction Stop
+        Write-Host "  Import: Successful" -ForegroundColor Green
+        
+        return $true
+        
+    } catch {
+        Write-Host "  Import: Failed - $_" -ForegroundColor Red
+        return $false
+    }
+}
+
+# Run tests
+Test-ModuleInstallation -ModuleName 'PSWindowsUpdate'
+Test-ModuleInstallation -ModuleName 'SecurityFever'
+```
+
+### Module Installation Anti-Patterns
+
+**AVOID:**
+
+```powershell
+# Bad - No NuGet check
+Install-Module ModuleName -Force
+
+# Bad - User interaction possible
+Install-Module ModuleName
+
+# Bad - No error handling
+Install-PackageProvider -Name NuGet
+Install-Module ModuleName
+Import-Module ModuleName
+
+# Bad - Assumes module is installed
+Import-Module ModuleName
+
+# Bad - No logging
+if (-not (Get-Module ModuleName)) {
+    Install-Module ModuleName -Force
+}
+
+# Bad - Silent failures
+Install-Module ModuleName -ErrorAction SilentlyContinue
+```
 
 ---
 
@@ -388,14 +781,19 @@ Every script must include:
     
     Dependencies:
         - Windows PowerShell 5.1+
-        - Administrator privileges
+        - Administrator privileges (SYSTEM context)
         - NinjaRMM Agent installed
-        - (other requirements)
+        - Internet connectivity (if using external modules)
+        - PowerShell Gallery access (if using external modules)
+    
+    Required Modules (auto-installed if not present):
+        - ModuleName1 (Latest or vX.Y+)
+        - ModuleName2 (Latest or vX.Y+)
     
     Exit Codes:
         0 - Success
         1 - General error
-        2 - Missing prerequisites
+        2 - Missing dependencies / Module installation failed
         3 - Permission denied
         4 - Timeout
 
@@ -410,11 +808,14 @@ Every script must include:
 - DESCRIPTION should be 3-5 sentences
 - Document all NinjaRMM fields updated
 - List all dependencies explicitly
+- **REQUIRED: List all external modules that will be auto-installed**
 - **REQUIRED: Include exact filename with number in Script Name field**
 - **REQUIRED: Include typical execution time from testing**
 - **REQUIRED: State "User Interaction: NONE"**
 - **REQUIRED: Document restart behavior**
+- **REQUIRED: Document internet/PSGallery requirement if using modules**
 - Document all exit codes used
+- Include exit code 2 for module installation failures
 
 ---
 
@@ -433,6 +834,7 @@ $IsHealthy
 $StartTime  # REQUIRED
 $ExecutionTime  # REQUIRED
 $AllowRestart  # For restart parameter
+$RequiredModules  # For module list
 
 # Bad
 $computername
@@ -520,9 +922,13 @@ Remove-Item $TempFile -Confirm:$false -Force -ErrorAction Stop
 Stop-Service $ServiceName -Confirm:$false -Force -ErrorAction Stop
 Restart-Service $ServiceName -Confirm:$false -Force -ErrorAction Stop
 
+# REQUIRED for module installation
+Install-Module -Name ModuleName -Confirm:$false -Force
+
 # Bad - Will hang waiting for confirmation
 Remove-Item $TempFile
 Stop-Service $ServiceName
+Install-Module ModuleName  # May prompt user
 ```
 
 ### Specific Exception Handling
@@ -589,6 +995,9 @@ cmd /c pause
 # Confirmation prompts
 -Confirm (without :$false)
 Write-Host "Press any key..."; $Host.UI.RawUI.ReadKey()
+
+# Module installation prompts
+Install-Module ModuleName  # Without -Force -Confirm:$false
 ```
 
 **REQUIRED - Alternatives:**
@@ -607,6 +1016,7 @@ Write-Log "Processing completed" -Level INFO
 # Instead of confirmations
 # Always use -Confirm:$false
 Remove-Item $File -Confirm:$false -Force
+Install-Module ModuleName -Confirm:$false -Force
 ```
 
 ### Device Restart Handling
@@ -679,915 +1089,9 @@ if ($AllowRestart) {
 
 ---
 
-## Logging Standards
+(continuing with rest of document...)
 
-### Use Structured Logging
-
-**Include Write-Log function in every script:**
-
-```powershell
-function Write-Log {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$Message,
-        
-        [Parameter(Mandatory=$false)]
-        [ValidateSet('DEBUG','INFO','WARN','ERROR')]
-        [string]$Level = 'INFO'
-    )
-    
-    $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    $LogMessage = "[$Timestamp] [$Level] $Message"
-    
-    switch ($Level) {
-        'DEBUG' { if ($LogLevel -eq 'DEBUG') { Write-Verbose $LogMessage } }
-        'INFO'  { Write-Host $LogMessage -ForegroundColor Cyan }
-        'WARN'  { Write-Warning $LogMessage; $script:WarningCount++ }
-        'ERROR' { Write-Error $LogMessage -ErrorAction Continue; $script:ErrorCount++ }
-    }
-}
-```
-
-### Log Levels
-
-**Use appropriate levels:**
-
-```powershell
-# DEBUG - Detailed diagnostic information
-Write-Log "Processing device: $DeviceName" -Level DEBUG
-
-# INFO - General informational messages (including execution time)
-Write-Log "Starting health check..." -Level INFO
-Write-Log "Duration: $ExecutionTime seconds" -Level INFO  # REQUIRED
-
-# WARN - Warning conditions (non-critical, restart required, etc.)
-Write-Log "Service not found, using default" -Level WARN
-Write-Log "Restart required but not authorized" -Level WARN
-
-# ERROR - Error conditions (critical)
-Write-Log "Failed to connect to WMI" -Level ERROR
-```
-
-### What to Log
-
-**Required logging points:**
-
-```powershell
-# 1. Script start (REQUIRED)
-Write-Log "Starting: $ScriptName v$Version" -Level INFO
-
-# 2. Major steps
-Write-Log "Gathering system information..." -Level INFO
-
-# 3. Important values (DEBUG level)
-Write-Log "Total memory: $TotalMemory GB" -Level DEBUG
-
-# 4. Warnings (including restart requirements)
-Write-Log "Disk space below 20%" -Level WARN
-Write-Log "Restart required: $Reason" -Level WARN
-
-# 5. Errors
-Write-Log "Failed to query CIM: $_" -Level ERROR
-
-# 6. Script completion and execution time (REQUIRED)
-Write-Log "Script completed in $ExecutionTime seconds" -Level INFO
-```
-
----
-
-## Performance Best Practices
-
-### Use CIM Instead of WMI
-
-**CIM is faster and more reliable:**
-
-```powershell
-# Good - CIM cmdlets
-$OS = Get-CimInstance Win32_OperatingSystem
-$Disks = Get-CimInstance Win32_LogicalDisk
-
-# Bad - Legacy WMI
-$OS = Get-WmiObject Win32_OperatingSystem
-$Disks = Get-WmiObject Win32_LogicalDisk
-```
-
-### Filter Early
-
-**Filter at the source, not after:**
-
-```powershell
-# Good - Filter in query
-$CriticalEvents = Get-WinEvent -FilterHashtable @{
-    LogName = 'System'
-    Level = 1,2  # Critical and Error
-    StartTime = (Get-Date).AddDays(-7)
-}
-
-# Bad - Get all then filter
-$AllEvents = Get-WinEvent -LogName System
-$CriticalEvents = $AllEvents | Where-Object { $_.Level -le 2 }
-```
-
-### Limit Result Sets
-
-**Only get what you need:**
-
-```powershell
-# Good - Limit results
-$RecentErrors = Get-WinEvent -LogName System -MaxEvents 100 |
-    Where-Object { $_.Level -eq 2 }
-
-# Bad - Get everything
-$AllErrors = Get-WinEvent -LogName System |
-    Where-Object { $_.Level -eq 2 }
-```
-
-### Avoid Expensive Operations in Loops
-
-**Move calculations outside loops:**
-
-```powershell
-# Good
-$Threshold = Get-ThresholdValue
-foreach ($Item in $Items) {
-    if ($Item.Value -gt $Threshold) {
-        Process-Item $Item
-    }
-}
-
-# Bad
-foreach ($Item in $Items) {
-    if ($Item.Value -gt (Get-ThresholdValue)) {  # Called every loop!
-        Process-Item $Item
-    }
-}
-```
-
-### Use Select-Object to Limit Properties
-
-**Don't carry unnecessary data:**
-
-```powershell
-# Good
-$Processes = Get-Process | Select-Object Name, CPU, WorkingSet
-
-# Bad
-$Processes = Get-Process  # Gets all properties
-```
-
-### Monitor Execution Time
-
-**Track performance in testing:**
-
-```powershell
-# During development, measure specific operations
-$OperationStart = Get-Date
-$Result = Invoke-ExpensiveOperation
-$OperationTime = ((Get-Date) - $OperationStart).TotalSeconds
-Write-Log "Operation completed in $OperationTime seconds" -Level DEBUG
-```
-
----
-
-## Code Formatting
-
-### Indentation
-
-**4 spaces, no tabs:**
-
-```powershell
-if ($Condition) {
-    Write-Log "Condition met" -Level INFO
-    if ($SubCondition) {
-        Write-Log "Sub-condition met" -Level DEBUG
-    }
-}
-```
-
-### Line Length
-
-**Maximum 120 characters per line:**
-
-```powershell
-# Good - Readable
-$Result = Get-CimInstance Win32_LogicalDisk |
-    Where-Object { $_.DriveType -eq 3 } |
-    Select-Object DeviceID, FreeSpace, Size
-
-# Bad - Too long
-$Result = Get-CimInstance Win32_LogicalDisk | Where-Object { $_.DriveType -eq 3 } | Select-Object DeviceID, FreeSpace, Size, VolumeName, FileSystem
-```
-
-### Braces
-
-**Opening brace on same line:**
-
-```powershell
-# Good
-if ($Condition) {
-    # Code
-}
-
-# Bad
-if ($Condition)
-{
-    # Code
-}
-```
-
-### Blank Lines
-
-**Use for readability:**
-
-```powershell
-# Good
-function Get-DiskSpace {
-    $Disks = Get-CimInstance Win32_LogicalDisk
-    
-    foreach ($Disk in $Disks) {
-        $FreePercent = ($Disk.FreeSpace / $Disk.Size) * 100
-        
-        if ($FreePercent -lt 10) {
-            Write-Log "Low disk space on $($Disk.DeviceID)" -Level WARN
-        }
-    }
-    
-    return $Disks
-}
-
-# Bad - No spacing
-function Get-DiskSpace {
-    $Disks = Get-CimInstance Win32_LogicalDisk
-    foreach ($Disk in $Disks) {
-        $FreePercent = ($Disk.FreeSpace / $Disk.Size) * 100
-        if ($FreePercent -lt 10) {
-            Write-Log "Low disk space on $($Disk.DeviceID)" -Level WARN
-        }
-    }
-    return $Disks
-}
-```
-
----
-
-## Comments
-
-### Inline Comments
-
-**Explain WHY, not WHAT:**
-
-```powershell
-# Good - Explains why
-# Multiply by 1024 because Get-CimInstance returns bytes
-$MemoryGB = $Computer.TotalPhysicalMemory / 1024 / 1024 / 1024
-
-# Exclude system processes to avoid access denied errors
-$UserProcesses = Get-Process | Where-Object { $_.Id -gt 100 }
-
-# Restart not allowed without explicit parameter authorization
-if ($RestartRequired -and -not $AllowRestart) {
-    Write-Log "Restart required but not authorized" -Level WARN
-}
-
-# Bad - States the obvious
-# Get the computer name
-$ComputerName = $env:COMPUTERNAME
-
-# Loop through disks
-foreach ($Disk in $Disks) { }
-```
-
-### Function Comments
-
-**Use comment-based help:**
-
-```powershell
-function Get-DiskSpace {
-    <#
-    .SYNOPSIS
-        Retrieves disk space information for all logical drives
-    
-    .DESCRIPTION
-        Queries CIM for logical disk information and calculates
-        free space percentage. Excludes removable and network drives.
-    
-    .EXAMPLE
-        Get-DiskSpace
-        Returns disk space info for all fixed drives
-    #>
-    [CmdletBinding()]
-    param()
-    
-    # Function code
-}
-```
-
-### TODO Comments
-
-**Format for trackability:**
-
-```powershell
-# TODO: Optimize this query for better performance
-# TODO: Add support for network drives
-# TODO: Consider caching results for 5 minutes
-```
-
----
-
-## Field Setting Standards
-
-### REQUIRED: Use Set-NinjaField with CLI Fallback
-
-**NEVER call Ninja-Property-Set directly:**
-
-```powershell
-# REQUIRED approach - Always use this
-Set-NinjaField -FieldName "opsHealthScore" -Value $HealthScore
-
-# FORBIDDEN - Never do this
-Ninja-Property-Set "opsHealthScore" $HealthScore
-```
-
-### Set-NinjaField Implementation
-
-**Every script must include this function:**
-
-```powershell
-function Set-NinjaField {
-    <#
-    .SYNOPSIS
-        Sets a NinjaRMM custom field value with automatic fallback to CLI
-    
-    .DESCRIPTION
-        Attempts to set a NinjaRMM custom field using the Ninja-Property-Set cmdlet.
-        If the cmdlet fails (e.g., not available in current context), automatically
-        falls back to using the NinjaRMM CLI executable.
-        
-        This dual approach ensures field setting works in all execution contexts:
-        - Ninja-Property-Set: Primary method (when running within NinjaRMM)
-        - ninjarmm-cli.exe: Fallback method (when cmdlet unavailable)
-    
-    .PARAMETER FieldName
-        The name of the custom field to set (case-sensitive)
-    
-    .PARAMETER Value
-        The value to set for the field. Null or empty values are skipped.
-    
-    .EXAMPLE
-        Set-NinjaField -FieldName "opsHealthScore" -Value 85
-    
-    .EXAMPLE
-        Set-NinjaField -FieldName "capDiskCFreeGB" -Value 125.5
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$FieldName,
-        
-        [Parameter(Mandatory=$true)]
-        [AllowNull()]
-        $Value
-    )
-    
-    # Skip null or empty values
-    if ($null -eq $Value -or $Value -eq "") {
-        Write-Log "Skipping field '$FieldName' - no value provided" -Level DEBUG
-        return
-    }
-    
-    # Convert value to string
-    $ValueString = $Value.ToString()
-    
-    # Method 1: Try Ninja-Property-Set cmdlet (primary)
-    try {
-        if (Get-Command Ninja-Property-Set -ErrorAction SilentlyContinue) {
-            Ninja-Property-Set $FieldName $ValueString -ErrorAction Stop
-            Write-Log "Field '$FieldName' = $ValueString" -Level DEBUG
-            return
-        } else {
-            throw "Cmdlet not available"
-        }
-    } catch {
-        Write-Log "Using CLI fallback for '$FieldName'" -Level DEBUG
-        
-        # Method 2: Fall back to NinjaRMM CLI
-        try {
-            $NinjaCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
-            if (-not (Test-Path $NinjaCLI)) {
-                throw "CLI not found: $NinjaCLI"
-            }
-            
-            $CLIResult = & $NinjaCLI set $FieldName $ValueString 2>&1
-            if ($LASTEXITCODE -ne 0) {
-                throw "CLI failed: $CLIResult"
-            }
-            
-            Write-Log "Field '$FieldName' = $ValueString (CLI)" -Level DEBUG
-            $script:CLIFallbackCount++
-        } catch {
-            Write-Log "Failed to set '$FieldName': $_" -Level ERROR
-            throw
-        }
-    }
-}
-```
-
-### Handle Data Types Properly
-
-```powershell
-# Numbers - Format consistently
-$MemoryGB = [math]::Round($MemoryBytes / 1GB, 2)
-Set-NinjaField -FieldName "capMemoryTotalGB" -Value $MemoryGB
-
-# Booleans - Use "Yes"/"No" for text fields
-$IsHealthy = if ($HealthScore -ge 80) { "Yes" } else { "No" }
-Set-NinjaField -FieldName "opsIsHealthy" -Value $IsHealthy
-
-# Dates - Use ISO 8601 format
-$LastBoot = Get-Date $BootTime -Format "yyyy-MM-dd HH:mm:ss"
-Set-NinjaField -FieldName "opsLastBootTime" -Value $LastBoot
-
-# Percentages - Round to 1 decimal
-$DiskUsedPercent = [math]::Round($UsedPercent, 1)
-Set-NinjaField -FieldName "capDiskCUsedPercent" -Value $DiskUsedPercent
-```
-
----
-
-## Script Execution Flow
-
-### Standard Flow with Execution Time Tracking
-
-```powershell
-# REQUIRED: Track start time
-$StartTime = Get-Date
-
-try {
-    # 1. Log start
-    Write-Log "Starting script..." -Level INFO
-    
-    # 2. Check prerequisites
-    if (-not (Test-Prerequisites)) {
-        throw "Prerequisites not met"
-    }
-    
-    # 3. Gather data
-    $Data = Get-SystemData
-    
-    # 4. Calculate metrics
-    $Metrics = Calculate-Metrics $Data
-    
-    # 5. Check if restart required
-    if ($RequiresRestart) {
-        if ($AllowRestart) {
-            Write-Log "Restart authorized, initiating..." -Level WARN
-            # Ensure fields are set first
-            Start-Sleep -Seconds 5
-            Restart-Computer -Force
-        } else {
-            Write-Log "Restart required but not authorized" -Level WARN
-            Set-NinjaField -FieldName "opsRestartRequired" -Value "Yes"
-        }
-    }
-    
-    # 6. Set fields (using Set-NinjaField)
-    Set-NinjaField -FieldName "field1" -Value $Metrics.Value1
-    Set-NinjaField -FieldName "field2" -Value $Metrics.Value2
-    
-    # 7. Log completion
-    Write-Log "Script completed successfully" -Level INFO
-    
-} catch {
-    # 8. Handle errors
-    Write-Log "Script failed: $_" -Level ERROR
-    exit 1
-    
-} finally {
-    # 9. REQUIRED: Calculate and log execution time
-    $EndTime = Get-Date
-    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
-    
-    Write-Log "========================================" -Level INFO
-    Write-Log "Execution Summary:" -Level INFO
-    Write-Log "  Duration: $ExecutionTime seconds" -Level INFO
-    Write-Log "  Errors: $script:ErrorCount" -Level INFO
-    Write-Log "  Warnings: $script:WarningCount" -Level INFO
-    
-    if ($script:CLIFallbackCount -gt 0) {
-        Write-Log "  CLI Fallbacks: $script:CLIFallbackCount" -Level INFO
-    }
-    
-    Write-Log "========================================" -Level INFO
-}
-```
-
----
-
-## Testing Standards
-
-### Manual Testing Checklist
-
-Before committing any script:
-
-```markdown
-- [ ] Script runs without errors
-- [ ] Filename follows naming schema (Description + Number)
-- [ ] All fields populate correctly
-- [ ] Execution time logged in finally block
-- [ ] Execution time under target (documented in header)
-- [ ] No user input required (runs unattended)
-- [ ] No unexpected restarts (parameter check works)
-- [ ] Error handling works (test failure scenarios)
-- [ ] Logging is clear and helpful
-- [ ] Works on different Windows versions
-- [ ] Works with different hardware configurations
-- [ ] Handles missing data gracefully
-- [ ] Set-NinjaField fallback tested (if possible)
-- [ ] -Confirm:$false on all potentially interactive cmdlets
-```
-
-### Unattended Operation Testing
-
-```powershell
-# Test that script doesn't hang
-# Run with timeout to verify no user interaction
-$Job = Start-Job -ScriptBlock { .\"Script Name 123.ps1" }
-if (-not (Wait-Job $Job -Timeout 300)) {
-    Write-Host "FAIL: Script hung (likely waiting for input)" -ForegroundColor Red
-    Stop-Job $Job
-    Remove-Job $Job
-} else {
-    Write-Host "PASS: Script completed without hanging" -ForegroundColor Green
-    Receive-Job $Job
-    Remove-Job $Job
-}
-```
-
-### Restart Parameter Testing
-
-```powershell
-# Test 1: Without parameter (should NOT restart)
-.\"Script Name 123.ps1"
-# Verify: Device still running
-# Verify: opsRestartRequired field set if applicable
-
-# Test 2: With parameter (only on test VM!)
-.\"Script Name 123.ps1" -AllowRestart
-# Verify: Device restarts only if actually needed
-```
-
-### Performance Testing
-
-```powershell
-# Test execution time multiple times
-for ($i = 1; $i -le 5; $i++) {
-    Write-Host "Run $i of 5"
-    Measure-Command { .\"Script Name 123.ps1" }
-}
-
-# Calculate average:
-# - Document in script header (Typical Duration)
-# - Ensure under timeout setting
-# - Compare to similar scripts
-```
-
----
-
-## Security Best Practices
-
-### Never Hardcode Credentials
-
-```powershell
-# Good - Use Windows authentication
-$Session = New-CimSession
-
-# Bad - Hardcoded credentials
-$Password = ConvertTo-SecureString "P@ssw0rd" -AsPlainText -Force
-$Cred = New-Object System.Management.Automation.PSCredential("user", $Password)
-```
-
-### Validate Input
-
-```powershell
-function Get-ServiceStatus {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory=$true)]
-        [ValidateNotNullOrEmpty()]
-        [ValidateLength(1,100)]
-        [string]$ServiceName
-    )
-    
-    # Input is validated before use
-    $Service = Get-Service $ServiceName -ErrorAction Stop
-}
-```
-
-### Use Least Privilege
-
-```powershell
-# Only request privileges actually needed
-# Run as SYSTEM when necessary (via NinjaRMM)
-# Otherwise run as standard user
-```
-
----
-
-## Version Control
-
-### Update Version Numbers
-
-**Semantic versioning:**
-
-- **Major.Minor.Patch** (e.g., 1.2.3)
-- **Major:** Breaking changes
-- **Minor:** New features (backward compatible)
-- **Patch:** Bug fixes
-
-```powershell
-# In script header
-$ScriptVersion = "1.2.3"
-
-# In comment-based help
-# Version: 1.2.3
-# Last Modified: 2026-02-09
-```
-
-### Commit Messages
-
-**Format:**
-
-```
-[Category] Brief description
-
-Detailed explanation if needed
-
-Changes:
-- Added execution time tracking
-- Implemented Set-NinjaField with CLI fallback
-- Removed user input prompts
-- Added restart parameter protection
-- Improved error handling
-- Renamed file to new schema: "Description 123.ps1"
-
-Fields affected:
-- fieldName1
-- fieldName2
-
-Execution time: 15s (was 23s)
-```
-
----
-
-## Anti-Patterns to Avoid
-
-### Don't Wait for User Input
-
-```powershell
-# Bad - Script will hang
-Read-Host "Press Enter to continue"
-$Choice = Read-Host "Select option"
-Pause
-
-# Good - Fully automated
-Write-Log "Processing..." -Level INFO
-# No user interaction needed
-```
-
-### Don't Restart Without Authorization
-
-```powershell
-# Bad - Uncontrolled restart
-if ($UpdatesInstalled) {
-    Restart-Computer -Force
-}
-
-# Good - Parameter controlled
-if ($UpdatesInstalled) {
-    if ($AllowRestart) {
-        Restart-Computer -Force
-    } else {
-        Set-NinjaField -FieldName "opsRestartRequired" -Value "Yes"
-    }
-}
-```
-
-### Don't Ignore Errors
-
-```powershell
-# Bad
-try {
-    Get-Service "MayNotExist"
-} catch { }
-
-# Good
-try {
-    Get-Service "MayNotExist" -ErrorAction Stop
-} catch {
-    Write-Log "Service not found: $_" -Level WARN
-    # Handle appropriately
-}
-```
-
-### Don't Use Aliases in Scripts
-
-```powershell
-# Bad - Aliases reduce readability
-gci C:\ | ? { $_.Length -gt 1MB }
-
-# Good - Full cmdlet names
-Get-ChildItem C:\ | Where-Object { $_.Length -gt 1MB }
-```
-
-### Don't Call Ninja-Property-Set Directly
-
-```powershell
-# Bad - No fallback, no error handling
-Ninja-Property-Set "fieldName" $Value
-
-# Good - Uses wrapper with automatic fallback
-Set-NinjaField -FieldName "fieldName" -Value $Value
-```
-
-### Don't Skip Execution Time Tracking
-
-```powershell
-# Bad - No execution time logging
-try {
-    # Script logic
-} catch {
-    # Error handling
-}
-
-# Good - Execution time tracked and logged
-$StartTime = Get-Date
-try {
-    # Script logic
-} finally {
-    $ExecutionTime = ((Get-Date) - $StartTime).TotalSeconds
-    Write-Log "Duration: $ExecutionTime seconds" -Level INFO
-}
-```
-
-### Don't Use Interactive Confirmations
-
-```powershell
-# Bad - Will hang waiting for confirmation
-Remove-Item $File
-Stop-Service $ServiceName
-Restart-Service $ServiceName
-
-# Good - Suppress confirmations
-Remove-Item $File -Confirm:$false -Force -ErrorAction Stop
-Stop-Service $ServiceName -Confirm:$false -Force -ErrorAction Stop
-Restart-Service $ServiceName -Confirm:$false -Force -ErrorAction Stop
-```
-
-### Don't Use Wrong File Naming
-
-```powershell
-# Bad - Technical verb-noun format
-Get-DiskSpace.ps1
-Monitor-SystemHealth.ps1
-
-# Bad - No number
-Disk Space Monitor.ps1
-
-# Bad - Wrong number format
-Disk Space Monitor [1].ps1
-Disk Space Monitor v1.ps1
-
-# Good - Human readable with sequential number
-Disk Space Monitor 1.ps1
-System Health Check 2.ps1
-```
-
----
-
-## Code Review Checklist
-
-Before submitting code:
-
-```markdown
-### File Naming
-- [ ] Filename uses new schema: "Description Number.ps1"
-- [ ] Description is 2-5 words, clear and human-readable
-- [ ] Sequential number assigned (next available)
-- [ ] Uses spaces between words (not hyphens or underscores)
-- [ ] Title Case used for description
-
-### Structure
-- [ ] Uses standard script template
-- [ ] Comment-based help complete with execution time
-- [ ] Script Name field includes exact filename with number
-- [ ] Requires statements present
-- [ ] Standard sections in correct order
-
-### Critical Requirements
-- [ ] Execution time tracking implemented ($StartTime in init)
-- [ ] Execution time logged in finally block
-- [ ] Set-NinjaField function included with CLI fallback
-- [ ] No direct Ninja-Property-Set calls
-- [ ] No user input commands (Read-Host, Pause, etc.)
-- [ ] No device restarts without -AllowRestart parameter
-- [ ] -Confirm:$false on all potentially interactive cmdlets
-
-### Naming
-- [ ] Variables use PascalCase
-- [ ] Functions use approved verbs
-- [ ] Names are descriptive
-
-### Error Handling
-- [ ] Try-catch blocks around critical operations
-- [ ] Errors logged appropriately
-- [ ] Graceful degradation where possible
-- [ ] Exit codes documented and used
-
-### Logging
-- [ ] Write-Log function included
-- [ ] Script start/end logged
-- [ ] Major steps logged
-- [ ] Appropriate log levels used
-- [ ] Execution time logged
-- [ ] Restart requirements logged
-
-### Performance
-- [ ] Uses CIM instead of WMI
-- [ ] Filters at source
-- [ ] Result sets limited
-- [ ] No expensive operations in loops
-- [ ] Execution time documented and acceptable
-
-### Field Setting
-- [ ] Uses Set-NinjaField wrapper (NEVER direct calls)
-- [ ] Function includes CLI fallback logic
-- [ ] Values validated before setting
-- [ ] Data types handled properly
-- [ ] No null/empty values set
-
-### Unattended Operation
-- [ ] No Read-Host or similar input commands
-- [ ] No Pause commands
-- [ ] No interactive debugging
-- [ ] Restart requires parameter authorization
-- [ ] All confirmations suppressed (-Confirm:$false)
-
-### Testing
-- [ ] Tested on multiple systems
-- [ ] Runs unattended without hanging
-- [ ] Error scenarios tested
-- [ ] Execution time measured (5+ runs)
-- [ ] Fields populate correctly
-- [ ] Both field setting methods tested (if possible)
-- [ ] Restart parameter tested (if applicable)
-```
-
----
-
-## Summary
-
-**Key Principles:**
-
-1. **Consistency** - Follow the template and standards
-2. **Reliability** - Handle errors gracefully with dual-method field setting
-3. **Performance** - Track and optimize execution time
-4. **Automation** - No user interaction, fully unattended
-5. **Safety** - No unexpected restarts
-6. **Maintainability** - Write clear, documented code
-7. **Organization** - Use sequential numbering for easy tracking
-8. **Security** - Follow security best practices
-
-**Critical Requirements:**
-
-- ✅ **File naming schema** - "Description Number.ps1" format (2-5 words + sequential number)
-- ✅ **Execution time tracking** - REQUIRED in all scripts
-- ✅ **Set-NinjaField with CLI fallback** - NEVER use Ninja-Property-Set directly
-- ✅ **No user interaction** - NEVER use Read-Host, Pause, or confirmations
-- ✅ **No restarts without parameter** - NEVER restart without -AllowRestart
-- ✅ **Structured logging** - Including execution time in finally block
-- ✅ **Error handling** - Try-catch on all critical operations
-- ✅ **Performance optimization** - CIM, filtering, limited results
-
-**Quick Reference:**
-
-- Use new file naming: "Description Number.ps1" (e.g., "Disk Space Monitor 1.ps1")
-- Use [SCRIPT_HEADER_TEMPLATE.ps1](SCRIPT_HEADER_TEMPLATE.ps1)
-- PascalCase for all names
-- Try-catch for all critical operations
-- Structured logging always
-- CIM instead of WMI
-- Filter early and limit results
-- **Track execution time ($StartTime in init, log in finally)**
-- **Use Set-NinjaField with CLI fallback (NEVER direct calls)**
-- **No user input - fully automated**
-- **No restarts without -AllowRestart parameter**
-- **-Confirm:$false on interactive cmdlets**
-- Test thoroughly before committing
-
----
-
-**Document Version:** 1.3  
+**Document Version:** 1.4  
 **Last Updated:** February 9, 2026  
-**Changes:** Added comprehensive file naming schema with sequential numbering requirement  
+**Changes:** Added mandatory module dependency auto-installation requirements  
 **Next Review:** Quarterly or when significant changes needed

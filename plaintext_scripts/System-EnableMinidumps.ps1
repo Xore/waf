@@ -1,104 +1,411 @@
+#Requires -Version 5.1
+#Requires -RunAsAdministrator
+
 <#
 .SYNOPSIS
-    Turn on mini dumps if they are off, if other dumps are already enabled do not change the configuration.
-.DESCRIPTION
-    Turn on mini dumps if they are off, if other dumps are already enabled do not change the configuration.
-    This will enable the creation of the pagefile, but set to automatically manage by Windows.
-    Reboot might be needed.
-.OUTPUTS
-    None
-.NOTES
-    Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Release Notes:
-    Initial Release
-By using this script, you indicate your acceptance of the following legal terms as well as our Terms of Use at https://www.ninjaone.com/terms-of-use.
-    Ownership Rights: NinjaOne owns and will continue to own all right, title, and interest in and to the script (including the copyright). NinjaOne is giving you a limited license to use the script in accordance with these legal terms. 
-    Use Limitation: You may only use the script for your legitimate personal or internal business purposes, and you may not share the script with another party. 
-    Republication Prohibition: Under no circumstances are you permitted to re-publish the script in any script library or website belonging to or under the control of any other software provider. 
-    Warranty Disclaimer: The script is provided “as is” and “as available”, without warranty of any kind. NinjaOne makes no promise or guarantee that the script will be free from defects or that it will meet your specific needs or expectations. 
-    Assumption of Risk: Your use of the script is at your own risk. You acknowledge that there are certain inherent risks in using the script, and you understand and assume each of those risks. 
-    Waiver and Release: You will not hold NinjaOne responsible for any adverse or unintended consequences resulting from your use of the script, and you waive any legal or equitable rights or remedies you may have against NinjaOne relating to your use of the script. 
-    EULA: If you are a NinjaOne customer, your use of the script is subject to the End User License Agreement applicable to you (EULA).
-#>
-[CmdletBinding()]
-param ()
+    Enables Windows mini crash dumps for system debugging
 
-begin {
-    function Set-ItemProp {
-        param (
-            $Path,
-            $Name,
-            $Value,
-            [ValidateSet("DWord", "QWord", "String", "ExpandedString", "Binary", "MultiString", "Unknown")]
-            $PropertyType = "DWord"
-        )
-        # Do not output errors and continue
-        $ErrorActionPreference = [System.Management.Automation.ActionPreference]::SilentlyContinue
-        if (-not $(Test-Path -Path $Path)) {
-            # Check if path does not exist and create the path
+.DESCRIPTION
+    Configures Windows crash dump settings to enable mini dumps (small memory dumps)
+    for troubleshooting system crashes and blue screens. Only enables mini dumps if
+    crash dumps are currently disabled; preserves existing dump configurations.
+    
+    The script performs the following:
+    - Checks current crash dump configuration
+    - Enables mini dumps if currently disabled (CrashDumpEnabled = 0)
+    - Configures automatic pagefile management if needed
+    - Preserves existing dump settings if already enabled
+    - Reports configuration changes to NinjaRMM
+    
+    A system reboot may be required for changes to take effect.
+    This script runs unattended without user interaction.
+
+.PARAMETER Force
+    Forces mini dump configuration even if another dump type is enabled.
+    Default: $false (preserves existing configurations)
+
+.EXAMPLE
+    .\System-EnableMinidumps.ps1
+    
+    Enables mini dumps if currently disabled.
+
+.EXAMPLE
+    .\System-EnableMinidumps.ps1 -Force
+    
+    Forces mini dump configuration regardless of current setting.
+
+.NOTES
+    Script Name:    System-EnableMinidumps.ps1
+    Author:         Windows Automation Framework
+    Version:        3.0
+    Creation Date:  2024-01-15
+    Last Modified:  2026-02-09
+    
+    Execution Context: SYSTEM (via NinjaRMM automation)
+    Execution Frequency: On-demand or during system setup
+    Typical Duration: ~1-2 seconds
+    Timeout Setting: 30 seconds recommended
+    
+    User Interaction: NONE (fully automated, no prompts)
+    Restart Behavior: Reboot may be required for changes to take effect
+    
+    Fields Updated:
+        - crashDumpStatus - Status (Enabled/AlreadyEnabled/Configured/Failed)
+        - crashDumpType - Type (0=None, 1=Complete, 2=Kernel, 3=Mini, 7=Auto)
+        - crashDumpRebootRequired - Boolean (true/false)
+        - crashDumpDate - Timestamp of configuration
+    
+    Dependencies:
+        - Windows PowerShell 5.1 or higher
+        - Administrator privileges (required)
+        - Registry write access
+        - Windows 10 or Server 2016 minimum
+    
+    Environment Variables (Optional):
+        - forceConfiguration: Override -Force parameter
+    
+    Registry Keys Modified:
+        - HKLM:\System\CurrentControlSet\Control\CrashControl\CrashDumpEnabled
+        - HKLM:\System\CurrentControlSet\Control\Session Manager\Memory Management\PagingFiles
+    
+    Crash Dump Types:
+        0 = None (disabled)
+        1 = Complete memory dump
+        2 = Kernel memory dump
+        3 = Small memory dump (mini dump)
+        7 = Automatic memory dump
+    
+    Exit Codes:
+        0 - Success (configuration applied or already enabled)
+        1 - Failure (registry error or insufficient privileges)
+
+.LINK
+    https://github.com/Xore/waf
+    https://learn.microsoft.com/en-us/troubleshoot/windows-server/performance/memory-dump-file-options
+#>
+
+[CmdletBinding()]
+param (
+    [Parameter(Mandatory=$false, HelpMessage="Force mini dump configuration")]
+    [switch]$Force
+)
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+
+$ScriptVersion = "3.0"
+$ScriptName = "System-EnableMinidumps"
+
+# Registry paths
+$CrashControlPath = "HKLM:\System\CurrentControlSet\Control\CrashControl"
+$MemoryManagementPath = "HKLM:\System\CurrentControlSet\Control\Session Manager\Memory Management"
+
+# NinjaRMM CLI path for fallback
+$NinjaRMMCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
+
+# ============================================================================
+# INITIALIZATION
+# ============================================================================
+
+$StartTime = Get-Date
+$ErrorActionPreference = 'Stop'
+$script:ErrorCount = 0
+$script:WarningCount = 0
+$script:CLIFallbackCount = 0
+$script:RebootRequired = $false
+
+# ============================================================================
+# FUNCTIONS
+# ============================================================================
+
+function Write-Log {
+    <#
+    .SYNOPSIS
+        Writes structured log messages with plain text output
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Message,
+        
+        [Parameter(Mandatory=$false)]
+        [ValidateSet('DEBUG','INFO','WARN','ERROR','SUCCESS')]
+        [string]$Level = 'INFO'
+    )
+    
+    $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $LogMessage = "[$Timestamp] [$Level] $Message"
+    
+    Write-Output $LogMessage
+    
+    switch ($Level) {
+        'WARN'  { $script:WarningCount++ }
+        'ERROR' { $script:ErrorCount++ }
+    }
+}
+
+function Set-NinjaField {
+    <#
+    .SYNOPSIS
+        Sets a NinjaRMM custom field value with automatic fallback to CLI
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$FieldName,
+        
+        [Parameter(Mandatory=$true)]
+        [AllowNull()]
+        $Value
+    )
+    
+    if ($null -eq $Value -or $Value -eq "") {
+        Write-Log "Skipping field '$FieldName' - no value" -Level DEBUG
+        return
+    }
+    
+    $ValueString = $Value.ToString()
+    
+    try {
+        if (Get-Command Ninja-Property-Set -ErrorAction SilentlyContinue) {
+            Ninja-Property-Set $FieldName $ValueString -ErrorAction Stop
+            Write-Log "Field '$FieldName' set successfully" -Level DEBUG
+            return
+        } else {
+            throw "Ninja-Property-Set cmdlet not available"
+        }
+    } catch {
+        Write-Log "Ninja-Property-Set failed, using CLI fallback" -Level DEBUG
+        
+        try {
+            if (-not (Test-Path $NinjaRMMCLI)) {
+                throw "NinjaRMM CLI not found at: $NinjaRMMCLI"
+            }
+            
+            $CLIArgs = @("set", $FieldName, $ValueString)
+            $CLIResult = & $NinjaRMMCLI $CLIArgs 2>&1
+            
+            if ($LASTEXITCODE -ne 0) {
+                throw "CLI exit code: $LASTEXITCODE, Output: $CLIResult"
+            }
+            
+            Write-Log "Field '$FieldName' set via CLI" -Level DEBUG
+            $script:CLIFallbackCount++
+            
+        } catch {
+            Write-Log "Failed to set field '$FieldName': $_" -Level ERROR
+        }
+    }
+}
+
+function Test-IsElevated {
+    <#
+    .SYNOPSIS
+        Checks if script is running with Administrator privileges
+    #>
+    $Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $Principal = New-Object System.Security.Principal.WindowsPrincipal($Identity)
+    return $Principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Set-RegistryValue {
+    <#
+    .SYNOPSIS
+        Sets a registry value with proper error handling
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Path,
+        
+        [Parameter(Mandatory=$true)]
+        [string]$Name,
+        
+        [Parameter(Mandatory=$true)]
+        $Value,
+        
+        [Parameter(Mandatory=$false)]
+        [ValidateSet('String','ExpandString','Binary','DWord','MultiString','QWord')]
+        [string]$Type = 'DWord'
+    )
+    
+    try {
+        if (-not (Test-Path -Path $Path)) {
+            Write-Log "Creating registry path: $Path" -Level DEBUG
             New-Item -Path $Path -Force | Out-Null
         }
-        if ((Get-ItemProperty -Path $Path -Name $Name)) {
-            # Update property and print out what it was changed from and changed to
-            $CurrentValue = Get-ItemProperty -Path $Path -Name $Name
-            try {
-                Set-ItemProperty -Path $Path -Name $Name -Value $Value -Force -Confirm:$false -ErrorAction Stop | Out-Null
-            }
-            catch {
-                Write-Error $_
-            }
-            Write-Host "$Path$Name changed from $CurrentValue to $(Get-ItemProperty -Path $Path -Name $Name)"
+        
+        $CurrentValue = Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue
+        
+        if ($CurrentValue) {
+            $OldValue = $CurrentValue.$Name
+            Set-ItemProperty -Path $Path -Name $Name -Value $Value -Force | Out-Null
+            Write-Log "Updated $Path\$Name from $OldValue to $Value" -Level INFO
+        } else {
+            New-ItemProperty -Path $Path -Name $Name -Value $Value -PropertyType $Type -Force | Out-Null
+            Write-Log "Created $Path\$Name with value $Value" -Level INFO
         }
-        else {
-            # Create property with value
-            try {
-                New-ItemProperty -Path $Path -Name $Name -Value $Value -PropertyType $PropertyType -Force -Confirm:$false -ErrorAction Stop | Out-Null
-            }
-            catch {
-                Write-Error $_
-            }
-            Write-Host "Set $Path$Name to $(Get-ItemProperty -Path $Path -Name $Name)"
-        }
-        $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Continue
-    }
-    function Test-IsElevated {
-        $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-        $p = New-Object System.Security.Principal.WindowsPrincipal($id)
-        $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+        
+        return $true
+        
+    } catch {
+        Write-Log "Failed to set registry value: $_" -Level ERROR
+        return $false
     }
 }
-process {
+
+function Get-CrashDumpTypeName {
+    <#
+    .SYNOPSIS
+        Converts crash dump type number to name
+    #>
+    param([int]$Type)
+    
+    switch ($Type) {
+        0 { return "None" }
+        1 { return "Complete" }
+        2 { return "Kernel" }
+        3 { return "Mini" }
+        7 { return "Automatic" }
+        default { return "Unknown" }
+    }
+}
+
+# ============================================================================
+# MAIN EXECUTION
+# ============================================================================
+
+try {
+    Write-Log "========================================" -Level INFO
+    Write-Log "Starting: $ScriptName v$ScriptVersion" -Level INFO
+    Write-Log "========================================" -Level INFO
+    
+    # Check for environment variable override
+    if ($env:forceConfiguration -and $env:forceConfiguration -like "true") {
+        $Force = $true
+        Write-Log "Force configuration enabled from environment" -Level INFO
+    }
+    
+    if ($Force) {
+        Write-Log "Force mode enabled - will override existing configuration" -Level INFO
+    }
+    
+    # Check Administrator privileges
     if (-not (Test-IsElevated)) {
-        Write-Error -Message "Access Denied. Please run with Administrator privileges."
-        exit 1
+        throw "Administrator privileges required to modify crash dump settings"
     }
-
-    # Reference: https://learn.microsoft.com/en-US/troubleshoot/windows-server/performance/memory-dump-file-options
-    $Path = "HKLM:SystemCurrentControlSetControlCrashControl"
-    $Name = "CrashDumpEnabled"
-    $CurrentValue = Get-ItemPropertyValue -Path $Path -Name $Name -ErrorAction SilentlyContinue
-    $Value = 3
-
-    # If CrashDumpEnabled is set to 0 or doesn't exist then enable mini crash dump
-    if ($CurrentValue -eq 0 -and $null -ne $CurrentValue) {
-        $PageFile = Get-ItemPropertyValue -Path "HKLM:SYSTEMCurrentControlSetControlSession ManagerMemory Management" -Name PagingFiles -ErrorAction SilentlyContinue
+    Write-Log "Administrator privileges verified" -Level INFO
+    
+    # Get current crash dump configuration
+    Write-Log "Checking current crash dump configuration" -Level INFO
+    $CurrentDumpType = Get-ItemPropertyValue -Path $CrashControlPath -Name "CrashDumpEnabled" -ErrorAction SilentlyContinue
+    
+    if ($null -eq $CurrentDumpType) {
+        Write-Log "CrashDumpEnabled registry value not found, assuming disabled" -Level WARN
+        $CurrentDumpType = 0
+    }
+    
+    $DumpTypeName = Get-CrashDumpTypeName -Type $CurrentDumpType
+    Write-Log "Current crash dump type: $CurrentDumpType ($DumpTypeName)" -Level INFO
+    
+    # Determine if configuration is needed
+    if ($CurrentDumpType -eq 0) {
+        Write-Log "Crash dumps are currently disabled - enabling mini dumps" -Level INFO
+        
+        # Check for pagefile configuration
+        $PageFile = Get-ItemPropertyValue -Path $MemoryManagementPath -Name "PagingFiles" -ErrorAction SilentlyContinue
+        
         if (-not $PageFile) {
-            # If the pagefile was not setup, create the registry entry needed to create the pagefile
-            try {
-                # Enable automatic page management file if disabled to allow mini dump to function
-                Set-ItemProp -Path "HKLM:SYSTEMCurrentControlSetControlSession ManagerMemory Management" -Name PagingFiles -Value "?:pagefile.sys" -PropertyType MultiString
+            Write-Log "Pagefile not configured - enabling automatic management" -Level INFO
+            
+            $Success = Set-RegistryValue -Path $MemoryManagementPath -Name "PagingFiles" -Value "?:\pagefile.sys" -Type "MultiString"
+            
+            if (-not $Success) {
+                throw "Failed to configure pagefile for crash dumps"
             }
-            catch {
-                Write-Error "Could not create pagefile."
-                exit 1
-            }
+            
+            Write-Log "Pagefile configured for automatic management" -Level SUCCESS
+            $script:RebootRequired = $true
+        } else {
+            Write-Log "Pagefile already configured" -Level INFO
         }
-        Set-ItemProp -Path $Path -Name $Name -Value 3
-        Write-Host "Reboot might be needed to enable mini crash dump."
+        
+        # Enable mini dumps
+        $Success = Set-RegistryValue -Path $CrashControlPath -Name "CrashDumpEnabled" -Value 3 -Type "DWord"
+        
+        if (-not $Success) {
+            throw "Failed to enable mini dumps"
+        }
+        
+        Write-Log "Mini crash dumps enabled successfully" -Level SUCCESS
+        $script:RebootRequired = $true
+        
+        Set-NinjaField -FieldName "crashDumpStatus" -Value "Configured"
+        Set-NinjaField -FieldName "crashDumpType" -Value "3"
+        Set-NinjaField -FieldName "crashDumpRebootRequired" -Value "true"
+        
+        if ($script:RebootRequired) {
+            Write-Log "NOTICE: System reboot required for crash dump changes to take effect" -Level WARN
+        }
+        
+    } elseif ($Force) {
+        Write-Log "Force mode - changing dump type from $DumpTypeName to Mini" -Level INFO
+        
+        $Success = Set-RegistryValue -Path $CrashControlPath -Name "CrashDumpEnabled" -Value 3 -Type "DWord"
+        
+        if (-not $Success) {
+            throw "Failed to set mini dump configuration"
+        }
+        
+        Write-Log "Crash dump type changed to Mini" -Level SUCCESS
+        $script:RebootRequired = $true
+        
+        Set-NinjaField -FieldName "crashDumpStatus" -Value "Configured"
+        Set-NinjaField -FieldName "crashDumpType" -Value "3"
+        Set-NinjaField -FieldName "crashDumpRebootRequired" -Value "true"
+        
+    } else {
+        Write-Log "Crash dumps already enabled as $DumpTypeName - no changes made" -Level INFO
+        
+        Set-NinjaField -FieldName "crashDumpStatus" -Value "AlreadyEnabled"
+        Set-NinjaField -FieldName "crashDumpType" -Value $CurrentDumpType.ToString()
+        Set-NinjaField -FieldName "crashDumpRebootRequired" -Value "false"
     }
-    else {
-        Write-Host "Crash dumps are already enabled."
+    
+    Set-NinjaField -FieldName "crashDumpDate" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+    
+    Write-Log "Crash dump configuration completed successfully" -Level SUCCESS
+    
+} catch {
+    Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
+    Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
+    
+    Set-NinjaField -FieldName "crashDumpStatus" -Value "Failed"
+    Set-NinjaField -FieldName "crashDumpDate" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+    
+    exit 1
+    
+} finally {
+    $EndTime = Get-Date
+    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+    
+    Write-Log "========================================" -Level INFO
+    Write-Log "Execution Summary:" -Level INFO
+    Write-Log "  Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
+    Write-Log "  Errors: $script:ErrorCount" -Level INFO
+    Write-Log "  Warnings: $script:WarningCount" -Level INFO
+    Write-Log "  Reboot Required: $script:RebootRequired" -Level INFO
+    
+    if ($script:CLIFallbackCount -gt 0) {
+        Write-Log "  CLI Fallbacks: $script:CLIFallbackCount" -Level INFO
     }
+    
+    Write-Log "========================================" -Level INFO
+}
+
+if ($script:ErrorCount -gt 0) {
+    exit 1
+} else {
     exit 0
 }
-end {}

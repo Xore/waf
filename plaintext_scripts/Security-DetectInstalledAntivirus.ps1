@@ -1,1022 +1,717 @@
 #Requires -Version 5.1
+#Requires -RunAsAdministrator
 
 <#
 .SYNOPSIS
-    Detect the antivirus software currently installed and set the relevant custom fields accordingly. This script is a best effort and should be treated as such; we recommend verifying any results. Supports 19 antivirus solutions on Windows Server.
+    Comprehensive antivirus detection and status monitoring for Windows systems
+
 .DESCRIPTION
-    Detect the antivirus software currently installed and set the relevant custom fields accordingly. This script is a best effort and should be treated as such; we recommend verifying any results. Supports 19 antivirus solutions on Windows Server.
+    Detects installed antivirus software across 19 supported products and monitors
+    their operational status, definition dates, and update currency. The script uses
+    multiple detection methods to ensure accurate identification:
+    
+    - Windows Security Center (workstations)
+    - Registry installation keys
+    - Process and service verification
+    - Definition file parsing
+    - Product-specific configuration files
+    
+    Detection Methods by Product:
+    
+    1. Registry-Based Detection:
+       - Installation keys in HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall
+       - Product-specific registry keys (ESET, Sophos, F-Secure, etc.)
+       - Both 32-bit (Wow6432Node) and 64-bit registry paths
+    
+    2. File System Detection:
+       - Program Files installation directories
+       - Definition file locations
+       - Configuration files (JSON, INI, XML formats)
+    
+    3. Runtime Detection:
+       - Running processes (executable names)
+       - Active Windows services
+       - Security Center registration (Windows 10/11 workstations)
+    
+    Definition Status Monitoring:
+    - Parses product-specific definition files for update dates
+    - Compares against configurable threshold (default 7 days)
+    - Handles various date formats (Unix timestamps, ISO, proprietary)
+    - Reports "Up to Date" or "Outdated" status
+    
+    Supported Antivirus Products:
+    - Avast Antivirus
+    - AVG Antivirus Business Edition
+    - Bitdefender Endpoint Security
+    - CrowdStrike Falcon
+    - Cylance PROTECT
+    - Elastic Defend
+    - ESET Security
+    - F-Secure
+    - Huntress
+    - Kaspersky Endpoint Security
+    - Kaspersky Small Office Security
+    - Malwarebytes
+    - Sentinel Agent (SentinelOne)
+    - Sophos Intercept X
+    - Trend Micro Maximum Security
+    - Trend Micro Security Agent
+    - VIPRE Business Agent
+    - Webroot SecureAnywhere
+    - Windows Defender
+    
+    The script exports results to NinjaRMM custom fields in multiple formats:
+    - WYSIWYG HTML table with color-coded status
+    - Text fields for product names, status, and definition dates
+
+.PARAMETER DaysUntilOutdated
+    Number of days before definitions are considered outdated (1-30, default 7).
+
+.PARAMETER WYSIWYGField
+    Name of WYSIWYG custom field for HTML table output.
+
+.PARAMETER NameField
+    Name of text custom field for comma-separated antivirus names.
+
+.PARAMETER StatusField
+    Name of text custom field for comma-separated running status values.
+
+.PARAMETER DefinitionField
+    Name of text custom field for definition dates and status.
+
 .EXAMPLE
-    Attempting to set the custom field 'WYSIWYG'.
-    Successfully set the custom field 'WYSIWYG'!
+    .\Security-DetectInstalledAntivirus.ps1
+    
+    Detects antivirus with default 7-day threshold, displays to console.
 
-    Attempting to set the custom field 'antivirusName'.
-    Successfully set the custom field 'antivirusName'!
+.EXAMPLE
+    .\Security-DetectInstalledAntivirus.ps1 -DaysUntilOutdated 14 -WYSIWYGField "avStatus"
+    
+    Uses 14-day threshold and saves HTML table to custom field.
 
-    Attempting to set the custom field 'definitionDateAndStatus'.
-    Successfully set the custom field 'definitionDateAndStatus'!
-
-    Antivirus Name   Status  Definition Status Definition Date
-    --------------   ------  ----------------- ---------------
-    MalwareBytes     Running Up-To-Date        11/13/2024     
-    Windows Defender Running Up-To-Date        11/13/2024
-
-Supported Antivirus Detections: Avast Antivirus, AVG Antivirus Business Edition, Bitdefender Endpoint Security Antimalware, CrowdStrike, Cylance,
-Elastic Defend, ESET Security, F-Secure, Huntress, Kaspersky Endpoint Security for Windows, Kaspersky Small Office Security, MalwareBytes, Sentinel
-Agent, Sophos Intercept X, Trend Micro Maximum Security, Trend Micro Security Agent, VIPRE Business Agent, Webroot SecureAnywhere, and Windows Defender.
-
-PARAMETER: -DaysUntilConsideredOutdated "7"
-    Specify the number of days until the definitions are considered 'out-of-date'. Valid values are between 1 - 30 days.
-
-PARAMETER: -WYSIWYGCustomField "ReplaceMeWithNameOfWYSIWYGCustomField"
-    Name of the WYSIWYG custom field to export all results to.
-
-PARAMETER: -NameCustomField "ReplaceMeWithNameOfTextCustomField"
-    Name of the text custom field to export the names of the detected antiviruses.
-
-PARAMETER: -StatusCustomField "ReplaceMeWithNameOfTextCustomField"
-    Name of the text custom field to export the current antivirus status.
-
-PARAMETER: -DefinitionDateAndStatusCustomField "ReplaceMeWithNameOfTextCustomField"
-    Name of the text custom field to export the antivirus definition date and indicate if they are 'Up-To-Date'.
+.EXAMPLE
+    .\Security-DetectInstalledAntivirus.ps1 -NameField "avName" -StatusField "avRunning" -DefinitionField "avDefs"
+    
+    Populates three separate custom fields with AV details.
 
 .NOTES
-    Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Version: 1.1
-    Release Notes: Updated Bitdefender checks to work with newer versions that changed paths. Updated WYSIWYG table styling. Updated functions.
+    Script Name:    Security-DetectInstalledAntivirus.ps1
+    Author:         Windows Automation Framework
+    Version:        3.0
+    Creation Date:  2024-01-15
+    Last Modified:  2026-02-10
+    
+    Execution Context: Administrator (required for Security Center and service queries)
+    Execution Frequency: Daily or on-demand
+    Typical Duration: ~5-15 seconds
+    Timeout Setting: 60 seconds recommended
+    
+    User Interaction: NONE (fully automated, no prompts)
+    Restart Behavior: N/A (no restart required)
+    
+    Fields Updated:
+        - WYSIWYGField - HTML formatted table with AV status (if specified)
+        - NameField - Comma-separated antivirus product names (if specified)
+        - StatusField - Comma-separated running status (if specified)
+        - DefinitionField - Definition dates and status (if specified)
+    
+    Dependencies:
+        - Windows PowerShell 5.1 or higher
+        - Administrator privileges
+        - Windows 10 or Server 2016 minimum
+    
+    Security Center API:
+        - Available on Windows 10/11 workstations
+        - Not available on Windows Server
+        - Provides standardized AV status via WMI
+    
+    Exit Codes:
+        0 - Success (antivirus detected or not found)
+        1 - Failure (custom field update failed or validation error)
+
+.LINK
+    https://github.com/Xore/waf
 #>
 
 [CmdletBinding()]
 param (
-    [Parameter()]
-    $DaysUntilConsideredOutdated = "7",
-    [Parameter()]
-    [String]$WYSIWYGCustomField,
-    [Parameter()]
-    [String]$NameCustomField,
-    [Parameter()]
-    [String]$StatusCustomField,
-    [Parameter()]
-    [String]$DefinitionDateAndStatusCustomField
+    [Parameter(Mandatory=$false, HelpMessage="Days until definitions considered outdated (1-30)")]
+    [ValidateRange(1,30)]
+    [int]$DaysUntilOutdated = 7,
+    
+    [Parameter(Mandatory=$false, HelpMessage="WYSIWYG custom field for HTML table")]
+    [string]$WYSIWYGField,
+    
+    [Parameter(Mandatory=$false, HelpMessage="Text custom field for antivirus names")]
+    [string]$NameField,
+    
+    [Parameter(Mandatory=$false, HelpMessage="Text custom field for running status")]
+    [string]$StatusField,
+    
+    [Parameter(Mandatory=$false, HelpMessage="Text custom field for definition date/status")]
+    [string]$DefinitionField
 )
 
-begin {
-    # If script form variables are used, replace the command line parameters with their value.
-    if ($env:definitionsAgeLimitInDays) { $DaysUntilConsideredOutdated = $env:definitionsAgeLimitInDays }
-    if ($env:wysiwygCustomFieldName) { $WYSIWYGCustomField = $env:wysiwygCustomFieldName }
-    if ($env:antivirusNameCustomField) { $NameCustomField = $env:antivirusNameCustomField }
-    if ($env:statusCustomFieldName) { $StatusCustomField = $env:statusCustomFieldName }
-    if ($env:definitionDateAndStatusCustomField) { $DefinitionDateAndStatusCustomField = $env:definitionDateAndStatusCustomField }
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
 
-    # Trim leading and trailing whitespace from each specified variable, if it is set
-    if($DaysUntilConsideredOutdated) { $DaysUntilConsideredOutdated = $DaysUntilConsideredOutdated.Trim() }
-    if($WYSIWYGCustomField){ $WYSIWYGCustomField = $WYSIWYGCustomField.Trim() }
-    if($NameCustomField){ $NameCustomField = $NameCustomField.Trim() }
-    if($StatusCustomField){ $StatusCustomField = $StatusCustomField.Trim() }
-    if($DefinitionDateAndStatusCustomField){ $DefinitionDateAndStatusCustomField = $DefinitionDateAndStatusCustomField.Trim() }
+$ScriptVersion = "3.0"
+$ScriptName = "Security-DetectInstalledAntivirus"
 
-    # Check if the $DaysUntilConsideredOutdated variable is not set or null
-    # Display an error message and exit if it is not set
-    if (!$DaysUntilConsideredOutdated) {
-        Write-Host -Object "[Error] Please specify a valid definition age limit that is a positive whole number greater than 0."
-        exit 1
-    }
+# Support NinjaRMM environment variables for field names
+if ($env:definitionsAgeLimitInDays) { $DaysUntilOutdated = [int]$env:definitionsAgeLimitInDays }
+if ($env:wysiwygCustomFieldName) { $WYSIWYGField = $env:wysiwygCustomFieldName }
+if ($env:antivirusNameCustomField) { $NameField = $env:antivirusNameCustomField }
+if ($env:statusCustomFieldName) { $StatusField = $env:statusCustomFieldName }
+if ($env:definitionDateAndStatusCustomField) { $DefinitionField = $env:definitionDateAndStatusCustomField }
 
-    # Validate that $DaysUntilConsideredOutdated contains only numeric characters
-    if ($DaysUntilConsideredOutdated -match "[^0-9]") {
-        Write-Host -Object "[Error] An invalid definition age limit of '$DaysUntilConsideredOutdated' was specified. Please specify a positive whole number greater than 0."
-        exit 1
-    }
+# Trim whitespace from all parameters
+if ($WYSIWYGField) { $WYSIWYGField = $WYSIWYGField.Trim() }
+if ($NameField) { $NameField = $NameField.Trim() }
+if ($StatusField) { $StatusField = $StatusField.Trim() }
+if ($DefinitionField) { $DefinitionField = $DefinitionField.Trim() }
 
-    # Attempt to convert $DaysUntilConsideredOutdated to a long integer
-    try {
-        $ErrorActionPreference = "Stop"
-        $DaysUntilConsideredOutdated = [long]$DaysUntilConsideredOutdated
-        $ErrorActionPreference = "Continue"
-    }
-    catch {
-        Write-Host -Object "[Error] $($_.Exception.Message)"
-        Write-Host -Object "[Error] An invalid definition age limit of '$DaysUntilConsideredOutdated' was specified. Unable to convert '$DaysUntilConsideredOutdated' to an integer."
-        exit 1
-    }
+# NinjaRMM CLI path for fallback
+$NinjaRMMCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
 
-    # Check if the value of $DaysUntilConsideredOutdated is less than 1
-    if ([long]$DaysUntilConsideredOutdated -lt 1 -or [long]$DaysUntilConsideredOutdated -gt 30) {
-        Write-Host -Object "[Error] An invalid definition age limit of '$DaysUntilConsideredOutdated' was specified. Please specify a positive whole number greater than 0 and less than or equal to 30."
-        exit 1
-    }
+# ============================================================================
+# ANTIVIRUS DEFINITIONS
+# ============================================================================
 
-    # Define a function to check if the current system is a server
-    function Test-IsServer {
-        # Determine the method to retrieve the operating system information based on PowerShell version
-        try {
-            $OS = if ($PSVersionTable.PSVersion.Major -lt 3) {
-                Get-WmiObject -Class Win32_OperatingSystem -ErrorAction Stop
-            }
-            else {
-                Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
-            }
-        }
-        catch {
-            Write-Host -Object "[Error] Unable to validate whether or not this device is a server."
-            Write-Host -Object "[Error] $($_.Exception.Message)"
-            exit 1
-        }
-    
-        # Check if the ProductType is "2", which indicates that the system is a domain controller or is a server
-        if ($OS.ProductType -eq "2" -or $OS.ProductType -eq "3") {
-            return $true
-        }
-    }
+$AVsToCheck = @(
+    [PSCustomObject]@{ Name = "Avast Antivirus"; ControlPanelName = "Avast Free Antivirus"; InstallPath = "$env:ProgramFiles\Avast Software\Avast"; RelevantProcesses = "AvastSvc","aswEngSrv"; RelevantServices = "avast! Antivirus" }
+    [PSCustomObject]@{ Name = "AVG Antivirus Business Edition"; ControlPanelName = "AVG Business Security"; InstallPath = "$env:ProgramFiles\AVG\Antivirus"; RelevantProcesses = "AVGSvc","avgToolsSvc","bcc","bccavsvc"; RelevantServices = "AVG Antivirus","avgBcc" }
+    [PSCustomObject]@{ Name = "Bitdefender Endpoint Security"; ControlPanelName = "Bitdefender Endpoint Security Tools","Bitdefender Agent"; InstallPath = "$env:ProgramFiles\Bitdefender\Endpoint Security"; RelevantProcesses = "EPSecurityService","EPProtectedService"; RelevantServices = "EPSecurityService","EPProtectedService" }
+    [PSCustomObject]@{ Name = "CrowdStrike"; ControlPanelName = "CrowdStrike Windows Sensor"; InstallPath = "$env:ProgramFiles\CrowdStrike"; RelevantProcesses = "CSFalconService"; RelevantServices = "CSFalconService" }
+    [PSCustomObject]@{ Name = "Cylance"; ControlPanelName = "Cylance OPTICS","Cylance Smart Antivirus","Cylance PROTECT"; InstallPath = "$env:ProgramFiles\Cylance" }
+    [PSCustomObject]@{ Name = "Elastic Defend"; ControlPanelName = "Elastic Agent"; RelevantProcesses = "elastic-agent","elastic-endpoint"; RelevantServices = "Elastic Agent","ElasticEndpoint" }
+    [PSCustomObject]@{ Name = "ESET Security"; ControlPanelName = "ESET Security","ESET Server Security"; InstallPath = "$env:ProgramFiles\ESET\ESET Security"; RelevantProcesses = "ekrn"; RelevantServices = "ekrn","efwd" }
+    [PSCustomObject]@{ Name = "F-Secure"; ControlPanelName = "F-Secure"; InstallPath = "$env:ProgramFiles\F-Secure"; RelevantProcesses = "fshoster64"; RelevantServices = "fshoster" }
+    [PSCustomObject]@{ Name = "Huntress"; ControlPanelName = "Huntress Agent"; InstallPath = "$env:ProgramFiles\Huntress"; RelevantProcesses = "HuntressAgent","HuntressRio"; RelevantServices = "HuntressAgent","HuntressRio" }
+    [PSCustomObject]@{ Name = "Kaspersky Endpoint Security"; ControlPanelName = "Kaspersky Endpoint Security"; InstallPath = "${env:ProgramFiles(x86)}\Kaspersky Lab\KES*"; RelevantProcesses = "avp"; RelevantServices = "AVP.KES*" }
+    [PSCustomObject]@{ Name = "Kaspersky Small Office Security"; ControlPanelName = "Kaspersky Small Office Security"; InstallPath = "${env:ProgramFiles(x86)}\Kaspersky Lab\Kaspersky Small Office Security*"; RelevantProcesses = "avp"; RelevantServices = "AVP*.*" }
+    [PSCustomObject]@{ Name = "MalwareBytes"; InstallPath = "$env:ProgramFiles\Malwarebytes\Anti-Malware"; ControlPanelName = "Malwarebytes"; RelevantProcesses = "Malwarebytes"; RelevantServices = "MBAMService" }
+    [PSCustomObject]@{ Name = "Sentinel Agent"; ControlPanelName = "Sentinel Agent"; InstallPath = "$env:ProgramFiles\SentinelOne"; RelevantProcesses = "SentinelServiceHost","SentinelStaticEngine"; RelevantServices = "SentinelAgent","SentinelHelperService" }
+    [PSCustomObject]@{ Name = "Sophos Intercept X"; ControlPanelName = "Sophos Endpoint Agent","Sophos Endpoint Defense"; InstallPath = "$env:ProgramFiles\Sophos\Sophos Endpoint Agent","$env:ProgramFiles\Sophos\Endpoint Defense"; RelevantProcesses = "SophosFileScanner","SophosFS"; RelevantServices = "Sophos Endpoint Defense Service" }
+    [PSCustomObject]@{ Name = "Trend Micro Maximum Security"; ControlPanelName = "Trend Micro Maximum Security"; InstallPath = "$env:ProgramFiles\Trend Micro"; RelevantProcesses = "coreServiceShell"; RelevantServices = "Amsp" }
+    [PSCustomObject]@{ Name = "Trend Micro Security Agent"; ControlPanelName = "Trend Micro Worry-Free Business Security Agent"; InstallPath = "${env:ProgramFiles(x86)}\Trend Micro\Security Agent"; RelevantProcesses = "NTRTScan","TmListen"; RelevantServices = "ntrtscan","TmCCSF" }
+    [PSCustomObject]@{ Name = "VIPRE Business Agent"; ControlPanelName = "VIPRE Business Agent"; InstallPath = "$env:ProgramFiles\VIPRE Business Agent"; RelevantProcesses = "SBAMSvc"; RelevantServices = "SBAMSvc" }
+    [PSCustomObject]@{ Name = "Webroot SecureAnywhere"; DisplayName = "Webroot SecureAnywhere"; InstallPath = "$env:ProgramFiles\Webroot"; RelevantProcesses = "WRSA"; RelevantServices = "WRCoreService","WRSkyClient" }
+    [PSCustomObject]@{ Name = "Windows Defender"; RelevantProcesses = "MsMpEng"; RelevantServices = "WinDefend" }
+)
 
-    # Define a function to check if the script is running with elevated privileges
-    function Test-IsElevated {
-        [CmdletBinding()]
-        param ()
-    
-        # Get the current Windows identity of the user running the script
-        $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-    
-        # Create a WindowsPrincipal object based on the current identity
-        $p = New-Object System.Security.Principal.WindowsPrincipal($id)
-    
-        # Check if the current user is in the Administrator role
-        # The function returns $True if the user has administrative privileges, $False otherwise
-        # 544 is the value for the Built In Administrators role
-        # Reference: https://learn.microsoft.com/en-us/dotnet/api/system.security.principal.windowsbuiltinrole
-        $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]'544')
-    }
+# ============================================================================
+# INITIALIZATION
+# ============================================================================
 
-    # Define a function to find the installation key of a specified program
-    function Find-InstallKey {
-        [CmdletBinding()]
-        param (
-            [Parameter(ValueFromPipeline = $True)]
-            [String]$DisplayName,
-            [Parameter()]
-            [Switch]$UninstallString,
-            [Parameter()]
-            [String]$UserBaseKey
-        )
-        process {
-            # Initialize a list to store found installation keys
-            $InstallList = New-Object System.Collections.Generic.List[Object]
-    
-            # If no custom user base key is provided, search in the standard HKLM paths
-            if (!$UserBaseKey) {
-                $ErrorActionPreference = "Stop"
-                # Search in the 32-bit uninstall registry key and add results to the list
-                try {
-                    $Result = Get-ChildItem -Path "Registry::HKEY_LOCAL_MACHINE\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" | Get-ItemProperty | Where-Object { $_.DisplayName -like "*$DisplayName*" }
-                    if ($Result) { $InstallList.Add($Result) }
-                }
-                catch {
-                    Write-Host -Object "[Warning] Failed to retrieve registry keys at 'HKEY_LOCAL_MACHINE\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'."
-                    throw $_
-                }
-    
-                # Search in the 64-bit uninstall registry key and add results to the list
-                try {
-                    $Result = Get-ChildItem -Path "Registry::HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Uninstall\*" | Get-ItemProperty | Where-Object { $_.DisplayName -like "*$DisplayName*" }
-                    if ($Result) { $InstallList.Add($Result) }
-                }
-                catch {
-                    Write-Host -Object "[Warning] Failed to retrieve registry keys at 'HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Uninstall\*'."
-                    throw $_
-                }
-    
-                $ErrorActionPreference = "Continue"
-            }
-            else {
-                $ErrorActionPreference = "Stop"
-                # If a custom user base key is provided, search in the corresponding Wow6432Node path and add results to the list
-                try {
-                    $Result = Get-ChildItem -Path "$UserBaseKey\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" | Get-ItemProperty | Where-Object { $_.DisplayName -like "*$DisplayName*" }
-                    if ($Result) { $InstallList.Add($Result) }
-                }
-                catch {
-                    Write-Host -Object "[Warning] Failed to retrieve registry keys at '$UserBaseKey\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'."
-                    throw $_
-                }
-    
-                try {
-                    # Search in the custom user base key for the standard uninstall path and add results to the list
-                    $Result = Get-ChildItem -Path "$UserBaseKey\Software\Microsoft\Windows\CurrentVersion\Uninstall\*" | Get-ItemProperty | Where-Object { $_.DisplayName -like "*$DisplayName*" }
-                    if ($Result) { $InstallList.Add($Result) }
-                }
-                catch {
-                    Write-Host -Object "[Warning] Failed to retrieve registry keys at '$UserBaseKey\Software\Microsoft\Windows\CurrentVersion\Uninstall\*'."
-                    throw $_
-                }
-    
-                $ErrorActionPreference = "Continue"
-            }
-    
-            # If the UninstallString switch is set, return only the UninstallString property of the found keys
-            if ($UninstallString) {
-                $InstallList | Select-Object -ExpandProperty UninstallString -ErrorAction SilentlyContinue
-            }
-            else {
-                $InstallList
-            }
-        }
-    }
+$StartTime = Get-Date
+$ErrorActionPreference = 'Continue'
+$script:ErrorCount = 0
+$script:WarningCount = 0
+$script:CLIFallbackCount = 0
 
-    function Set-CustomField {
-        [CmdletBinding()]
-        Param(
-            [Parameter(Mandatory = $True)]
-            [String]$Name,
-            [Parameter(Mandatory = $True, ValueFromPipeline = $True)]
-            $Value,
-            [Parameter()]
-            [String]$Type,
-            [Parameter()]
-            [String]$DocumentName,
-            [Parameter()]
-            [Switch]$Piped
-        )
-    
-        if ($Type -eq "Date Time") { $Type = "DateTime" }
-        if ($Type -match "[-]") { $Type = $Type -replace '-' }
-        if ($Type -match "[/]") { $Type = $Type -replace '/' }
-    
-        # Remove the non-breaking space character
-        if ($Type -eq "WYSIWYG") {
-            $Value = $Value -replace ' ', '&nbsp;'
-        }
-    
-        if ($Type -eq "DateTime" -or $Type -eq "Date") {
-            $Type = "Date or Date Time"
-        }
-        
-        # Measure the number of characters in the provided value
-        $Characters = $Value | ConvertTo-Json | Measure-Object -Character | Select-Object -ExpandProperty Characters
-    
-        # Throw an error if the value exceeds the character limit of 200,000 characters
-        if ($Piped -and $Characters -ge 200000) {
-            throw [System.ArgumentOutOfRangeException]::New("Character limit exceeded: the value is greater than or equal to 200,000 characters.")
-        }
-    
-        if (!$Piped -and $Characters -ge 45000) {
-            throw [System.ArgumentOutOfRangeException]::New("Character limit exceeded: the value is greater than or equal to 45,000 characters.")
-        }
-        
-        # Initialize a hashtable for additional documentation parameters
-        $DocumentationParams = @{}
-    
-        # If a document name is provided, add it to the documentation parameters
-        if ($DocumentName) { $DocumentationParams["DocumentName"] = $DocumentName }
-        
-        # Define a list of valid field types
-        $ValidFields = "Checkbox", "Date", "Date or Date Time", "DateTime", "Decimal", "Dropdown", "Email", "Integer", "IP Address", "MultiLine", 
-        "MultiSelect", "Phone", "Secure", "Text", "Time", "URL", "WYSIWYG"
-    
-        # Warn the user if the provided type is not valid
-        if ($Type -and $ValidFields -notcontains $Type) { Write-Warning "$Type is an invalid type. Please check here for valid types: https://ninjarmm.zendesk.com/hc/en-us/articles/16973443979789-Command-Line-Interface-CLI-Supported-Fields-and-Functionality" }
-        
-        # Define types that require options to be retrieved
-        $NeedsOptions = "Dropdown", "MultiSelect"
-    
-        # If the property is being set in a document or field and the type needs options, retrieve them
-        if ($DocumentName) {
-            if ($NeedsOptions -contains $Type) {
-                $NinjaPropertyOptions = Ninja-Property-Docs-Options -AttributeName $Name @DocumentationParams 2>&1
-            }
-        }
-        else {
-            if ($NeedsOptions -contains $Type) {
-                $NinjaPropertyOptions = Ninja-Property-Options -Name $Name 2>&1
-            }
-        }
-        
-        # Throw an error if there was an issue retrieving the property options
-        if ($NinjaPropertyOptions.Exception) { throw $NinjaPropertyOptions }
-            
-        # Process the property value based on its type
-        switch ($Type) {
-            "Checkbox" {
-                # Convert the value to a boolean for Checkbox type
-                $NinjaValue = [System.Convert]::ToBoolean($Value)
-            }
-            "Date or Date Time" {
-                # Convert the value to a Unix timestamp for Date or Date Time type
-                $Date = (Get-Date $Value).ToUniversalTime()
-                $TimeSpan = New-TimeSpan (Get-Date "1970-01-01 00:00:00") $Date
-                [long]$NinjaValue = $TimeSpan.TotalSeconds
-            }
-            "Dropdown" {
-                # Convert the dropdown value to its corresponding GUID
-                $Options = $NinjaPropertyOptions -replace '=', ',' | ConvertFrom-Csv -Header "GUID", "Name"
-                $Selection = $Options | Where-Object { $_.Name -eq $Value } | Select-Object -ExpandProperty GUID
-            
-                # Throw an error if the value is not present in the dropdown options
-                if (!($Selection)) {
-                    throw [System.ArgumentOutOfRangeException]::New("Value is not present in dropdown options.")
-                }
-            
-                $NinjaValue = $Selection
-            }
-            "MultiSelect" {
-                $Options = $NinjaPropertyOptions -replace '=', ',' | ConvertFrom-Csv -Header "GUID", "Name"
-                $Selections = New-Object System.Collections.Generic.List[String]
-                if ($Value -match "[,]") {
-                    $Value = $Value -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
-                }
-    
-                $Value | ForEach-Object {
-                    $GivenValue = $_
-                    $Selection = $Options | Where-Object { $_.Name -eq $GivenValue } | Select-Object -ExpandProperty GUID
-    
-                    # Throw an error if the value is not present in the dropdown options
-                    if (!($Selection)) {
-                        throw [System.ArgumentOutOfRangeException]::New("Value is not present in dropdown options.")
-                    }
-    
-                    $Selections.Add($Selection)
-                }
-    
-                $NinjaValue = $Selections -join ","
-            }
-            "Time" {
-                # Convert the value to a Unix timestamp for Date or Date Time type
-                $LocalTime = (Get-Date $Value)
-                $LocalTimeZone = [TimeZoneInfo]::Local
-                $UtcTime = [TimeZoneInfo]::ConvertTimeToUtc($LocalTime, $LocalTimeZone)
-    
-                [long]$NinjaValue = ($UtcTime.TimeOfDay).TotalSeconds
-            }
-            default {
-                # For other types, use the value as is
-                $NinjaValue = $Value
-            }
-        }
-            
-        # Set the property value in the document if a document name is provided
-        if ($DocumentName) {
-            $CustomField = Ninja-Property-Docs-Set -AttributeName $Name -AttributeValue $NinjaValue @DocumentationParams 2>&1
-        }
-        else {
-            try {
-                # Otherwise, set the standard property value
-                if ($Piped) {
-                    $CustomField = $NinjaValue | Ninja-Property-Set-Piped -Name $Name 2>&1
-                }
-                else {
-                    $CustomField = Ninja-Property-Set -Name $Name -Value $NinjaValue 2>&1
-                }
-            }
-            catch {
-                throw $_.Exception.Message
-            }
-        }
-            
-        # Throw an error if setting the property failed
-        if ($CustomField.Exception) {
-            throw $CustomField
-        }
-    }
+# ============================================================================
+# FUNCTIONS
+# ============================================================================
 
-    # Define an array of custom objects representing different antivirus software to check
-    $AVsToCheck = @(
-        [PSCustomObject]@{ Name = "Avast Antivirus" ; ControlPanelName = "Avast Free Antivirus" ; InstallPath = "$env:ProgramFiles\Avast Software\Avast" ; RelevantProcesses = "AvastSvc", "aswEngSrv" ; RelevantServices = 'avast! Antivirus' }
-        [PSCustomObject]@{ Name = "AVG Antivirus Business Edition" ; ControlPanelName = "AVG Business Security" ; InstallPath = "$env:ProgramFiles\AVG\Antivirus" ; RelevantProcesses = "AVGSvc", "avgToolsSvc", "bcc", "bccavsvc" ; RelevantServices = "AVG Antivirus", "avgBcc", "AVG Business Console Client Antivirus Service" }
-        [PSCustomObject]@{ Name = "Bitdefender Endpoint Security Antimalware" ; ControlPanelName = "Bitdefender Endpoint Security Tools", "Bitdefender Agent" ; InstallPath = "$env:ProgramFiles\Bitdefender\Endpoint Security" ; RelevantProcesses = "EPSecurityService", "EPProtectedService" ; RelevantServices = "EPSecurityService", "EPProtectedService" }
-        [PSCustomObject]@{ Name = "CrowdStrike" ; ControlPanelName = "CrowdStrike Windows Sensor" ; InstallPath = "$env:ProgramFiles\CrowdStrike" ; RelevantProcesses = "CSFalconService" ; RelevantServices = "CSFalconService" }
-        [PSCustomObject]@{ Name = "Cylance"; ControlPanelName = "Cylance OPTICS", "Cylance Smart Antivirus", "Cylance PROTECT"; InstallPath = "$env:ProgramFiles\Cylance" }
-        [PSCustomObject]@{ Name = "Elastic Defend" ; ControlPanelName = "Elastic Agent" ; RelevantProcesses = "elastic-agent", "elastic-endpoint" ; RelevantServices = "Elastic Agent", "ElasticEndpoint" }
-        [PSCustomObject]@{ Name = "ESET Security" ; ControlPanelName = "ESET Security", "ESET Server Security" ; InstallPath = "$env:ProgramFiles\ESET\ESET Security" ; RelevantProcesses = "ekrn" ; RelevantServices = "ekrn", "efwd" }
-        [PSCustomObject]@{ Name = "F-Secure" ; ControlPanelName = "F-Secure" ; InstallPath = "$env:ProgramFiles\F-Secure" ; RelevantProcesses = "fshoster64" ; RelevantServices = "fshoster" }
-        [PSCustomObject]@{ Name = "Huntress" ; ControlPanelName = "Huntress Agent" ; InstallPath = "$env:ProgramFiles\Huntress" ; RelevantProcesses = "HuntressAgent", "HuntressRio" ; RelevantServices = "HuntressAgent", "HuntressRio" }
-        [PSCustomObject]@{ Name = "Kaspersky Endpoint Security for Windows" ; ControlPanelName = "Kaspersky Endpoint Security" ; InstallPath = "${env:ProgramFiles(x86)}\Kaspersky Lab\KES*" ; RelevantProcesses = "avp" ; RelevantServices = "AVP.KES*" }
-        [PSCustomObject]@{ Name = "Kaspersky Small Office Security" ; ControlPanelName = "Kaspersky Small Office Security" ; InstallPath = "${env:ProgramFiles(x86)}\Kaspersky Lab\Kaspersky Small Office Security*" ; RelevantProcesses = "avp" ; RelevantServices = "AVP*.*" }
-        [PSCustomObject]@{ Name = "MalwareBytes" ; InstallPath = "$env:ProgramFiles\Malwarebytes\Anti-Malware" ; ControlPanelName = "Malwarebytes" ; RelevantProcesses = "Malwarebytes" ; RelevantServices = "MBAMService" }
-        [PSCustomObject]@{ Name = "Sentinel Agent" ; ControlPanelName = "Sentinel Agent" ; InstallPath = "$env:ProgramFiles\SentinelOne" ; RelevantProcesses = "SentinelServiceHost", "SentinelStaticEngine", "SentinelStaticEngineScanner" ; RelevantServices = "SentinelAgent", "SentinelHelperService", "SentinelStaticEngine" }
-        [PSCustomObject]@{ Name = "Sophos Intercept X" ; ControlPanelName = "Sophos Endpoint Agent", "Sophos Endpoint Defense" ; InstallPath = "$env:ProgramFiles\Sophos\Sophos Endpoint Agent", "$env:ProgramFiles\Sophos\Endpoint Defense" ; RelevantProcesses = "SophosFileScanner", "SophosFS" ; RelevantServices = "Sophos Endpoint Defense Service", "Sophos System Protection Service" }
-        [PSCustomObject]@{ Name = "Trend Micro Maximum Security" ; ControlPanelName = "Trend Micro Maximum Security" ; InstallPath = "$env:ProgramFiles\Trend Micro" ; RelevantProcesses = "coreServiceShell" ; RelevantServices = "Amsp" }
-        [PSCustomObject]@{ Name = "Trend Micro Security Agent" ; ControlPanelName = "Trend Micro Worry-Free Business Security Agent" ; InstallPath = "${env:ProgramFiles(x86)}\Trend Micro\Security Agent" ; RelevantProcesses = "NTRTScan", "TmListen" ; RelevantServices = "ntrtscan", "TmCCSF" }
-        [PSCustomObject]@{ Name = "VIPRE Business Agent" ; ControlPanelName = "VIPRE Business Agent" ; InstallPath = "$env:ProgramFiles\VIPRE Business Agent" ; RelevantProcesses = "SBAMSvc" ; RelevantServices = "SBAMSvc" }
-        [PSCustomObject]@{ Name = "Webroot SecureAnywhere"; DisplayName = "Webroot SecureAnywhere" ; InstallPath = "$env:ProgramFiles\Webroot" ; RelevantProcesses = "WRSA" ; RelevantServices = "WRCoreService", "WRSkyClient", "WRSVC" }
-        [PSCustomObject]@{ Name = "Windows Defender" ; RelevantProcesses = "MsMpEng" ; RelevantServices = "WinDefend" }
+function Write-Log {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Message,
+        [Parameter(Mandatory=$false)]
+        [ValidateSet('DEBUG','INFO','WARN','ERROR','SUCCESS')]
+        [string]$Level = 'INFO'
     )
-
-    if (!$ExitCode) {
-        $ExitCode = 0
+    
+    $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    Write-Output "[$Timestamp] [$Level] $Message"
+    
+    switch ($Level) {
+        'WARN'  { $script:WarningCount++ }
+        'ERROR' { $script:ErrorCount++ }
     }
 }
-process {
-    # Check if the script is running with elevated privileges
-    if (!(Test-IsElevated)) {
-        Write-Host -Object "[Error] Access Denied. Please run with Administrator privileges."
-        exit 1
+
+function Set-NinjaField {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$FieldName,
+        [Parameter(Mandatory=$true)]
+        [AllowNull()]
+        $Value
+    )
+    
+    if ($null -eq $Value -or $Value -eq "") {
+        Write-Log "Skipping field '$FieldName' - no value" -Level DEBUG
+        return
     }
-
-    # Create a new list to store detected antivirus information
-    $DetectedAVs = New-Object System.Collections.Generic.List[object]
-
-    # Check if the current system is not a server
-    if (!(Test-IsServer)) {
-        # Get antivirus products from the Security Center namespace based on PowerShell version
-        if ($PSVersionTable.PSVersion.Major -lt 3) {
-            $AVsInSecurityCenter = Get-WmiObject -Namespace root/SecurityCenter2 -Class AntivirusProduct
+    
+    $ValueString = $Value.ToString()
+    
+    # Handle WYSIWYG formatting
+    if ($FieldName -eq $WYSIWYGField) {
+        $ValueString = $ValueString -replace ' ', '&nbsp;'
+    }
+    
+    try {
+        if (Get-Command Ninja-Property-Set -ErrorAction SilentlyContinue) {
+            Ninja-Property-Set $FieldName $ValueString -ErrorAction Stop
+            Write-Log "Field '$FieldName' set successfully" -Level DEBUG
+            return
+        } else {
+            throw "Ninja-Property-Set cmdlet not available"
         }
-        else {
-            $AVsInSecurityCenter = Get-CimInstance -Namespace root/SecurityCenter2 -Class AntivirusProduct
+    } catch {
+        Write-Log "Ninja-Property-Set failed, using CLI fallback" -Level DEBUG
+        
+        try {
+            if (-not (Test-Path $NinjaRMMCLI)) {
+                throw "NinjaRMM CLI not found at: $NinjaRMMCLI"
+            }
+            
+            $CLIArgs = @("set", $FieldName, $ValueString)
+            $CLIResult = & $NinjaRMMCLI $CLIArgs 2>&1
+            
+            if ($LASTEXITCODE -ne 0) {
+                throw "CLI exit code: $LASTEXITCODE, Output: $CLIResult"
+            }
+            
+            Write-Log "Field '$FieldName' set via CLI" -Level DEBUG
+            $script:CLIFallbackCount++
+            
+        } catch {
+            Write-Log "Failed to set field '$FieldName': $_" -Level ERROR
         }
+    }
+}
 
-        # Iterate over each antivirus product found
-        $AVsInSecurityCenter | ForEach-Object {
-            $AVsToSkip = "Kaspersky Small Office Security", "AVG Antivirus"
-            if ($AVsToSkip -contains $_.displayName -or $AVsToCheck.Name -contains $_.displayName) {
-                return
-            }
+function Test-IsElevated {
+    $Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $Principal = New-Object System.Security.Principal.WindowsPrincipal($Identity)
+    return $Principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+}
 
-            # Define enumerations with flag attributes for product states, signature statuses, product owners, and product flags
-            [Flags()] enum ProductState {
-                Off = 0x0000
-                On = 0x1000
-                Snoozed = 0x2000
-                Expired = 0x3000
-                CustomState = 0x4000 
-            }
+function Test-IsServer {
+    try {
+        $OS = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+        return ($OS.ProductType -eq 2 -or $OS.ProductType -eq 3)
+    } catch {
+        Write-Log "Unable to determine if system is server: $_" -Level WARN
+        return $false
+    }
+}
 
-            [Flags()] enum SignatureStatus {
-                UpToDate = 0x00
-                OutOfDate = 0x10
-            }
-
-            [Flags()] enum ProductOwner {
-                NonMs = 0x000
-                Windows = 0x100
-            }
-
-            [Flags()] enum ProductFlags {
-                SignatureStatus = 0x00F0
-                ProductOwner = 0x0F00
-                ProductState = 0xF000
-            }
-
-            # Get the current product state
-            [UInt32]$CurrentState = $_.ProductState
-
+function Find-InstallKey {
+    [CmdletBinding()]
+    param(
+        [Parameter(ValueFromPipeline=$True)]
+        [string]$DisplayName
+    )
+    
+    process {
+        $InstallList = New-Object System.Collections.Generic.List[Object]
+        
+        $RegistryPaths = @(
+            "Registry::HKEY_LOCAL_MACHINE\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+            "Registry::HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"
+        )
+        
+        foreach ($Path in $RegistryPaths) {
             try {
-                # Decode the product state and signature status by masking the relevant bits and converting
-                $ProductState = [ProductState]($CurrentState -band [ProductFlags]::ProductState)
-                $SignatureStatus = [SignatureStatus]($CurrentState -band [ProductFlags]::SignatureStatus)
-            }
-            catch {
-                Write-Host "[Error] Translating the product state for '$($_.DisplayName)' with a product state of '$CurrentState'."
-            }
-
-            # Determine the running status based on the product state
-            $RunningStatus = switch ($ProductState) {
-                "On" { "Running" }
-                default { "Not Running" }
-            }
-
-            # Determine if the definitions are up to date based on the hexadecimal value
-            $UpToDateWMI = switch ($SignatureStatus) {
-                "UpToDate" { $True }
-                default { $False }
-            }
-
-            # Get the date of the last definition update
-            $DefinitionsDate = Get-Date $_.timestamp -ErrorAction SilentlyContinue
-
-            # Determine if the antivirus definitions are up to date based on the date and WMI status
-            $UpToDate = if ($DefinitionsDate -and $DefinitionsDate -gt (Get-Date).AddDays(-$DaysUntilConsideredOutdated) -and ($UpToDateWMI -like "True")) {
-                "Up To Date"
-            }
-            else {
-                "Outdated"
-            }
-
-            # Add the antivirus information to the detected list as a custom object
-            if ($Installed) {
-                $DetectedAVs.Add(
-                    [PSCustomObject]@{
-                        "Antivirus Name"    = $_.DisplayName
-                        Status              = $RunningStatus
-                        "Definition Status" = $UpToDate
-                        "Definition Date"   = if ($DefinitionsDate) { "$($DefinitionsDate.ToShortDateString())" }
-                    }
-                )
+                $Result = Get-ChildItem -Path $Path -ErrorAction SilentlyContinue | 
+                    Get-ItemProperty | 
+                    Where-Object { $_.DisplayName -like "*$DisplayName*" }
+                
+                if ($Result) {
+                    $InstallList.Add($Result)
+                }
+            } catch {
+                Write-Log "Failed to read registry path: $Path" -Level DEBUG
             }
         }
+        
+        return $InstallList
     }
+}
 
-    # Iterate through each antivirus in the $AVsToCheck array
-    foreach ($AntiVirus in $AVsToCheck) {
-        $InstallationKey = $null
-        $InstallPathExists = $null
-        $RunningServices = $null
-        $RunningProcesses = $null
-        $DefinitionStatus = $null
-        $DefinitionDate = $null
-        $installed = $Null
+function Get-SecurityCenterAV {
+    if (Test-IsServer) {
+        return $null
+    }
+    
+    try {
+        return Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntivirusProduct -ErrorAction Stop
+    } catch {
+        Write-Log "Failed to query Security Center: $_" -Level DEBUG
+        return $null
+    }
+}
 
-        # Find installation key based on ControlPanelName if available
-        if ($AntiVirus.ControlPanelName) {
-            $InstallationKey = $AntiVirus.ControlPanelName | ForEach-Object { 
-                try {
-                    Find-InstallKey -DisplayName $_ -ErrorAction Stop
-                }
-                catch {
-                    Write-Host "[Error] Error finding installation key for $($_.DisplayName) in Control Panel."
-                    Write-Host "[Error] $($_.Exception.Message)"
-                    $ExitCode = 1
-                }
-            }
-        }
-
-        # Check if the install path exists for the antivirus
-        if ($AntiVirus.InstallPath) {
-            $InstallPathExists = $AntiVirus.InstallPath | ForEach-Object { 
-                if (Test-Path -Path $_ -ErrorAction SilentlyContinue) { 
-                    $InstallPathInfo = (Get-Item -Path $_ -ErrorAction SilentlyContinue)
-
-                    if (!$InstallPathInfo.PSIsContainer) {
-                        $True
-                    }
-                    else {
-                        if ((Get-ChildItem -Path $_ | Measure-Object).Count -gt 0) {
-                            $True
-                        }
-                    }
-                } 
-            }
-        }
-
-        # Check if relevant services are running
-        if ($AntiVirus.RelevantServices) {
-            $RunningServices = $AntiVirus.RelevantServices | ForEach-Object {
-                if (!(Get-Service -Name $_ -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq "Running" })) {
-                    "Not Running"
-                }
-            }
-
-            if (!$RunningServices) {
-                $RunningServices = "Running"
-            }
-        }
-
-        # Check if relevant processes are running
-        if ($AntiVirus.RelevantProcesses) {
-            $RunningProcesses = $AntiVirus.RelevantProcesses | ForEach-Object {
-                if (!(Get-Process -Name $_ -ErrorAction SilentlyContinue)) {
-                    "Not Running"
-                }
-            }
-
-            if (!$RunningProcesses) {
-                $RunningProcesses = "Running"
-            }
-        }
-
-        # Check specific antivirus products for their definition status and date
-        switch ($AntiVirus.Name) {
-            "Avast Antivirus" {
-                if (Test-Path -Path "$env:ProgramFiles\Avast Software\Avast\defs\aswdefs.ini" -ErrorAction SilentlyContinue) {
-                    $DefinitionFile = Get-Content -Path "$env:ProgramFiles\Avast Software\Avast\defs\aswdefs.ini" -ErrorAction SilentlyContinue
-                    $DefinitionFileDate = $DefinitionFile -replace '[^0-9]' | Where-Object { $_ }
-
-                    if ($DefinitionFileDate) {
-                        $DefinitionDate = [datetime]::parseexact($DefinitionFileDate, 'yyMMddHH', $null)
-                        $DefinitionDate = [System.TimeZoneInfo]::ConvertTimeFromUtc($DefinitionDate, [System.TimeZoneInfo]::Local)
-                    }
-                }
-            }
-            "AVG Antivirus Business Edition" {
-                if (Test-Path -Path "$env:ProgramFiles\AVG\Antivirus\defs\aswdefs.ini" -ErrorAction SilentlyContinue) {
-                    $DefinitionFile = Get-Content -Path "$env:ProgramFiles\AVG\Antivirus\defs\aswdefs.ini" -ErrorAction SilentlyContinue
-                    $DefinitionFileDate = $DefinitionFile -replace '[^0-9]' | Where-Object { $_ }
-
-                    if ($DefinitionFileDate) {
-                        $DefinitionDate = [datetime]::parseexact($DefinitionFileDate, 'yyMMddHH', $null)
-                        $DefinitionDate = [System.TimeZoneInfo]::ConvertTimeFromUtc($DefinitionDate, [System.TimeZoneInfo]::Local)
-                    }
-                }
-            }
-            "Bitdefender Endpoint Security Antimalware" {
-                if ((Test-Path -Path "$env:ProgramFiles\Bitdefender\Bitdefender Endpoint Security\update_statistics.xml", "$env:ProgramFiles\Bitdefender\Endpoint Security\update_statistics.xml" -ErrorAction SilentlyContinue) -contains $True) {
-                    # Check for the existence of the update_statistics.xml file in both possible locations
-                    $FindBitDefender = Get-Item -Path "$env:ProgramFiles\Bitdefender\Bitdefender Endpoint Security\update_statistics.xml","$env:ProgramFiles\Bitdefender\Endpoint Security\update_statistics.xml" -ErrorAction SilentlyContinue
-                    # Prefer the latter of the two paths in case both are found
-                    $LoadPath = $FindBitDefender[-1]
-                    
-                    $UpdateStatistics = New-Object -TypeName XML
-                    $UpdateStatistics.Load($LoadPath)
-                }
-
-                if ($UpdateStatistics) {
-                    [datetime]$UnixStart = '1970-01-01 00:00:00'
-                    $BitDefenderUpdateDate = $UnixStart.AddSeconds($UpdateStatistics.UpdateStatistics.Antivirus.Update.succtime)
-
-                    if ($BitDefenderUpdateDate) {
-                        $DefinitionDate = Get-Date ($BitDefenderUpdateDate.ToLocalTime())
-                    }
-                }
-            }
-            "Crowdstrike" {
-                $DefinitionStatus = "Not Applicable"
-            }
-            "Elastic Defend" {
-                $DefinitionStatus = "Not Applicable"
-            }
-            "ESET Security" {
-                if (Test-Path -Path "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\ESET\ESET Security\CurrentVersion\Info" -ErrorAction SilentlyContinue) {
-                    $ScannerVersion = Get-ItemProperty -Path "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\ESET\ESET Security\CurrentVersion\Info" -Name "ScannerVersion" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ScannerVersion -ErrorAction SilentlyContinue
-                }
-
-                if ($ScannerVersion) {
-                    $ScannerDateString = $ScannerVersion -replace '^.*\(' -replace '\)'
-                    if ($ScannerDateString) { 
-                        $DefinitionDate = [datetime]::parseexact($ScannerDateString, 'yyyyMMdd', $null) 
-                    }
-                }
-            }
-            "F-Secure" {
-                if (Test-Path -Path "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\F-Secure\Ultralight\updates" -ErrorAction SilentlyContinue) {
-                    $FSecureEngines = Get-ChildItem -Path "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\F-Secure\Ultralight\updates" -ErrorAction SilentlyContinue
-                    
-                    $LatestFSecureEngines = New-Object System.Collections.Generic.List[String]
-                    $FSecureEngines | ForEach-Object {
-                        $FSecureEngineVersions = Get-ChildItem -Path "Registry::$($_.Name)" -ErrorAction SilentlyContinue
-
-                        $LatestEngine = $FsecureEngineVersions | Sort-Object Name -Descending | Select-Object -First 1
-                        $LatestEngine = ($LatestEngine | Select-Object -ExpandProperty Name) | ForEach-Object { $_ -replace "^.*\\" }
-
-                        if ($LatestEngine) {
-                            $LatestFSecureEngines.Add($LatestEngine)
-                        }
-                    }
-
-                    $LatestFSecureEngine = $LatestFSecureEngines | Sort-Object -Descending | Select-Object -First 1
-
-                    if ($LatestFSecureEngine) {
-                        [datetime]$UnixStart = '1970-01-01 00:00:00'
-                        $FSecureUpdateDate = $UnixStart.AddSeconds($LatestFSecureEngine)
-                        $DefinitionDate = Get-Date ($FSecureUpdateDate.ToLocalTime())
-                    }
-                }
-            }
-            "Huntress" {
-                $DefinitionStatus = "Not Applicable"
-            }
-            "Kaspersky Endpoint Security for Windows" {
-                $KESConsole = Get-ChildItem "${env:ProgramFiles(x86)}\Kaspersky Lab\KES.*\kescli.exe" -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName -First 1 -ErrorAction SilentlyContinue
-
-                if ($KESConsole) {
-                    $KESprocess = Start-Process -FilePath $KESConsole -ArgumentList "--opswat", "GetDefinitionState" -RedirectStandardOutput "$env:TEMP\KESdata.txt" -NoNewWindow -Wait -PassThru
-
-                    if ($KESprocess.ExitCode -ne 0) {
-                        Write-Host "Exit Code: $($KESprocess.ExitCode)"
-                        Write-Host "[Error] Exit Code does not indicate success!"
-                    }
-
-                    $KESdata = Get-Content -Path "$env:TEMP\KESdata.txt"
-                }
-
-                if ($KESdata -match '\d+/\d+/\d{4}') {
-                    $DefinitionDate = [datetime]::parseexact($KESdata, 'M/d/yyyy H:m:s', $null)
-                    $DefinitionDate = $DefinitionDate.ToLocalTime()
-
-                    Remove-Item -Path "$env:TEMP\KESdata.txt"
-                }
-                else {
-                    if (!$InstallPathExists -or !$InstallationKey -and ($RunningProcesses -or $RunningServices)) {
-                        $RunningProcesses = $null
-                        $RunningServices = $null
-                    }
-                }
-            }
-            "Kaspersky Small Office Security" {
-                $AVPConsole = Get-ChildItem "${env:ProgramFiles(x86)}\Kaspersky Lab\Kaspersky Small Office Security *\avp.com" -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName -First 1 -ErrorAction SilentlyContinue
-
-                if ($AVPConsole) {
-                    $KSOprocess = Start-Process -FilePath $AVPConsole -ArgumentList "STATISTICS", "Updater" -RedirectStandardOutput "$env:TEMP\KSOdata.txt" -NoNewWindow -Wait -PassThru
-
-                    if ($KSOprocess.ExitCode -ne 0) {
-                        Write-Host "Exit Code: $($KSOprocess.ExitCode)"
-                        Write-Host "[Error] Exit Code does not indicate success!"
-                    }
-
-                    $KSOdata = Get-Content -Path "$env:TEMP\KSOdata.txt"
-                }
-
-                if ($KSOdata) {
-                    $KsoTimeFinish = $KSOdata | Where-Object { $_ -match "Time Finish" }
-                    if ($KsoTimeFinish) {
-                        $KsoTimeFinish = ($KsoTimeFinish -replace "Time Finish:").Trim()
-
-                        $UpdateSucceeded = $KSOdata | Where-Object { $_ -match "Update succeeded" }
-
-                        if ($UpdateSucceeded) {
-                            $DefinitionDate = [datetime]::parseexact($KsoTimeFinish, 'yyyy-MM-dd HH:mm:ss', $null)
-                        }
-                    }
-
-                    Remove-Item -Path "$env:TEMP\KSOdata.txt"
-                }
-                else {
-                    if (!$InstallPathExists -or !$InstallationKey -and ($RunningProcesses -or $RunningServices)) {
-                        $RunningProcesses = $null
-                        $RunningServices = $null
-                    }
-                }
-            }
-            "MalwareBytes" {
-                if (Test-Path -Path "$env:ProgramData\Malwarebytes\MBAMService\config\UpdateControllerConfig.json" -ErrorAction SilentlyContinue) {
-                    $UpdateConfigFile = Get-Content -Path "$env:ProgramData\Malwarebytes\MBAMService\config\UpdateControllerConfig.json" | Select-Object -Skip 1 | ConvertFrom-Json
-                }
-
-                if ($UpdateConfigFile) {
-                    [datetime]$UnixStart = '1970-01-01 00:00:00'
-                    $MalwarebytesUpdateDate = $UnixStart.AddSeconds($UpdateConfigFile.db_pub_date)
-
-                    if ($MalwarebytesUpdateDate) {
-                        $DefinitionDate = Get-Date ($MalwarebytesUpdateDate.ToLocalTime())
-                    }
-                }
-            }
-            "Sentinel Agent" {
-                $DefinitionStatus = "Not Applicable"
-            }
-            "Sophos Intercept X" {
-                if (Test-Path -Path "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Sophos\EndpointDefense\Acknowledged" -ErrorAction SilentlyContinue) {
-                    $SophosVirusData = Get-ItemProperty -Path "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Sophos\EndpointDefense\Acknowledged" -Name "VirusDataVersion" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty VirusDataVersion -ErrorAction SilentlyContinue
-                }
-
-                if ($SophosVirusData) {
-                    $DefinitionDate = [datetime]::parseexact($SophosVirusData, 'yyyyMMddHH', $null)
-                }
-            }
-            "Trend Micro Maximum Security" {
-                if (Test-Path -Path "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\TrendMicro\AMSP" -ErrorAction SilentlyContinue) {
-                    $MaximumSecurityInstallTime = Get-ItemProperty -Path "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\TrendMicro\AMSP" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty InstallTime -ErrorAction SilentlyContinue
-                    
-                }
-
-                if ($MaximumSecurityInstallTime) {
-                    [datetime]$UnixStart = '1970-01-01 00:00:00'
-                    $MaximumSecurityUnixDate = $UnixStart.AddSeconds($MaximumSecurityInstallTime)
-
-                    if ($MaximumSecurityUnixDate) {
-                        $DefinitionDate = Get-Date ($MaximumSecurityUnixDate.ToLocalTime())
-                    }
-                }
-            }
-            "Trend Micro Security Agent" {
-                if (Test-Path -Path "${env:ProgramFiles(x86)}\Trend Micro\Security Agent\ofcscan.ini" -ErrorAction SilentlyContinue) {
-                    $ofcscanFile = Get-Content -Path "${env:ProgramFiles(x86)}\Trend Micro\Security Agent\ofcscan.ini"
-                    
-                }
-
-                if ($ofcscanFile) {
-                    $ofcscanFile | ForEach-Object {
-                        if ($_ -match '^\[(.+)\]') {
-                            $Section = $_
-                        }
-
-                        if ($Section -match 'INI_PROGRAM_VERSION_SECTION' -and $_ -match '^Pattern_Last_Update') {
-                            $ofcscanDateString = ($_ -replace 'Pattern_Last_Update=' -replace '').Trim()
-                            $ofcscanDateString = $ofcscanDateString -replace "[^0-9]"
-                        }
-                    }
-
-                    if ($ofcscanDateString) {
-                        $DefinitionDate = [datetime]::parseexact($ofcscanDateString, 'yyyyMMddHHmmss', $null)
-                    }
-                }
-            }
-            "VIPRE Business Agent" {
-                if (Test-Path -Path "$env:ProgramFiles\VIPRE Business Agent\Definitions\DefVer.txt") {
-                    $DefVerFile = Get-Content -Path "$env:ProgramFiles\VIPRE Business Agent\Definitions\DefVer.txt"
-                }
-
-                if ($DefVerFile) {
-                    $VipreDateString = ($DefVerFile -replace '.*,').Trim()
-
-                    if ($VipreDateString) {
-                        $DefinitionDate = Get-Date $VipreDateString
-                    }
-                }
-            }
-            "Webroot SecureAnywhere" {
-                $DefinitionStatus = "Not Applicable"
-            }
-            "Windows Defender" {
-                if ((Get-Command Get-MpComputerStatus -ErrorAction SilentlyContinue).Count -ne 0) {
-                    try { 
-                        Get-MpComputerStatus -ErrorAction Stop | Out-Null
-                        $Installed = $True
-                    }
-                    catch { 
-                        $Installed = $False
-                    }
-                }
-
-                if ($Installed) {
-                    if (!((Get-MpComputerStatus -ErrorAction SilentlyContinue).RealTimeProtectionEnabled)) {
-                        $RunningValue = "Not Running"
-                    }
-                    else {
-                        $RunningValue = "Running"
-                    }
-
-                    if ((Get-MpComputerStatus -ErrorAction SilentlyContinue).AntivirusSignatureLastUpdated) {
-                        $DefinitionDate = (Get-MpComputerStatus).AntivirusSignatureLastUpdated
-                    }
-                    else {
-                        $DefinitionStatus = "Outdated"
-                    }
+function Get-DefinitionDate {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [PSCustomObject]$AntiVirus
+    )
+    
+    $DefinitionDate = $null
+    
+    switch ($AntiVirus.Name) {
+        "Avast Antivirus" {
+            $DefFile = "$env:ProgramFiles\Avast Software\Avast\defs\aswdefs.ini"
+            if (Test-Path $DefFile) {
+                $Content = (Get-Content $DefFile -ErrorAction SilentlyContinue) -replace '[^0-9]' | Where-Object { $_ }
+                if ($Content) {
+                    $DefinitionDate = [datetime]::ParseExact($Content, 'yyMMddHH', $null)
+                    $DefinitionDate = [System.TimeZoneInfo]::ConvertTimeFromUtc($DefinitionDate, [System.TimeZoneInfo]::Local)
                 }
             }
         }
-
-        # Determine if the antivirus is installed based on various check
-        if (!$Installed -and ($InstallPathExists -or $InstallationKey -or $RunningProcesses -eq "Running" -or $RunningServices -eq "Running")) {
-
-            $RequireInstallationKey = "Trend Micro Maximum Security", "Trend Micro Security Agent", "Trend Micro Apex One Antivirus"
-            if ($RequireInstallationKey -contains $AntiVirus.Name -and !$InstallationKey) {
-                $Installed = $False
-            }
-            else {
-                $Installed = $True
-            }
-        }
-        elseif (!$Installed) {
-            $Installed = $False
-        }
-
-        # Determine the running status based on process and service status
-        if ($RunningProcesses -eq "Running" -and $RunningServices -eq "Running") {
-            $RunningValue = "Running"
-        }
-        elseif (!$RunningProcesses -or !$RunningServices) {
-            $RunningValue = "Unable to Determine"
-        }
-        else {
-            $RunningValue = "Not Running"
-        }
-
-        # Determine the definition status based on the date
-        if ($DefinitionDate) {
-            if ((Get-Date).AddDays(-$DaysUntilConsideredOutdated) -ge $DefinitionDate) {
-                $DefinitionStatus = "Outdated"
-            }
-            elseif ((Get-Date).AddDays(-$DaysUntilConsideredOutdated) -lt $DefinitionDate) {
-                $DefinitionStatus = "Up To Date"
-            }
-            else {
-                $DefinitionStatus = "Unable to Determine"
-            }
-        }
-        elseif (!$DefinitionStatus) {
-            $DefinitionStatus = "Unable to Determine"
-        }
-
-        # Add the antivirus information to the list
-        if ($Installed) {
-            $DetectedAVs.Add(
-                [PSCustomObject]@{
-                    "Antivirus Name"    = $AntiVirus.Name
-                    Status              = $RunningValue
-                    "Definition Status" = $DefinitionStatus
-                    "Definition Date"   = if ($DefinitionDate) { "$($DefinitionDate.ToShortDateString())" }
+        "AVG Antivirus Business Edition" {
+            $DefFile = "$env:ProgramFiles\AVG\Antivirus\defs\aswdefs.ini"
+            if (Test-Path $DefFile) {
+                $Content = (Get-Content $DefFile -ErrorAction SilentlyContinue) -replace '[^0-9]' | Where-Object { $_ }
+                if ($Content) {
+                    $DefinitionDate = [datetime]::ParseExact($Content, 'yyMMddHH', $null)
+                    $DefinitionDate = [System.TimeZoneInfo]::ConvertTimeFromUtc($DefinitionDate, [System.TimeZoneInfo]::Local)
                 }
+            }
+        }
+        "Bitdefender Endpoint Security" {
+            $DefFiles = @(
+                "$env:ProgramFiles\Bitdefender\Endpoint Security\update_statistics.xml",
+                "$env:ProgramFiles\Bitdefender\Bitdefender Endpoint Security\update_statistics.xml"
             )
+            
+            foreach ($DefFile in $DefFiles) {
+                if (Test-Path $DefFile) {
+                    try {
+                        [xml]$UpdateStats = Get-Content $DefFile
+                        $UnixTime = $UpdateStats.UpdateStatistics.Antivirus.Update.succtime
+                        if ($UnixTime) {
+                            $UnixStart = [datetime]'1970-01-01 00:00:00'
+                            $DefinitionDate = $UnixStart.AddSeconds($UnixTime).ToLocalTime()
+                            break
+                        }
+                    } catch {
+                        Write-Log "Failed to parse Bitdefender XML: $_" -Level DEBUG
+                    }
+                }
+            }
+        }
+        "ESET Security" {
+            try {
+                $RegPath = "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\ESET\ESET Security\CurrentVersion\Info"
+                $ScannerVersion = (Get-ItemProperty $RegPath -ErrorAction Stop).ScannerVersion
+                if ($ScannerVersion -match '\((\d{8})\)') {
+                    $DefinitionDate = [datetime]::ParseExact($Matches[1], 'yyyyMMdd', $null)
+                }
+            } catch {}
+        }
+        "F-Secure" {
+            try {
+                $RegPath = "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\F-Secure\Ultralight\updates"
+                $Engines = Get-ChildItem $RegPath -ErrorAction SilentlyContinue
+                $LatestVersions = @()
+                
+                foreach ($Engine in $Engines) {
+                    $Versions = Get-ChildItem "Registry::$($Engine.Name)" -ErrorAction SilentlyContinue
+                    $Latest = ($Versions | Sort-Object Name -Descending | Select-Object -First 1).PSChildName
+                    if ($Latest) { $LatestVersions += [long]$Latest }
+                }
+                
+                if ($LatestVersions) {
+                    $LatestTimestamp = ($LatestVersions | Sort-Object -Descending)[0]
+                    $UnixStart = [datetime]'1970-01-01 00:00:00'
+                    $DefinitionDate = $UnixStart.AddSeconds($LatestTimestamp).ToLocalTime()
+                }
+            } catch {}
+        }
+        "Kaspersky Endpoint Security" {
+            $KESCli = Get-ChildItem "${env:ProgramFiles(x86)}\Kaspersky Lab\KES*\kescli.exe" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($KESCli) {
+                try {
+                    $TempFile = "$env:TEMP\KESdata.txt"
+                    $Process = Start-Process $KESCli.FullName -ArgumentList "--opswat","GetDefinitionState" -RedirectStandardOutput $TempFile -NoNewWindow -Wait -PassThru
+                    if ($Process.ExitCode -eq 0) {
+                        $Data = Get-Content $TempFile -ErrorAction SilentlyContinue
+                        if ($Data -match '\d+/\d+/\d{4}') {
+                            $DefinitionDate = [datetime]::ParseExact($Data, 'M/d/yyyy H:m:s', $null).ToLocalTime()
+                        }
+                    }
+                    Remove-Item $TempFile -Force -ErrorAction SilentlyContinue
+                } catch {}
+            }
+        }
+        "MalwareBytes" {
+            $ConfigFile = "$env:ProgramData\Malwarebytes\MBAMService\config\UpdateControllerConfig.json"
+            if (Test-Path $ConfigFile) {
+                try {
+                    $Config = Get-Content $ConfigFile | Select-Object -Skip 1 | ConvertFrom-Json
+                    if ($Config.db_pub_date) {
+                        $UnixStart = [datetime]'1970-01-01 00:00:00'
+                        $DefinitionDate = $UnixStart.AddSeconds($Config.db_pub_date).ToLocalTime()
+                    }
+                } catch {}
+            }
+        }
+        "Sophos Intercept X" {
+            try {
+                $RegPath = "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Sophos\EndpointDefense\Acknowledged"
+                $VirusData = (Get-ItemProperty $RegPath -ErrorAction Stop).VirusDataVersion
+                if ($VirusData) {
+                    $DefinitionDate = [datetime]::ParseExact($VirusData, 'yyyyMMddHH', $null)
+                }
+            } catch {}
+        }
+        "Trend Micro Maximum Security" {
+            try {
+                $InstallTime = (Get-ItemProperty "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\TrendMicro\AMSP" -ErrorAction Stop).InstallTime
+                if ($InstallTime) {
+                    $UnixStart = [datetime]'1970-01-01 00:00:00'
+                    $DefinitionDate = $UnixStart.AddSeconds($InstallTime).ToLocalTime()
+                }
+            } catch {}
+        }
+        "Trend Micro Security Agent" {
+            $IniFile = "${env:ProgramFiles(x86)}\Trend Micro\Security Agent\ofcscan.ini"
+            if (Test-Path $IniFile) {
+                try {
+                    $Section = ""
+                    Get-Content $IniFile | ForEach-Object {
+                        if ($_ -match '^\[(.+)\]') { $Section = $_ }
+                        if ($Section -match 'INI_PROGRAM_VERSION_SECTION' -and $_ -match '^Pattern_Last_Update=(.+)') {
+                            $DateString = ($Matches[1] -replace '[^0-9]').Trim()
+                            if ($DateString) {
+                                $DefinitionDate = [datetime]::ParseExact($DateString, 'yyyyMMddHHmmss', $null)
+                            }
+                        }
+                    }
+                } catch {}
+            }
+        }
+        "VIPRE Business Agent" {
+            $DefFile = "$env:ProgramFiles\VIPRE Business Agent\Definitions\DefVer.txt"
+            if (Test-Path $DefFile) {
+                try {
+                    $Content = (Get-Content $DefFile -ErrorAction Stop) -replace '.*,' | Where-Object { $_ }
+                    if ($Content) {
+                        $DefinitionDate = Get-Date $Content.Trim()
+                    }
+                } catch {}
+            }
+        }
+        "Windows Defender" {
+            try {
+                if (Get-Command Get-MpComputerStatus -ErrorAction SilentlyContinue) {
+                    $Status = Get-MpComputerStatus -ErrorAction Stop
+                    $DefinitionDate = $Status.AntivirusSignatureLastUpdated
+                }
+            } catch {}
         }
     }
+    
+    return $DefinitionDate
+}
 
-    # Check if no antivirus products were detected
+# ============================================================================
+# MAIN EXECUTION
+# ============================================================================
+
+try {
+    Write-Log "========================================" -Level INFO
+    Write-Log "Starting: $ScriptName v$ScriptVersion" -Level INFO
+    Write-Log "========================================" -Level INFO
+    
+    if (-not (Test-IsElevated)) {
+        throw "Administrator privileges required"
+    }
+    
+    Write-Log "Detection threshold: $DaysUntilOutdated days" -Level INFO
+    
+    $DetectedAVs = New-Object System.Collections.Generic.List[Object]
+    
+    # Query Security Center (workstations only)
+    $SecurityCenterAVs = Get-SecurityCenterAV
+    
+    if ($SecurityCenterAVs) {
+        Write-Log "Found $($SecurityCenterAVs.Count) antivirus product(s) in Security Center" -Level INFO
+        
+        foreach ($AV in $SecurityCenterAVs) {
+            $State = $AV.ProductState
+            $RunningStatus = if (($State -band 0xF000) -eq 0x1000) { "Running" } else { "Not Running" }
+            $UpToDate = if (($State -band 0x00F0) -eq 0x00) { "Up to Date" } else { "Outdated" }
+            $DefDate = if ($AV.timestamp) { (Get-Date $AV.timestamp).ToShortDateString() } else { "Unknown" }
+            
+            $DetectedAVs.Add([PSCustomObject]@{
+                "Antivirus Name" = $AV.displayName
+                "Status" = $RunningStatus
+                "Definition Status" = $UpToDate
+                "Definition Date" = $DefDate
+            })
+        }
+    }
+    
+    # Manual detection for all products
+    foreach ($AV in $AVsToCheck) {
+        $Installed = $false
+        $RunningStatus = "Unknown"
+        
+        # Check installation key
+        if ($AV.ControlPanelName) {
+            foreach ($Name in $AV.ControlPanelName) {
+                if (Find-InstallKey -DisplayName $Name) {
+                    $Installed = $true
+                    break
+                }
+            }
+        }
+        
+        # Check install path
+        if (-not $Installed -and $AV.InstallPath) {
+            foreach ($Path in $AV.InstallPath) {
+                if (Test-Path $Path -ErrorAction SilentlyContinue) {
+                    $Item = Get-Item $Path -ErrorAction SilentlyContinue
+                    if ($Item -and ($Item.PSIsContainer -eq $false -or (Get-ChildItem $Path -ErrorAction SilentlyContinue))) {
+                        $Installed = $true
+                        break
+                    }
+                }
+            }
+        }
+        
+        # Check processes
+        if ($AV.RelevantProcesses) {
+            $ProcessRunning = $false
+            foreach ($Proc in $AV.RelevantProcesses) {
+                if (Get-Process $Proc -ErrorAction SilentlyContinue) {
+                    $ProcessRunning = $true
+                    break
+                }
+            }
+            if ($ProcessRunning) {
+                $Installed = $true
+                $RunningStatus = "Running"
+            }
+        }
+        
+        # Check services
+        if ($AV.RelevantServices) {
+            $ServiceRunning = $false
+            foreach ($Svc in $AV.RelevantServices) {
+                if (Get-Service $Svc -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Running' }) {
+                    $ServiceRunning = $true
+                    break
+                }
+            }
+            if ($ServiceRunning) {
+                $Installed = $true
+                if ($RunningStatus -eq "Unknown") {
+                    $RunningStatus = "Running"
+                }
+            }
+        }
+        
+        if ($Installed) {
+            # Get definition date
+            $DefDate = Get-DefinitionDate -AntiVirus $AV
+            
+            # Determine definition status
+            $DefStatus = if ($AV.Name -in @("CrowdStrike","Elastic Defend","Huntress","Sentinel Agent","Webroot SecureAnywhere")) {
+                "Not Applicable"
+            } elseif ($DefDate) {
+                if ((Get-Date).AddDays(-$DaysUntilOutdated) -ge $DefDate) {
+                    "Outdated"
+                } else {
+                    "Up to Date"
+                }
+            } else {
+                "Unknown"
+            }
+            
+            # Skip if already detected via Security Center
+            if ($DetectedAVs."Antivirus Name" -notcontains $AV.Name) {
+                $DetectedAVs.Add([PSCustomObject]@{
+                    "Antivirus Name" = $AV.Name
+                    "Status" = $RunningStatus
+                    "Definition Status" = $DefStatus
+                    "Definition Date" = if ($DefDate) { $DefDate.ToShortDateString() } else { "Unknown" }
+                })
+            }
+        }
+    }
+    
+    # Display results
+    Write-Log "" -Level INFO
     if ($DetectedAVs.Count -eq 0) {
-        Write-Host "[Alert] No antivirus was detected."
+        Write-Log "No antivirus software detected" -Level WARN
+    } else {
+        Write-Log "Detected $($DetectedAVs.Count) antivirus product(s):" -Level SUCCESS
+        $DetectedAVs | Sort-Object "Antivirus Name" | Format-Table -AutoSize | Out-String | Write-Output
     }
-
-    if ($WYSIWYGCustomField) {
-        try {
-            Write-Host "`nAttempting to set Custom Field '$WYSIWYGCustomField'."
-
-            if ($DetectedAVs.Count -eq 0) {
-                $AntivirusTable = "<h1 style='color: #D53948'>[Alert] No antivirus was detected.</h1>"
+    
+    # Update custom fields
+    if ($WYSIWYGField) {
+        $HTML = if ($DetectedAVs.Count -eq 0) {
+            "<h1 style='color: #D53948'>No antivirus detected</h1>"
+        } else {
+            $Table = $DetectedAVs | ConvertTo-Html -Fragment
+            $Table = $Table -replace "<th>","<th><b>" -replace "</th>","</b></th>"
+            $Table = $Table | ForEach-Object {
+                if ($_ -match "Outdated") { $_ -replace "<tr>","<tr class=danger>" } else { $_ }
             }
-            else {
-                $AntivirusTable = $DetectedAVs | ConvertTo-Html -Fragment
-                $AntivirusTable = $AntivirusTable -replace "<th>", "<th><b>" -replace "</th>", "</b></th>"
-
-                # Highlight the row if the antivirus is outdated
-                $AntiVirusTable = foreach ($row in $AntivirusTable) {
-                    if ($row -match "Outdated") {
-                        $row -replace "<tr>", "<tr class=danger>"
-                    }
-                    else {
-                        $row
-                    }
-                }
-
-                $AntivirusTable = "<div class='card flex-grow-1'>
-                            <div class='card-title-box'>
-                                <div class='card-title'><i class='fa-solid fa-shield-virus'></i>&nbsp;&nbsp;Detected Antivirus Details</div>
-                            </div>
-                            <div class='card-body' style='white-space: nowrap;'>
-                                $AntivirusTable
-                            </div>
-                        </div>"
-            }
-
-            # Set the custom field with the combined antivirus names
-            Set-CustomField -Name $WYSIWYGCustomField -Value $AntivirusTable -Type "WYSIWYG"
-            Write-Host "Successfully set Custom Field '$WYSIWYGCustomField'!"
+            "<div class='card flex-grow-1'><div class='card-title-box'><div class='card-title'><i class='fa-solid fa-shield-virus'></i>&nbsp;&nbsp;Antivirus Status</div></div><div class='card-body' style='white-space: nowrap;'>$Table</div></div>"
         }
-        catch {
-            Write-Host "[Error] $($_.Exception.Message)"
-            $ExitCode = 1
-        }
+        Set-NinjaField -FieldName $WYSIWYGField -Value $HTML
     }
-
-    if ($NameCustomField) {
-        # Attempt to set the custom field for the antivirus names
-        try {
-            Write-Host "`nAttempting to set Custom Field '$NameCustomField'."
-
-            # Combine all antivirus names into a single string, separated by commas
-            $NameString = $DetectedAVs."Antivirus Name" -join ", "
-
-            if ($DetectedAVs.Count -eq 0) {
-                $NameString = "[Alert] No antivirus was detected."
-            }
-
-            # Set the custom field with the combined antivirus names
-            Set-CustomField -Name $NameCustomField -Value $NameString -Type "Text"
-            Write-Host "Successfully set Custom Field '$NameCustomField'!"
-        }
-        catch {
-            Write-Host "[Error] $($_.Exception.Message)"
-            $ExitCode = 1
-        }
+    
+    if ($NameField) {
+        $Names = if ($DetectedAVs.Count -eq 0) { "No antivirus detected" } else { ($DetectedAVs."Antivirus Name" -join ", ") }
+        Set-NinjaField -FieldName $NameField -Value $Names
     }
-
-    if ($StatusCustomField) {
-        # Attempt to set the custom field for the antivirus running status
-        try {
-            Write-Host "`nAttempting to set Custom Field '$StatusCustomField'."
-
-            # Combine all antivirus running statuses into a single string, separated by commas
-            $StatusString = $DetectedAVs.Status -join ", "
-
-            if ($DetectedAVs.Count -eq 0) {
-                $StatusString = "[Alert] No antivirus was detected."
-            }
-
-            # Set the custom field with the combined running statuses
-            Set-CustomField -Name $StatusCustomField -Value $StatusString -Type "Text"
-            Write-Host "Successfully set Custom Field '$StatusCustomField'!"
-        }
-        catch {
-            Write-Host "[Error] $($_.Exception.Message)"
-            $ExitCode = 1
-        }
+    
+    if ($StatusField) {
+        $Statuses = if ($DetectedAVs.Count -eq 0) { "No antivirus detected" } else { ($DetectedAVs.Status -join ", ") }
+        Set-NinjaField -FieldName $StatusField -Value $Statuses
     }
-
-    if ($DefinitionDateAndStatusCustomField) {
-        # Attempt to set the custom field for the antivirus definition status
-        try {
-            Write-Host "`nAttempting to set Custom Field '$DefinitionDateAndStatusCustomField'."
-
-            # Combine all antivirus running statuses into a single string, separated by commas
-            $DefinitionStrings = $DetectedAVs | ForEach-Object {
-                if ($_."Definition Date") {
+    
+    if ($DefinitionField) {
+        $Definitions = if ($DetectedAVs.Count -eq 0) {
+            "No antivirus detected"
+        } else {
+            ($DetectedAVs | ForEach-Object {
+                if ($_."Definition Date" -ne "Unknown") {
                     "$($_."Definition Date") | $($_."Definition Status")"
-                }
-                else {
+                } else {
                     $_."Definition Status"
                 }
-            }
-
-            $CustomFieldValue = $DefinitionStrings -join ", "
-
-            if ($DetectedAVs.Count -eq 0) {
-                $CustomFieldValue = "[Alert] No antivirus was detected."
-            }
-
-            # Set the custom field with the combined running statuses
-            Set-CustomField -Name $DefinitionDateAndStatusCustomField -Value $CustomFieldValue -Type "Text"
-            Write-Host "Successfully set Custom Field '$DefinitionDateAndStatusCustomField'!"
+            }) -join ", "
         }
-        catch {
-            Write-Host "[Error] $($_.Exception.Message)"
-            $ExitCode = 1
-        }
+        Set-NinjaField -FieldName $DefinitionField -Value $Definitions
     }
-
-    if ($DetectedAVs.Count -gt 0) {
-        Write-Host -Object ""
-        ($DetectedAVs | Sort-Object "Antivirus Name" | Format-Table -AutoSize | Out-String).Trim() | Write-Host
+    
+    Write-Log "Antivirus detection completed successfully" -Level SUCCESS
+    exit 0
+    
+} catch {
+    Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
+    exit 1
+    
+} finally {
+    $EndTime = Get-Date
+    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+    
+    Write-Log "========================================" -Level INFO
+    Write-Log "Execution Summary:" -Level INFO
+    Write-Log "  Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
+    Write-Log "  Products Detected: $($DetectedAVs.Count)" -Level INFO
+    Write-Log "  Errors: $script:ErrorCount" -Level INFO
+    Write-Log "  Warnings: $script:WarningCount" -Level INFO
+    if ($script:CLIFallbackCount -gt 0) {
+        Write-Log "  CLI Fallbacks: $script:CLIFallbackCount" -Level INFO
     }
-
-    exit $ExitCode
-}end {
-    
-    
-    
+    Write-Log "========================================" -Level INFO
 }

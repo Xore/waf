@@ -2,102 +2,124 @@
 
 <#
 .SYNOPSIS
-    Reports the active power plan and active power settings. Outputs to activity log and customfield "activePowerPlan" and "activePowerSettings" by default.
+    Reports the active power plan and power settings.
+
 .DESCRIPTION
-    Reports the active power plan and active power settings. Outputs to activity log and customfield "activePowerPlan" and "activePowerSettings" by default.
+    This script retrieves and reports the currently active Windows power plan along with its
+    detailed power settings for both AC (plugged in) and DC (battery) modes. The report includes
+    settings like sleep timers, display brightness, processor states, and more.
+    
+    The script provides comprehensive power configuration information useful for:
+    - System auditing and compliance
+    - Troubleshooting power-related issues
+    - Documenting system configurations
+    - Monitoring power policy enforcement
+
+.PARAMETER PowerPlanCustomFieldName
+    Name of the custom field to save the active power plan name.
+    Default: activePowerPlan
+
+.PARAMETER PowerSettingsCustomFieldName
+    Name of the custom field to save the detailed power settings.
+    Default: activePowerSettings
+
 .EXAMPLE
-    (No Parameters)
-
+    .\Power-ActivePlanReport.ps1
+    
     Active Power Plan: Balanced 
-
-    ### Current Power Settings For Balanced ### 
-
+    
+    Current Power Settings For Balanced
+    
     Name                          When Plugged In                 When On Battery                  Units  
     ----                          ---------------                 ---------------                  -----  
     Allow hybrid sleep            Off                             Off                              N/A    
-    Allow wake timers             Important Wake Timers Only      Disable                          N/A    
-    Critical battery action       Do nothing                      Do nothing                       N/A    
-    Critical battery level        5                               5                                %      
-    Critical battery notification On                              On                               N/A    
-    Dimmed display brightness     50                              50                               %      
     Display brightness            100                             40                               %      
-    Enable adaptive brightness    Off                             Off                              N/A    
     Hibernate after               10800                           10800                            Seconds
-    JavaScript Timer Frequency    Maximum Performance             Maximum Power Savings            N/A    
-    Link State Power Management   Maximum power savings           Maximum power savings            N/A    
-    Low battery action            Do nothing                      Do nothing                       N/A    
-    Low battery level             10                              10                               %      
-    Low battery notification      On                              On                               N/A    
-    Maximum processor state       100                             100                              %      
-    Minimum processor state       5                               5                                %      
-    Power Saving Mode             Maximum Performance             Medium Power Saving              N/A    
-    Reserve battery level         7                               7                                %      
     Sleep after                   1800                            900                              Seconds
-    Slide show                    Available                       Paused                           N/A    
-    Start menu power button       Sleep                           Sleep                            N/A    
-    System cooling policy         Active                          Passive                          N/A    
     Turn off display after        600                             300                              Seconds
-    Turn off hard disk after      1200                            600                              Seconds
-    USB selective suspend setting Enabled                         Enabled                          N/A    
-    Video playback quality bias   Video playback performance bias Video playback power-saving bias N/A    
-    When playing video            Optimize video quality          Balanced                         N/A    
-    When sharing media            Prevent idling to sleep         Allow the computer to sleep      N/A    
 
-PARAMETER: -PowerPlanCustomFieldName "ReplaceMeWithAnyMultilineCustomField"
-    Replace the quoted text with any custom field name you'd like the script to write the active power plan to.
-PARAMETER: -PowerSettingsCustomFieldName "ReplaceMeWithAnyTextCustomField"
-    Replace the quoted text with any custom field name you'd like the script to write the active power settings to.
+.EXAMPLE
+    .\Power-ActivePlanReport.ps1 -PowerPlanCustomFieldName "currentPowerPlan" -PowerSettingsCustomFieldName "powerConfig"
+    
+    Reports power plan and saves results to specified custom fields.
+
 .OUTPUTS
-    None
+    None. Status information is written to the console.
+
 .NOTES
     Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Version: 1.1
-    Release Notes: Renamed script and added Script Variable support
+    Release notes: Upgraded to V3 standards with modern PowerShell conventions
+    Requires: Administrator privileges to retrieve all power settings
+    
+.COMPONENT
+    powercfg.exe - Windows power configuration utility
+    
+.LINK
+    https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/powercfg-command-line-options
+
+.FUNCTIONALITY
+    - Retrieves active Windows power plan
+    - Enumerates all power settings and their values
+    - Reports AC and DC power configuration differences
+    - Converts hex values to human-readable format
+    - Maps numeric settings to friendly names
+    - Saves results to NinjaRMM custom fields
+    - Provides formatted console output
 #>
 
 [CmdletBinding()]
-param (
+param(
     [Parameter()]
-    [String]$PowerPlanCustomFieldName = "activePowerPlan",
+    [string]$PowerPlanCustomFieldName = 'activePowerPlan',
+    
     [Parameter()]
-    [String]$PowerSettingsCustomFieldName = "activePowerSettings"
+    [string]$PowerSettingsCustomFieldName = 'activePowerSettings'
 )
 
 begin {
+    $ErrorActionPreference = 'Stop'
+    $ProgressPreference = 'SilentlyContinue'
+    
+    Set-StrictMode -Version Latest
+    
+    $script:ExitCode = 0
 
-    # If Script forms are used replace parameters with their value.
-    if ($env:powerPlanCustomFieldName -and $env:powerPlanCustomFieldName -notlike "null" ) { $PowerPlanCustomFieldName = $env:powerPlanCustomFieldName }
-    if ($env:powerSettingsCustomFieldName -and $env:powerSettingsCustomFieldName -notlike "null") { $PowerSettingsCustomFieldName = $env:powerSettingsCustomFieldName }
-
-    # Script will fail if not elevated (some setting values are hidden to non-admins)
-    function Test-IsElevated {
-        $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-        $p = New-Object System.Security.Principal.WindowsPrincipal($id)
-        $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+    if ($env:powerPlanCustomFieldName -and $env:powerPlanCustomFieldName -notlike 'null') {
+        $PowerPlanCustomFieldName = $env:powerPlanCustomFieldName
+    }
+    if ($env:powerSettingsCustomFieldName -and $env:powerSettingsCustomFieldName -notlike 'null') {
+        $PowerSettingsCustomFieldName = $env:powerSettingsCustomFieldName
     }
 
-    # Get's the active power plan
+    function Test-IsElevated {
+        $Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        $Principal = New-Object System.Security.Principal.WindowsPrincipal($Identity)
+        $Principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+    }
+
     function Get-PowerPlan {
         [CmdletBinding()]
         param(
             [Parameter()]
-            [Switch]$Active,
+            [switch]$Active,
+            
             [Parameter()]
-            [String]$Name
+            [string]$Name
         )
+        
         if ($Active) {
-            $PowerPlan = powercfg.exe /getactivescheme
-            $PowerPlan = ($PowerPlan -replace "Power Scheme GUID:" -split "(?=\S{8}-\S{4}-\S{4}-\S{4}-\S{12})" -split '\(' -replace '\)') | Where-Object { $_ -ne " " }
+            $Output = powercfg.exe /getactivescheme
+            $Output = ($Output -replace 'Power Scheme GUID:' -split '(?=\S{8}-\S{4}-\S{4}-\S{4}-\S{12})' -split '\(' -replace '\)') | Where-Object { $_ -ne ' ' }
             $PowerPlan = @(
                 [PSCustomObject]@{
-                    Name = $($PowerPlan | Where-Object { $_ -notmatch "\S{8}-\S{4}-\S{4}-\S{4}-\S{12}" })
-                    GUID = $($PowerPlan | Where-Object { $_ -match "\S{8}-\S{4}-\S{4}-\S{4}-\S{12}" })
+                    Name = $($Output | Where-Object { $_ -notmatch '\S{8}-\S{4}-\S{4}-\S{4}-\S{12}' }).Trim()
+                    GUID = $($Output | Where-Object { $_ -match '\S{8}-\S{4}-\S{4}-\S{4}-\S{12}' }).Trim()
                 }
             )
         }
         else {
-            $PowerPlan = powercfg.exe /L
-            $PowerPlan = $PowerPlan -replace '\s{2,}', ',' -replace ' \*', ',True' -replace "Existing Power Schemes \(\* Active\)", "GUID,Name,Active" -replace "-{2,}" -replace "Power Scheme GUID: " -replace '\(' -replace '\)' | Where-Object { $_ } | ConvertFrom-Csv
+            $Output = powercfg.exe /L
+            $PowerPlan = $Output -replace '\s{2,}', ',' -replace ' \*', ',True' -replace 'Existing Power Schemes \(\* Active\)', 'GUID,Name,Active' -replace '-{2,}' -replace 'Power Scheme GUID: ' -replace '\(' -replace '\)' | Where-Object { $_ } | ConvertFrom-Csv
         }
 
         if ($Name) {
@@ -108,142 +130,168 @@ begin {
         }
     }
 
-    # Gets all the powersettings for the current plan
     function Get-PowerSettings {
         [CmdletBinding()]
         param()
-        process {
+        
+        $PowerSubgroups = powercfg.exe /Q | Select-String 'Subgroup GUID:'
+        $PowerSubgroups = ($PowerSubgroups -replace 'Subgroup GUID:' -replace '\(' -replace '\)').Trim() | ForEach-Object {
+            @(
+                [PSCustomObject]@{
+                    SubName = $($_ -split '\s{2,}' | Where-Object { $_ -notmatch '(\S{8}-\S{4}-\S{4}-\S{4}-\S{12})' })
+                    SubGUID = $($_ -split '\s{2,}' | Where-Object { $_ -match '(\S{8}-\S{4}-\S{4}-\S{4}-\S{12})' })
+                }
+            )
+        }
 
-            # Grabs all the powersetting subroups first as that's require info to grab the actual setting values
-            $PowerSubgroups = powercfg.exe /Q | Select-String "Subgroup GUID:"
-            $PowerSubgroups = ($PowerSubgroups -replace "Subgroup GUID:" -replace '\(' -replace '\)').trim() | ForEach-Object { 
+        $PowerSettings = foreach ($Subgroup in $PowerSubgroups) {
+            $Settings = powercfg.exe /Q SCHEME_CURRENT $Subgroup.SubGUID | Select-String 'Power Setting GUID:'
+            ($Settings -replace 'Power Setting GUID:' -replace '\(' -replace '\)').Trim() | ForEach-Object {
                 @(
                     [PSCustomObject]@{
-                        SubName = $($_ -split "\s{2,}" | Where-Object { $_ -notmatch "(\S{8}-\S{4}-\S{4}-\S{4}-\S{12})" })
-                        SubGUID = $($_ -split "\s{2,}" | Where-Object { $_ -match "(\S{8}-\S{4}-\S{4}-\S{4}-\S{12})" })
+                        Name    = $($_ -split '\s{2,}' | Where-Object { $_ -notmatch '(\S{8}-\S{4}-\S{4}-\S{4}-\S{12})' })
+                        GUID    = $($_ -split '\s{2,}' | Where-Object { $_ -match '(\S{8}-\S{4}-\S{4}-\S{4}-\S{12})' })
+                        SubName = $Subgroup.SubName
+                        SubGUID = $Subgroup.SubGUID
                     }
                 )
             }
+        }
 
-            # From each subgroup we'll get a list of every power setting
-            $PowerSettings = ForEach ($Subgroup in $PowerSubgroups) {
-                $Settings = powercfg.exe /Q SCHEME_CURRENT $Subgroup.SubGUID | Select-String "Power Setting GUID:"
-                ($Settings -replace "Power Setting GUID:" -replace '\(' -replace '\)').trim() | ForEach-Object {
-                    @(
-                        [PSCustomObject]@{
-                            Name    = $($_ -split "\s{2,}" | Where-Object { $_ -notmatch "(\S{8}-\S{4}-\S{4}-\S{4}-\S{12})" })
-                            GUID    = $($_ -split "\s{2,}" | Where-Object { $_ -match "(\S{8}-\S{4}-\S{4}-\S{4}-\S{12})" })
-                            SubName = $Subgroup.SubName
-                            SubGUID = $Subgroup.SubGUID
-                        }
-                    )
+        foreach ($PowerSetting in $PowerSettings) {
+            $ACValue = powercfg.exe /Q SCHEME_CURRENT $PowerSetting.SubGUID $PowerSetting.GUID | Select-String 'Current AC Power Setting Index:'
+            $ACValue = ($ACValue -replace 'Current AC Power Setting Index:' -replace '\(' -replace '\)').Trim()
+
+            $DCValue = powercfg.exe /Q SCHEME_CURRENT $PowerSetting.SubGUID $PowerSetting.GUID | Select-String 'Current DC Power Setting Index:'
+            $DCValue = ($DCValue -replace 'Current DC Power Setting Index:' -replace '\(' -replace '\)').Trim()
+
+            $ACValue = [int32]$ACValue
+            $DCValue = [int32]$DCValue
+            
+            $FriendlyName = powercfg.exe /Q SCHEME_CURRENT $PowerSetting.SubGUID $PowerSetting.GUID | Select-String 'Possible Setting Friendly Name:'
+            if ($FriendlyName) {
+                $Indexes = powercfg.exe /Q SCHEME_CURRENT $PowerSetting.SubGUID $PowerSetting.GUID | Select-String 'Possible Setting Index:'
+                $Indexes = $Indexes | ForEach-Object { ($_ -replace 'Possible Setting Index:').Trim() }
+
+                $FriendlyNames = powercfg.exe /Q SCHEME_CURRENT $PowerSetting.SubGUID $PowerSetting.GUID | Select-String 'Possible Setting Friendly Name:'
+                $FriendlyNames = $FriendlyNames | ForEach-Object { ($_ -replace 'Possible Setting Friendly Name:').Trim() }
+
+                $FriendlyOptions = for ($i = 0; $i -lt $FriendlyNames.Count; $i++) {
+                    [PSCustomObject]@{
+                        Name  = $FriendlyNames[$i]
+                        Index = $Indexes[$i]
+                    }
                 }
+
+                $ACValue = $FriendlyOptions | Where-Object { [int32]$_.Index -eq $ACValue } | Select-Object -ExpandProperty Name
+                $DCValue = $FriendlyOptions | Where-Object { [int32]$_.Index -eq $DCValue } | Select-Object -ExpandProperty Name
+
+                $Units = 'N/A'
+            }
+            else {
+                $Units = powercfg.exe /Q SCHEME_CURRENT $PowerSetting.SubGUID $PowerSetting.GUID | Select-String 'Possible Settings units:'
+                $Units = ($Units -replace 'Possible Settings units:' -replace '\(' -replace '\)').Trim()
             }
 
-            # Finally we'll parse out the actual power setting values based on the previously retrieved subgroup guid and setting guid
-            ForEach ($PowerSetting in $PowerSettings) {
-                # Windows has a different value/setting for both plugged in (AC) and battery (DC) 
-                $ACValue = powercfg.exe /Q SCHEME_CURRENT $PowerSetting.SubGUID $PowerSetting.GUID | Select-String "Current AC Power Setting Index:" 
-                $ACValue = ($ACValue -replace "Current AC Power Setting Index:" -replace '\(' -replace '\)').trim()
-
-                $DCValue = powercfg.exe /Q SCHEME_CURRENT $PowerSetting.SubGUID $PowerSetting.GUID | Select-String "Current DC Power Setting Index:"
-                $DCValue = ($DCValue -replace "Current DC Power Setting Index:" -replace '\(' -replace '\)').trim()
-
-                # The values are always in hex so we'll need to convert them into integers to make them easier to understand
-                $ACValue = [int32]$ACValue
-                $DCValue = [int32]$DCValue
-                
-                # Some settings correspond to an action rather than a certain percentage level or a number of seconds. These cases always have 
-                # the pharse "Possible Setting Friendly Name"
-                $FriendlyName = powercfg.exe /Q SCHEME_CURRENT $PowerSetting.SubGUID $PowerSetting.GUID | Select-String "Possible Setting Friendly Name:"
-                if ($FriendlyName) {
-                    # Since the friendly name, index and current value are stored seperately we'll have to parse them out individually
-                    $Indexs = powercfg.exe /Q SCHEME_CURRENT $PowerSetting.SubGUID $PowerSetting.GUID | Select-String "Possible Setting Index:"
-                    $Indexs = $Indexs | ForEach-Object { ($_ -replace "Possible Setting Index:").trim() }
-
-                    $FriendlyNames = powercfg.exe /Q SCHEME_CURRENT $PowerSetting.SubGUID $PowerSetting.GUID | Select-String "Possible Setting Friendly Name:"
-                    $FriendlyNames = $FriendlyNames | ForEach-Object { ($_ -replace "Possible Setting Friendly Name:").trim() }
-
-                    # Once parsed the FriendlyNames and their index's should be the same number and one is always followed by the other.
-                    # So to combine them we just need to loop through them in order, this'll give us a more Powershell friendly object
-                    $FriendlyOptions = For ($i = 0; $i -lt $FriendlyNames.Count; $i++) {
-                        [PSCustomObject]@{
-                            Name  = $FriendlyNames[$i]
-                            Index = $Indexs[$i]
-                        }
-                    }
-
-                    # Now that we have the object figuring out which action is active and what it does is a piece of cake. 
-                    # Though we'll have to convert the index to an integer to make everything match up easy.
-                    $ACValue = $FriendlyOptions | Where-Object { [int32]$_.Index -eq $ACValue } | Select-Object Name -ExpandProperty Name
-                    $DCValue = $FriendlyOptions | Where-Object { [int32]$_.Index -eq $DCValue } | Select-Object Name -ExpandProperty Name
-
-                    # There's no units to accompany these actions
-                    $Units = "N/A"
-                }
-                else {
-                    # Everything else is either a percent or a number of seconds we'll save that for later
-                    $Units = powercfg.exe /Q SCHEME_CURRENT $PowerSetting.SubGUID $PowerSetting.GUID | Select-String "Possible Settings units:"
-                    $Units = ($Units -replace "Possible Settings units:" -replace '\(' -replace '\)').trim()
-                }
-
-                # Lastly we format our findings into a nice firendly PowerShell Object
-                [PSCustomObject]@{
-                    Name              = $PowerSetting.Name
-                    GUID              = $PowerSetting.GUID
-                    "When Plugged In" = $ACValue
-                    "When On Battery" = $DCValue
-                    Units             = $Units
-                    SubName           = $PowerSetting.SubName
-                    SubGUID           = $PowerSetting.SubGUID
-                }
+            [PSCustomObject]@{
+                Name              = $PowerSetting.Name
+                GUID              = $PowerSetting.GUID
+                'When Plugged In' = $ACValue
+                'When On Battery' = $DCValue
+                Units             = $Units
+                SubName           = $PowerSetting.SubName
+                SubGUID           = $PowerSetting.SubGUID
             }
         }
     }
+
+    function Set-NinjaProperty {
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$Name,
+            
+            [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+            $Value
+        )
+        
+        $Characters = ($Value | Out-String | Measure-Object -Character).Characters
+        if ($Characters -ge 10000) {
+            throw "Character limit exceeded: value contains $Characters characters (maximum: 10000)"
+        }
+        
+        try {
+            $null = Ninja-Property-Set-Piped -Name $Name -Value $Value 2>&1
+        }
+        catch {
+            throw "Failed to set custom field '$Name': $_"
+        }
+    }
 }
+
 process {
-    # If not elevated exit the script.
-    if (-not (Test-IsElevated)) {
-        Write-Error -Message "Access Denied. Please run with Administrator privileges."
-        exit 1
+    try {
+        if (-not (Test-IsElevated)) {
+            Write-Host '[Error] Access Denied. Please run with Administrator privileges.'
+            $script:ExitCode = 1
+            return
+        }
+
+        Write-Host '[Info] Retrieving active power plan...'
+        $ActivePowerPlan = Get-PowerPlan -Active | Select-Object -ExpandProperty Name
+
+        if (-not $ActivePowerPlan) {
+            Write-Host '[Error] Unable to retrieve active power plan'
+            $script:ExitCode = 1
+            return
+        }
+
+        Write-Host "[Info] Active Power Plan: $ActivePowerPlan"
+
+        Write-Host '[Info] Retrieving power settings...'
+        $CurrentPowerSettings = Get-PowerSettings | Sort-Object Name | Format-Table -Property Name, 'When Plugged In', 'When On Battery', Units -AutoSize | Out-String
+        
+        if (-not $CurrentPowerSettings) {
+            Write-Host '[Error] Unable to retrieve power settings'
+            $script:ExitCode = 1
+            return
+        }
+
+        $Report = New-Object System.Collections.Generic.List[string]
+        $Report.Add("Active Power Plan: $ActivePowerPlan")
+        $Report.Add("`n`n### Current Power Settings For $ActivePowerPlan ###")
+        $Report.Add("`n$CurrentPowerSettings")
+
+        Write-Host ($Report -join '')
+
+        if ($PowerPlanCustomFieldName) {
+            try {
+                $ActivePowerPlan | Set-NinjaProperty -Name $PowerPlanCustomFieldName
+                Write-Host "[Info] Saved power plan to custom field '$PowerPlanCustomFieldName'"
+            }
+            catch {
+                Write-Host "[Error] Failed to save power plan: $_"
+                $script:ExitCode = 1
+            }
+        }
+
+        if ($PowerSettingsCustomFieldName) {
+            try {
+                $CurrentPowerSettings | Set-NinjaProperty -Name $PowerSettingsCustomFieldName
+                Write-Host "[Info] Saved power settings to custom field '$PowerSettingsCustomFieldName'"
+            }
+            catch {
+                Write-Host "[Error] Failed to save power settings: $_"
+                $script:ExitCode = 1
+            }
+        }
     }
-
-    # Retrieve's the Active Power Plan to be used for the report
-    $ActivePowerPlan = Get-PowerPlan -Active | Select-Object Name -ExpandProperty Name
-
-    # If somehow we came up empty we should error out
-    if (-not $ActivePowerPlan) {
-        Write-Error "[Error] Unable to retrieve power plan!"
-        exit 1
-    }
-
-    # Retrieve's the current settings and formats them into a nice table. Organized by name for easy viewing.
-    $CurrentPowerSettings = Get-PowerSettings | Sort-Object Name | Format-Table -Property Name, 'When Plugged In', 'When On Battery', Units -AutoSize | Out-String
-    if (-not $CurrentPowerSettings) {
-        Write-Error "[Error] Unable to retrieve power settings!"
-        exit 1
-    }
-
-    # Constructing the actual report
-    $Report = New-Object System.Collections.Generic.List[string]
-    $Report.Add("Active Power Plan: $ActivePowerPlan")
-    $Report.Add("`n`n### Current Power Settings For $ActivePowerPlan ###")
-    $Report.Add("`n$CurrentPowerSettings")
-
-    # Write to the activity log
-    Write-Host $Report
-
-    # Save our findings to a custom field
-    if ($PowerPlanCustomFieldName) {
-        Ninja-Property-Set -Name $PowerPlanCustomFieldName -Value $ActivePowerPlan
-    }
-
-    if ($PowerSettingsCustomFieldName) {
-        Ninja-Property-Set -Name $PowerSettingsCustomFieldName -Value $CurrentPowerSettings
+    catch {
+        Write-Host "[Error] Unexpected error: $_"
+        $script:ExitCode = 1
     }
 }
+
 end {
-    
-    
-    
+    exit $script:ExitCode
 }

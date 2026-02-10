@@ -11,11 +11,10 @@ This document provides guidelines for contributing to the Windows Automation Fra
 1. [Code of Conduct](#code-of-conduct)
 2. [Getting Started](#getting-started)
 3. [Development Standards](#development-standards)
-4. [Script Templates](#script-templates)
-5. [Testing Requirements](#testing-requirements)
-6. [Pull Request Process](#pull-request-process)
-7. [Documentation](#documentation)
-8. [Style Guidelines](#style-guidelines)
+4. [Testing Requirements](#testing-requirements)
+5. [Pull Request Process](#pull-request-process)
+6. [Documentation](#documentation)
+7. [Style Guidelines](#style-guidelines)
 
 ---
 
@@ -65,7 +64,15 @@ We are committed to providing a welcoming and inspiring community for all. Pleas
    cd waf
    ```
 
-2. **Create a Branch**
+2. **Review Standards Documentation**
+   - **[Coding Standards](archive/docs/standards/CODING_STANDARDS.md)** - Complete V3 requirements
+   - **[Output Formatting](archive/docs/standards/OUTPUT_FORMATTING.md)** - No emojis/colors
+   - **[Language-Aware Paths](archive/docs/standards/LANGUAGE_AWARE_PATHS.md)** - German/English support
+   - **[Script Header Template](archive/docs/standards/SCRIPT_HEADER_TEMPLATE.ps1)** - Standard template
+   - **[Refactoring Guide](archive/docs/standards/SCRIPT_REFACTORING_GUIDE.md)** - V2 to V3 migration
+   - **[Standards Checklist](docs/standards/README.md)** - Quick compliance check
+
+3. **Create a Branch**
    ```bash
    # Create feature branch from main
    git checkout -b feature/your-feature-name
@@ -74,7 +81,7 @@ We are committed to providing a welcoming and inspiring community for all. Pleas
    git checkout -b fix/issue-description
    ```
 
-3. **Install Development Tools**
+4. **Install Development Tools**
    ```powershell
    # Install PSScriptAnalyzer
    Install-Module -Name PSScriptAnalyzer -Scope CurrentUser
@@ -89,111 +96,53 @@ We are committed to providing a welcoming and inspiring community for all. Pleas
 
 ### V3 Framework Standards (MANDATORY)
 
-All new scripts and modifications MUST follow V3 standards:
+**All new scripts and modifications MUST follow V3 standards.**
 
-#### 1. Script Structure
+Complete standards documentation available:
+- **[Coding Standards](archive/docs/standards/CODING_STANDARDS.md)** - Full standard requirements
+- **[Quick Reference](docs/standards/README.md)** - Compliance checklist
+
+### Critical Requirements Summary
+
+#### 1. Output Standards ⚠️ CRITICAL
+
+**Plain ASCII Text Only - No Emojis, Symbols, or Colors:**
+
+See [Output Formatting Standards](archive/docs/standards/OUTPUT_FORMATTING.md) for complete details.
 
 ```powershell
-#Requires -Version 5.1
-#Requires -RunAsAdministrator  # If admin required
+# ✅ CORRECT - Plain text
+Write-Log "Status: Success"
+Write-Log "CPU usage: 75 percent"
 
-<#
-.SYNOPSIS
-    [One-line description]
-
-.DESCRIPTION
-    [Detailed multi-line description]
-    [What the script does]
-    [Key features]
-
-.NOTES
-    Author:         Windows Automation Framework
-    Created:        YYYY-MM-DD
-    Version:        1.0
-    Purpose:        [Specific purpose]
-    
-    Execution Context:  SYSTEM
-    Execution Frequency: [e.g., Every 15 minutes]
-    Estimated Duration: [e.g., ~10 seconds]
-    Timeout Setting:    [e.g., 60 seconds]
-    
-    Fields Updated:
-    - fieldName1 (Type) - Description
-    - fieldName2 (Type) - Description
-    
-    Dependencies:
-    - [Module/Feature requirements]
-    
-    Exit Codes:
-    0  = Success
-    1  = [Specific error]
-    99 = Unexpected error
-
-.EXAMPLE
-    .\Script-Name.ps1
-    
-.LINK
-    https://github.com/Xore/waf
-#>
-
-[CmdletBinding()]
-param()
-
-# Configuration section
-# Functions section
-# Main execution section
-# Error handling
-# Finally block (MANDATORY)
+# ❌ PROHIBITED - Emojis, symbols, colors
+# Write-Host "Status: ✓" -ForegroundColor Green
+# Write-Host "CPU: 75%"
 ```
 
-#### 2. Required Functions
+**Why This Matters:**
+- NinjaRMM console displays plain text only
+- Log files corrupted by UTF-8 emojis
+- SIEM/monitoring tools require plain text
+- Accessibility (screen readers)
 
-**Write-Log Function (Standardized):**
+#### 2. Multi-Language Support ⚠️ CRITICAL
+
+**German and English Windows Path Support:**
+
+See [Language-Aware Paths](archive/docs/standards/LANGUAGE_AWARE_PATHS.md) for complete guide.
+
 ```powershell
-function Write-Log {
-    param(
-        [string]$Message,
-        [ValidateSet('INFO', 'WARNING', 'ERROR', 'DEBUG')]
-        [string]$Level = 'INFO'
-    )
-    
-    $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    $LogMessage = "[$Timestamp] [$Level] $Message"
-    
-    switch ($Level) {
-        'ERROR'   { Write-Error $LogMessage }
-        'WARNING' { Write-Warning $LogMessage }
-        'DEBUG'   { Write-Verbose $LogMessage }
-        default   { Write-Output $LogMessage }
-    }
-}
+# ✅ CORRECT - Language-independent
+$DesktopPath = [Environment]::GetFolderPath('Desktop')
+$AppData = $env:APPDATA
+
+# ❌ PROHIBITED - Hardcoded single-language
+# $DesktopPath = "C:\Users\$env:USERNAME\Desktop"
+# $DocsPath = "C:\Users\$env:USERNAME\Dokumente"  # Only German
 ```
 
-**Set-NinjaField Function (REQUIRED):**
-```powershell
-function Set-NinjaField {
-    param(
-        [string]$FieldName,
-        [AllowNull()]
-        [object]$Value
-    )
-    
-    try {
-        if (Get-Command Ninja-Property-Set -ErrorAction SilentlyContinue) {
-            Ninja-Property-Set -Name $FieldName -Value $Value
-        }
-        
-        $RegPath = "HKLM:\SOFTWARE\NinjaRMMAgent\CustomFields"
-        if (Test-Path $RegPath) {
-            Set-ItemProperty -Path $RegPath -Name $FieldName -Value $Value -ErrorAction SilentlyContinue
-        }
-    } catch {
-        Write-Log "Failed to set field $FieldName : $($_.Exception.Message)" -Level WARNING
-    }
-}
-```
-
-#### 3. Error Tracking (MANDATORY)
+#### 3. Execution Time Tracking (MANDATORY)
 
 ```powershell
 # At script start
@@ -201,182 +150,122 @@ $ExecutionStartTime = Get-Date
 $ErrorsEncountered = 0
 $ErrorDetails = @()
 
-# In try/catch blocks
-try {
-    # Main logic
-} catch {
-    Write-Log "Error: $($_.Exception.Message)" -Level ERROR
-    $ErrorsEncountered++
-    $ErrorDetails += $_.Exception.Message
-    exit 99
-}
-```
-
-#### 4. Finally Block (MANDATORY)
-
-```powershell
+# In finally block (REQUIRED)
 finally {
-    $ExecutionEndTime = Get-Date
-    $ExecutionDuration = ($ExecutionEndTime - $ExecutionStartTime).TotalSeconds
-    
+    $ExecutionDuration = ((Get-Date) - $ExecutionStartTime).TotalSeconds
     Write-Log "Execution Time: $([Math]::Round($ExecutionDuration, 2)) seconds"
     
     if ($ErrorsEncountered -gt 0) {
-        Write-Log "Errors Encountered: $ErrorsEncountered"
-        Write-Log "Error Summary: $($ErrorDetails -join '; ')"
+        Write-Log "Errors: $ErrorsEncountered"
     }
 }
 ```
 
-#### 5. Exit Codes (STANDARDIZED)
+#### 4. NinjaRMM Integration
 
-| Code | Meaning | Usage |
-|------|---------|-------|
-| 0 | Success | Normal completion |
-| 1 | Not applicable | Feature not installed/available |
-| 2 | Configuration error | Missing dependencies, config issues |
-| 3-98 | Specific errors | Component-specific failures |
-| 99 | Unexpected error | Unhandled exceptions |
-
----
-
-## 📝 Script Templates
-
-### Basic Monitoring Script Template
+**Use Set-NinjaField (not Set-NinjaRMMField):**
 
 ```powershell
-#Requires -Version 5.1
-#Requires -RunAsAdministrator
-
-<#
-.SYNOPSIS
-    [Script purpose]
-
-.DESCRIPTION
-    [Detailed description]
-
-.NOTES
-    Author: Windows Automation Framework
-    Created: 2026-02-10
-    Version: 1.0
-#>
-
-[CmdletBinding()]
-param()
-
-# ============================================================================
-# CONFIGURATION
-# ============================================================================
-
-$ScriptVersion = "1.0"
-$ScriptName = "[Script Name]"
-$FieldPrefix = "customPrefix"
-
-$Thresholds = @{
-    WarningLevel = 75
-    CriticalLevel = 90
-}
-
-# ============================================================================
-# EXECUTION TIME TRACKING (MANDATORY)
-# ============================================================================
-
-$ExecutionStartTime = Get-Date
-$ErrorsEncountered = 0
-$ErrorDetails = @()
-
-# ============================================================================
-# FUNCTIONS
-# ============================================================================
-
-function Write-Log {
-    # [Standard implementation]
-}
-
 function Set-NinjaField {
-    # [Standard implementation]
-}
-
-# [Your custom functions]
-
-# ============================================================================
-# MAIN EXECUTION
-# ============================================================================
-
-try {
-    Write-Log "========================================"
-    Write-Log "$ScriptName v$ScriptVersion"
-    Write-Log "========================================"
-    
-    # [Your main logic here]
-    
-    Write-Log "Script completed successfully"
-    exit 0
-    
-} catch {
-    Write-Log "Unexpected error: $($_.Exception.Message)" -Level ERROR
-    Write-Log "Stack Trace: $($_.ScriptStackTrace)" -Level ERROR
-    
-    $ErrorsEncountered++
-    $ErrorDetails += $_.Exception.Message
-    
-    Set-NinjaField -FieldName "$($FieldPrefix)Status" -Value "ERROR"
-    
-    exit 99
-} finally {
-    $ExecutionEndTime = Get-Date
-    $ExecutionDuration = ($ExecutionEndTime - $ExecutionStartTime).TotalSeconds
-    Write-Log "Execution Time: $([Math]::Round($ExecutionDuration, 2)) seconds"
-    
-    if ($ErrorsEncountered -gt 0) {
-        Write-Log "Errors Encountered: $ErrorsEncountered"
-        Write-Log "Error Summary: $($ErrorDetails -join '; ')"
+    param(
+        [string]$FieldName,
+        [AllowNull()][object]$Value
+    )
+    try {
+        if (Get-Command Ninja-Property-Set -ErrorAction SilentlyContinue) {
+            Ninja-Property-Set -Name $FieldName -Value $Value
+        }
+    } catch {
+        Write-Log "Failed to set field $FieldName" -Level WARNING
     }
 }
+
+# Usage
+Set-NinjaField -FieldName "customField" -Value $Data
 ```
+
+#### 5. Unattended Operation
+
+**No User Interaction:**
+
+```powershell
+# ❌ PROHIBITED
+# Read-Host "Press Enter to continue"
+# Pause
+# $confirm = Read-Host "Proceed? (Y/N)"
+
+# ✅ CORRECT - Silent operation
+if ($AllowRestart) {
+    Restart-Computer -Force
+} else {
+    Write-Log "Restart required but not permitted"
+    exit 2
+}
+```
+
+#### 6. Module Auto-Installation
+
+```powershell
+# Auto-install required modules
+if (-not (Get-Module -ListAvailable -Name RequiredModule)) {
+    Write-Log "Installing RequiredModule..."
+    Install-Module RequiredModule -Force -ErrorAction Stop
+}
+Import-Module RequiredModule -ErrorAction Stop
+```
+
+### Script Structure Template
+
+See [Script Header Template](archive/docs/standards/SCRIPT_HEADER_TEMPLATE.ps1) for complete template.
 
 ---
 
 ## ✅ Testing Requirements
 
-### Before Submitting
+### Pre-Submission Testing Checklist
 
-1. **PSScriptAnalyzer**
-   ```powershell
-   # Run analyzer
-   Invoke-ScriptAnalyzer -Path .\YourScript.ps1 -Severity Warning,Error
-   
-   # Should return zero warnings/errors
-   ```
+#### Standards Compliance
+- [ ] **Output:** No emojis, symbols, or colors (plain ASCII only)
+- [ ] **Paths:** Supports both German and English Windows
+- [ ] **Tracking:** Execution time logged in finally block
+- [ ] **Integration:** Uses Set-NinjaField (not Set-NinjaRMMField)
+- [ ] **Operation:** No user interaction (Read-Host, Pause, etc.)
+- [ ] **Modules:** Auto-installs dependencies if needed
 
-2. **Manual Testing**
-   - Test on target Windows version
-   - Verify all exit codes
-   - Check custom field updates
-   - Validate HTML report generation (if applicable)
-   - Test error handling paths
+#### Code Quality
+- [ ] PSScriptAnalyzer passes (zero warnings/errors)
+- [ ] All exit codes tested and documented
+- [ ] Error handling comprehensive
+- [ ] Custom fields update correctly
+- [ ] Execution time < documented timeout
 
-3. **Performance Testing**
-   - Execution time < documented timeout
-   - Memory usage reasonable (<500MB)
-   - No resource leaks
-   - Concurrent execution safe
+#### Testing
+- [ ] Tested on English Windows
+- [ ] Tested on German Windows (if using paths)
+- [ ] Tested with missing dependencies
+- [ ] Tested error scenarios
+- [ ] Performance validated (<500 MB memory, acceptable CPU)
 
-4. **Documentation Testing**
-   - Help content accurate (`Get-Help .\Script.ps1`)
-   - Examples work as written
-   - All parameters documented
+#### Documentation
+- [ ] Comment-based help complete
+- [ ] All parameters documented
+- [ ] Examples tested and working
+- [ ] CHANGELOG.md updated
 
-### Test Checklist
+### Automated Testing
 
-- [ ] Script runs without errors
-- [ ] All exit codes tested
-- [ ] Custom fields updated correctly
-- [ ] Error handling works
-- [ ] Execution time logged
-- [ ] PSScriptAnalyzer clean
-- [ ] Documentation complete
-- [ ] Examples tested
+```powershell
+# Run PSScriptAnalyzer
+Invoke-ScriptAnalyzer -Path .\YourScript.ps1 -Severity Warning,Error
+
+# Check for prohibited patterns
+Select-String -Path .\YourScript.ps1 -Pattern "Write-Host.*-ForegroundColor"
+Select-String -Path .\YourScript.ps1 -Pattern "[✓✗→⏱]"
+Select-String -Path .\YourScript.ps1 -Pattern "Set-NinjaRMMField"
+Select-String -Path .\YourScript.ps1 -Pattern "Read-Host|Pause"
+
+# All above should return NO matches
+```
 
 ---
 
@@ -390,15 +279,22 @@ try {
    git rebase upstream/main
    ```
 
-2. **Test Thoroughly**
-   - Run all tests
-   - Verify functionality
-   - Check for breaking changes
+2. **Run Standards Compliance Check**
+   ```powershell
+   # Run automated checks
+   .\scripts\test-compliance.ps1  # If available
+   
+   # Manual verification
+   # - Check standards checklist
+   # - Verify no emojis/symbols/colors
+   # - Confirm German/English path support
+   # - Validate execution time tracking
+   ```
 
 3. **Update Documentation**
+   - Update CHANGELOG.md
+   - Add/update script documentation
    - Update README if needed
-   - Add to CHANGELOG.md
-   - Update script documentation
 
 ### Creating the Pull Request
 
@@ -407,60 +303,49 @@ try {
    git push origin feature/your-feature-name
    ```
 
-2. **Create PR on GitHub**
-   - Use clear, descriptive title
-   - Reference related issues
-   - Fill out PR template completely
-
-3. **PR Description Should Include:**
-   - What changes were made
-   - Why changes were needed
-   - How to test the changes
-   - Screenshots (if UI changes)
-   - Breaking changes (if any)
-
-### PR Template
-
-```markdown
-## Description
-[Describe your changes]
-
-## Type of Change
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Breaking change
-- [ ] Documentation update
-
-## Testing
-- [ ] Tested on Windows Server 2022
-- [ ] Tested on Windows 10/11
-- [ ] PSScriptAnalyzer passed
-- [ ] Documentation updated
-
-## Related Issues
-Fixes #[issue number]
-
-## Additional Notes
-[Any additional context]
-```
+2. **PR Description Must Include:**
+   ```markdown
+   ## Description
+   [Clear description of changes]
+   
+   ## Standards Compliance
+   - [ ] No emojis, symbols, or colors in output
+   - [ ] Supports German and English Windows paths
+   - [ ] Execution time tracking implemented
+   - [ ] Uses Set-NinjaField (not Set-NinjaRMMField)
+   - [ ] No user interaction (unattended operation)
+   - [ ] Module auto-installation implemented
+   
+   ## Testing
+   - [ ] PSScriptAnalyzer passed
+   - [ ] Tested on English Windows
+   - [ ] Tested on German Windows (if applicable)
+   - [ ] All exit codes verified
+   - [ ] Error scenarios tested
+   
+   ## Documentation
+   - [ ] CHANGELOG.md updated
+   - [ ] Script documentation complete
+   - [ ] Examples tested
+   
+   ## Related Issues
+   Fixes #[issue number]
+   ```
 
 ### Review Process
 
-1. **Automated Checks**
-   - PSScriptAnalyzer
-   - Syntax validation
-   - File naming conventions
+**Automated Checks:**
+- PSScriptAnalyzer validation
+- Standards compliance verification
+- File naming conventions
+- No prohibited patterns (emojis, colors, etc.)
 
-2. **Manual Review**
-   - Code quality
-   - Standards compliance
-   - Security considerations
-   - Performance implications
-
-3. **Approval Required**
-   - At least one maintainer approval
-   - All checks passing
-   - Conflicts resolved
+**Manual Review:**
+- Code quality and readability
+- Standards compliance (V3 requirements)
+- Security considerations
+- Performance implications
+- Documentation completeness
 
 ---
 
@@ -468,37 +353,32 @@ Fixes #[issue number]
 
 ### Documentation Requirements
 
-#### Script Documentation
-
-**Synopsis Block (Required):**
-- Clear one-line description
-- Detailed multi-line description
-- Complete .NOTES section
+**Script Documentation:**
+- Complete comment-based help
+- Clear synopsis and description
+- Detailed .NOTES section (see template)
 - Working examples
-- Links to related docs
+- Custom field mappings
+- Dependencies documented
 
-**Inline Comments:**
+**Code Comments:**
 - Complex logic explained
 - Non-obvious decisions documented
 - Threshold rationale included
-- External dependencies noted
+- Reference external docs where relevant
 
-#### Code Comments
+### Key Documentation Files
 
-**Good:**
-```powershell
-# Check for stale checkpoints (>7 days old)
-# These can indicate backup issues or forgotten test snapshots
-$StaleCheckpoints = $Checkpoints | Where-Object { 
-    $_.CreationTime -lt (Get-Date).AddDays(-7) 
-}
-```
+**Must Read:**
+- [Coding Standards](archive/docs/standards/CODING_STANDARDS.md) - V3 requirements
+- [Output Formatting](archive/docs/standards/OUTPUT_FORMATTING.md) - Plain text rules
+- [Language-Aware Paths](archive/docs/standards/LANGUAGE_AWARE_PATHS.md) - Multi-language support
+- [Script Header Template](archive/docs/standards/SCRIPT_HEADER_TEMPLATE.ps1) - Standard template
 
-**Avoid:**
-```powershell
-# Get checkpoints
-$Checkpoints = Get-VMCheckpoint
-```
+**Reference:**
+- [Framework Architecture](FRAMEWORK_ARCHITECTURE.md) - System design
+- [Standards Checklist](docs/standards/README.md) - Quick compliance check
+- [Refactoring Guide](archive/docs/standards/SCRIPT_REFACTORING_GUIDE.md) - V2 to V3 migration
 
 ---
 
@@ -507,100 +387,59 @@ $Checkpoints = Get-VMCheckpoint
 ### Naming Conventions
 
 **Scripts:**
-- PascalCase: `Hyper-V VM Inventory 1.ps1`
-- Descriptive names
-- Include number for ordering
+- Format: "Description Number.ps1"
+- Example: `Hyper-V VM Inventory 1.ps1`
+- 2-5 words, human-readable
+- Title Case with spaces
+- Sequential numbering
 
 **Variables:**
 - PascalCase: `$VMCount`, `$HostResources`
-- Descriptive, not abbreviated (except common terms)
-- Prefix for scope: `$Script:ConfigData`
+- Descriptive, not abbreviated
+- Avoid single-letter except loops
 
 **Functions:**
 - Verb-Noun format: `Get-VMMetrics`, `New-HTMLReport`
-- Approved PowerShell verbs
+- Use approved PowerShell verbs
 - PascalCase
 
 **Custom Fields:**
 - camelCase: `hypervVMCount`, `hypervStatus`
-- Consistent prefix per script category
+- Consistent prefix per category
 - Descriptive suffix
 
 ### Code Formatting
 
-**Indentation:**
-- 4 spaces (no tabs)
-- Consistent throughout
-
-**Line Length:**
-- Prefer <120 characters
-- Break long lines logically
-
-**Braces:**
-```powershell
-# Opening brace on same line
-if ($Condition) {
-    # Code
-}
-
-# Functions - opening brace on new line
-function Get-Data 
-{
-    # Code
-}
-```
-
-**Operators:**
-```powershell
-# Space around operators
-$Result = $Value1 + $Value2
-
-# Comparison operators
-if ($Count -gt 10) { }
-```
+**Indentation:** 4 spaces (no tabs)  
+**Line Length:** Prefer <120 characters  
+**Braces:** Opening brace on same line for control structures
 
 ---
 
 ## 🔒 Security Considerations
 
-### Security Requirements
-
-1. **No Hardcoded Credentials**
-   - Never store passwords in scripts
-   - Use Windows authentication
-   - Leverage SYSTEM context
-
-2. **Input Validation**
-   - Validate all parameters
-   - Sanitize user input
-   - Use type constraints
-
-3. **Least Privilege**
-   - Request minimum required permissions
-   - Document privilege requirements
-   - Fail gracefully if insufficient
-
-4. **Secure Logging**
-   - Never log sensitive data
-   - Sanitize error messages
-   - Protect log files
+**Requirements:**
+1. No hardcoded credentials
+2. Input validation on all parameters
+3. Least privilege principle
+4. Never log sensitive data
+5. Sanitize error messages
 
 ---
 
 ## ❓ Questions & Support
 
-### Getting Help
+**Resources:**
+- [Standards Documentation](archive/docs/standards/)
+- [Framework Documentation](docs/README.md)
+- [GitHub Issues](https://github.com/Xore/waf/issues)
+- [GitHub Discussions](https://github.com/Xore/waf/discussions)
 
-- **Documentation:** Check `/docs/` folder
-- **Issues:** Search existing GitHub issues
-- **Discussions:** Use GitHub Discussions
-- **Examples:** Review Hyper-V monitoring scripts
-
-### Contact
-
-- **Issues:** [GitHub Issues](https://github.com/Xore/waf/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/Xore/waf/discussions)
-- **Security:** See SECURITY.md (if available)
+**Before Asking:**
+1. Check existing documentation
+2. Search closed issues
+3. Review standards thoroughly
+4. Test your changes
 
 ---
 
@@ -608,9 +447,9 @@ if ($Count -gt 10) { }
 
 Contributors will be:
 - Listed in CHANGELOG.md
-- Credited in relevant documentation
+- Credited in documentation
 - Acknowledged in release notes
-- Invited to future planning discussions
+- Invited to planning discussions
 
 ---
 
@@ -620,8 +459,33 @@ By contributing, you agree that your contributions will be licensed under the sa
 
 ---
 
+## Quick Standards Reference
+
+### Critical "DO NOT" List
+
+❌ **NEVER** use emojis or Unicode symbols in output  
+❌ **NEVER** use Write-Host with -ForegroundColor or -BackgroundColor  
+❌ **NEVER** use Write-Progress for long operations  
+❌ **NEVER** hardcode single-language paths  
+❌ **NEVER** use Read-Host, Pause, or prompt for user input  
+❌ **NEVER** use Set-NinjaRMMField (use Set-NinjaField)  
+❌ **NEVER** skip the finally block with execution time  
+❌ **NEVER** restart without checking -AllowRestart parameter
+
+### Critical "ALWAYS" List
+
+✅ **ALWAYS** use plain ASCII text only  
+✅ **ALWAYS** support German and English Windows paths  
+✅ **ALWAYS** track execution time in finally block  
+✅ **ALWAYS** use Set-NinjaField function  
+✅ **ALWAYS** test on both English and German Windows  
+✅ **ALWAYS** implement comprehensive error handling  
+✅ **ALWAYS** auto-install module dependencies  
+✅ **ALWAYS** document all custom fields
+
+---
+
 **Thank you for contributing to Windows Automation Framework!**
 
-**Questions?** Open an issue or start a discussion.
-
-**Last Updated:** 2026-02-10
+**Last Updated:** 2026-02-11  
+**Standards Version:** 3.0

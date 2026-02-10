@@ -74,7 +74,7 @@
     Version        : 3.0.0
     Author         : WAF Team
     Change Log:
-    - 3.0.0: Complete V3 standards with enhanced logging
+    - 3.0.0: Upgraded to V3.0.0 standards (script-scoped exit code)
     - 3.0: Added comprehensive installation automation
     - 1.0: Initial release
     
@@ -557,6 +557,8 @@ begin {
     elseif ( $SupportedTLSversions -contains 'Tls12' ) {
         [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
     }
+    
+    $script:ExitCode = 0
 }
 
 process {
@@ -619,7 +621,7 @@ process {
                 Write-Log "Restarting computer in 60 seconds" -Level WARN
                 Start-Process shutdown.exe -ArgumentList "-r -t 60" -Wait -NoNewWindow
             }
-            $ExitCode = 0
+            $script:ExitCode = 0
         }
         else {
             throw "Microsoft 365 not detected after installation"
@@ -628,7 +630,7 @@ process {
     catch {
         Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
         Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
-        $ExitCode = 1
+        $script:ExitCode = 1
     }
 }
 
@@ -646,6 +648,6 @@ end {
     }
     finally {
         [System.GC]::Collect()
-        exit $ExitCode
+        exit $script:ExitCode
     }
 }

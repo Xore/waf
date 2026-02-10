@@ -19,21 +19,33 @@
     Name of a WYSIWYG custom field to save the formatted HTML output.
 
 .EXAMPLE
-    -SaveToMultilineField "EntraStatus" -SaveToWysiwygField "EntraStatusHTML"
-
+    .\Entra-Audit.ps1
+    
     Device is Entra ID Joined: True
     Device is Workplace Joined: False
     Device is Hybrid Joined: False
 
-    [Info] Successfully saved to multiline custom field 'EntraStatus'
-    [Info] Successfully saved to WYSIWYG custom field 'EntraStatusHTML'
+.EXAMPLE
+    .\Entra-Audit.ps1 -SaveToMultilineField "EntraStatus" -SaveToWysiwygField "EntraStatusHTML"
+    
+    Device is Entra ID Joined: True
+    Device is Workplace Joined: False
+    Device is Hybrid Joined: False
+    Successfully saved to multiline custom field 'EntraStatus'
+    Successfully saved to WYSIWYG custom field 'EntraStatusHTML'
 
 .OUTPUTS
-    None
+    None. Status information is written to the console and optionally to custom fields.
 
 .NOTES
-    Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Release notes: Initial release for WAF v3.0
+    File Name      : Entra-Audit.ps1
+    Prerequisite   : PowerShell 5.1 or higher
+    Minimum OS     : Windows 10, Windows Server 2016
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: Upgraded to V3 standards with Write-Log function and execution tracking
+    - 1.0: Initial release
     
 .COMPONENT
     dsregcmd - Built-in Windows tool for Azure AD device registration diagnostics
@@ -51,16 +63,30 @@
 
 [CmdletBinding()]
 param(
+    [Parameter()]
     [string]$SaveToMultilineField,
+    
+    [Parameter()]
     [string]$SaveToWysiwygField
 )
 
 begin {
-    if ($env:saveToMultilineField -and $env:saveToMultilineField -notlike "null") {
-        $SaveToMultilineField = $env:saveToMultilineField
-    }
-    if ($env:saveToWysiwygField -and $env:saveToWysiwygField -notlike "null") {
-        $SaveToWysiwygField = $env:saveToWysiwygField
+    $ErrorActionPreference = 'Stop'
+    $ProgressPreference = 'SilentlyContinue'
+    $StartTime = Get-Date
+    
+    Set-StrictMode -Version Latest
+
+    function Write-Log {
+        param([string]$Message, [string]$Level = 'INFO')
+        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $logMessage = "[$timestamp] [$Level] $Message"
+        
+        switch ($Level) {
+            'ERROR' { Write-Error $logMessage }
+            'WARNING' { Write-Warning $logMessage }
+            default { Write-Output $logMessage }
+        }
     }
 
     function Set-NinjaProperty {
@@ -86,7 +112,7 @@ begin {
 
         $ValidFields = "Attachment", "Checkbox", "Date", "Date or Date Time", "Decimal", "Dropdown", "Email", "Integer", "IP Address", "MultiLine", "MultiSelect", "Phone", "Secure", "Text", "Time", "URL", "WYSIWYG"
         if ($Type -and $ValidFields -notcontains $Type) { 
-            Write-Warning "$Type is an invalid type! Please check here for valid types. https://ninjarmm.zendesk.com/hc/en-us/articles/16973443979789-Command-Line-Interface-CLI-Supported-Fields-and-Functionality" 
+            Write-Log "$Type is an invalid type! Please check here for valid types. https://ninjarmm.zendesk.com/hc/en-us/articles/16973443979789-Command-Line-Interface-CLI-Supported-Fields-and-Functionality" -Level WARNING
         }
 
         $NeedsOptions = "Dropdown"
@@ -139,12 +165,25 @@ begin {
         }
     }
 
+    if ($env:saveToMultilineField -and $env:saveToMultilineField -notlike "null") {
+        $SaveToMultilineField = $env:saveToMultilineField
+    }
+    if ($env:saveToWysiwygField -and $env:saveToWysiwygField -notlike "null") {
+        $SaveToWysiwygField = $env:saveToWysiwygField
+    }
+
     $ExitCode = 0
 }
 
 process {
     try {
+        Write-Log "Starting Entra ID audit"
+        
         $dsregcmd = dsregcmd /status
+        
+        if (!$dsregcmd) {
+            throw "Failed to execute dsregcmd command"
+        }
         
         $AzureAdJoined = ($dsregcmd | Select-String "AzureAdJoined\s+:\s+(.+)" | ForEach-Object { $_.Matches.Groups[1].Value }).Trim()
         $WorkplaceJoined = ($dsregcmd | Select-String "WorkplaceJoined\s+:\s+(.+)" | ForEach-Object { $_.Matches.Groups[1].Value }).Trim()
@@ -152,17 +191,17 @@ process {
         
         $IsHybridJoined = ($AzureAdJoined -eq "YES" -and $DomainJoined -eq "YES")
         
-        Write-Host "Device is Entra ID Joined: $($AzureAdJoined -eq 'YES')"
-        Write-Host "Device is Workplace Joined: $($WorkplaceJoined -eq 'YES')"
-        Write-Host "Device is Hybrid Joined: $IsHybridJoined"
+        Write-Log "Device is Entra ID Joined: $($AzureAdJoined -eq 'YES')"
+        Write-Log "Device is Workplace Joined: $($WorkplaceJoined -eq 'YES')"
+        Write-Log "Device is Hybrid Joined: $IsHybridJoined"
         
         if ($SaveToMultilineField) {
             try {
                 $dsregcmd | Out-String | Set-NinjaProperty -Name $SaveToMultilineField -Type "MultiLine"
-                Write-Host "[Info] Successfully saved to multiline custom field '$SaveToMultilineField'"
+                Write-Log "Successfully saved to multiline custom field '$SaveToMultilineField'"
             }
             catch {
-                Write-Host "[Error] Failed to save to multiline custom field: $_"
+                Write-Log "Failed to save to multiline custom field: $_" -Level ERROR
                 $ExitCode = 1
             }
         }
@@ -180,21 +219,30 @@ process {
 <pre>$($dsregcmd | Out-String)</pre>
 "@
                 $htmlOutput | Set-NinjaProperty -Name $SaveToWysiwygField -Type "WYSIWYG"
-                Write-Host "[Info] Successfully saved to WYSIWYG custom field '$SaveToWysiwygField'"
+                Write-Log "Successfully saved to WYSIWYG custom field '$SaveToWysiwygField'"
             }
             catch {
-                Write-Host "[Error] Failed to save to WYSIWYG custom field: $_"
+                Write-Log "Failed to save to WYSIWYG custom field: $_" -Level ERROR
                 $ExitCode = 1
             }
         }
+        
+        Write-Log "Entra ID audit completed successfully"
     }
     catch {
-        Write-Host "[Error] Failed to execute dsregcmd: $_"
+        Write-Log "Failed to execute dsregcmd: $_" -Level ERROR
         $ExitCode = 1
     }
-
-    exit $ExitCode
 }
 
 end {
+    try {
+        $EndTime = Get-Date
+        $Duration = ($EndTime - $StartTime).TotalSeconds
+        Write-Log "Script execution completed in $Duration seconds"
+    }
+    finally {
+        [System.GC]::Collect()
+        exit $ExitCode
+    }
 }

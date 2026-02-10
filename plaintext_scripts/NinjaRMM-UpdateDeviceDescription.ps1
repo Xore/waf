@@ -29,8 +29,10 @@ PARAMETER: -ClearDescription
 
 .NOTES
     Minimum OS Architecture Supported: Windows 10, Windows Server 2012 R2
-    Version: 1.0
-    Release Notes: Initial Release
+    Version: 3.0.0
+    Release Notes:
+    (v3.0.0) 2026-02-10 - Upgraded to script-scoped exit code handling
+    (v1.0) Initial Release
 #>
 
 [CmdletBinding()]
@@ -80,9 +82,7 @@ begin {
         $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
     }
 
-    if (!$ExitCode) {
-        $ExitCode = 0
-    }
+    $script:ExitCode = 0
 }
 process {
     # Check if the script is running with elevated (administrator) privileges

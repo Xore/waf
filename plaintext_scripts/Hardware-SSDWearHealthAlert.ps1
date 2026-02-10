@@ -2,38 +2,91 @@
 
 <#
 .SYNOPSIS
-    Conditional script that helps determine if an SSD drive is failing or has failed.
+    Monitors SSD wear levels and alerts when thresholds are exceeded.
+
 .DESCRIPTION
-    Conditional script that helps determine if an SSD drive is failing or has failed.
+    Conditional script that monitors SSD drive health by checking wear levels and write errors.
+    Uses Windows Storage Management API to query storage reliability counters and detect
+    drives that may be failing or have reached their estimated wear limit.
+    
+    A wear percentage of 100% indicates that the estimated wear level has been reached.
+    The script can be used as a monitoring condition to alert when SSDs approach or exceed
+    configured wear thresholds.
+    
+    Note: Some drives don't report all needed details to the OS. This can be caused by:
+    - RAID controllers that abstract drive information
+    - BIOS settings that disable SMART reporting
+    - Drive firmware that doesn't expose wear leveling data
 
-    A wear % of 100% indicates that the estimated wear level as been reached.
-
-    Do note that some drives don't report all the needed details to the OS.
-        This can be caused by a RAID card, settings in the BIOS, or the drive it self.
 .PARAMETER WearLevelPercentMax
-    The max estimated wear level percentage to fail at.
-    The default is 80 %.
+    The maximum estimated wear level percentage before failing the check.
+    Default: 80%
+
 .EXAMPLE
-     -WearLevelPercentMax 90
-    Fail if SSD is found to have used 90% of its estimated wear leveling.
+    .\Hardware-SSDWearHealthAlert.ps1
+
+    [2026-02-10 16:35:00] [INFO] Checking SSD wear levels
+    [2026-02-10 16:35:00] [INFO] No disks were found with wear level above 80%
+
+.EXAMPLE
+    .\Hardware-SSDWearHealthAlert.ps1 -WearLevelPercentMax 90
+
+    Fails the check if any SSD is found to have used 90% or more of its estimated wear leveling.
+
 .OUTPUTS
-    None
+    None. Drive health information is written to console.
+
 .NOTES
-    Minium Supported OS: Windows 10, Server 2016
-    Version: 1.1
-    Release Notes: Updated Calculated Name
+    File Name      : Hardware-SSDWearHealthAlert.ps1
+    Prerequisite   : PowerShell 5.1 or higher, Administrator privileges
+    Minimum OS     : Windows 10, Windows Server 2016
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: Upgraded to V3 standards with Write-Log function and execution tracking
+    - 1.1: Updated calculated name
+    - 1.0: Initial release
 #>
 
 [CmdletBinding()]
 param (
-    [int]
-    $WearLevelPercentMax = 80
+    [Parameter()]
+    [int]$WearLevelPercentMax = 80
 )
 
 begin {
-    if ($env:WearLevelPercentMax) {
-        $WearLevelPercentMax = $env:WearLevelPercentMax
+    $ErrorActionPreference = 'Stop'
+    $ProgressPreference = 'SilentlyContinue'
+    $StartTime = Get-Date
+    $ExitCode = 0
+    
+    Set-StrictMode -Version Latest
+
+    function Write-Log {
+        param(
+            [string]$Message,
+            [string]$Level = 'INFO'
+        )
+        $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $LogMessage = "[$Timestamp] [$Level] $Message"
+        
+        switch ($Level) {
+            'ERROR' { Write-Error $LogMessage }
+            'WARNING' { Write-Warning $LogMessage }
+            default { Write-Output $LogMessage }
+        }
     }
+
+    if ($env:WearLevelPercentMax -and $env:WearLevelPercentMax -notlike "null") {
+        $WearLevelPercentMax = [int]$env:WearLevelPercentMax
+    }
+
+    function Test-IsElevated {
+        $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        $p = New-Object System.Security.Principal.WindowsPrincipal($id)
+        $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+    }
+
     function Write-UnhealthyDisk {
         param([PSObject[]]$Disks)
         process {
@@ -41,60 +94,71 @@ begin {
                 try {
                     $PhysicalDisk = Get-PhysicalDisk -DeviceNumber $_ | Select-Object FriendlyName, DeviceId, MediaType, OperationalStatus, HealthStatus
                     $StorageReliabilityCounters = Get-PhysicalDisk -DeviceNumber $_ | Get-StorageReliabilityCounter | Select-Object Temperature, WriteErrorsTotal, Wear
-                    Write-Host "$($PhysicalDisk.FriendlyName)"
-                    Write-Host "DeviceId: $($PhysicalDisk.DeviceId) | Type: $($PhysicalDisk.MediaType) | Status: $($PhysicalDisk.OperationalStatus) | Health: $($PhysicalDisk.HealthStatus)"
-                    Write-Host "Temp: $($StorageReliabilityCounters.Temperature) C° | Total Write Errors: $($StorageReliabilityCounters.WriteErrorsTotal) | Wear: $($StorageReliabilityCounters.Wear)%"
-                    Write-Host ""
+                    
+                    Write-Log "Drive: $($PhysicalDisk.FriendlyName)" -Level WARNING
+                    Write-Log "  DeviceId: $($PhysicalDisk.DeviceId) | Type: $($PhysicalDisk.MediaType) | Status: $($PhysicalDisk.OperationalStatus) | Health: $($PhysicalDisk.HealthStatus)" -Level WARNING
+                    Write-Log "  Temp: $($StorageReliabilityCounters.Temperature) C | Total Write Errors: $($StorageReliabilityCounters.WriteErrorsTotal) | Wear: $($StorageReliabilityCounters.Wear)%" -Level WARNING
+                    
                     Write-Output 1
                 }
                 catch {
-                    # Skip this drive
                     Write-Output 0
                 }
             } | Measure-Object -Sum | Select-Object -ExpandProperty Sum
         }
     }
-    function Test-IsElevated {
-        $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-        $p = New-Object System.Security.Principal.WindowsPrincipal($id)
-        $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
-    }
 }
+
 process {
-    if (-not (Test-IsElevated)) {
-        Write-Error -Message "Access Denied. Please run with Administrator privileges."
-        exit 1
-    }
-    # Get all disks
-    $Disks = Get-PhysicalDisk
-    # Get any SSD's that have Write Errors, to hot, or Wear level over 10%
-    $UnhealthySSDDisks = $Disks | Where-Object { $_.MediaType -like "SSD" -and $_.PhysicalLocation -notlike "*.vhd*" } | Get-StorageReliabilityCounter | Where-Object {
-        (
-            $null -ne $_.WriteErrorsTotal -and
-            $_.WriteErrorsTotal -ge 1 # Any amount for an SSD is a cause for concern
-        ) -or
-        (
-            $null -ne $_.Wear -and
-            # The storage device wear indicator, in percentage. At 100 percent, the estimated wear limit has been reached.
-            # https://learn.microsoft.com/en-us/windows-hardware/drivers/storage/msft-storagereliabilitycounter
-            $_.Wear -ge $WearLevelPercentMax
-        )
-    }
+    try {
+        if (-not (Test-IsElevated)) {
+            Write-Log "Access Denied. Please run with Administrator privileges." -Level ERROR
+            $ExitCode = 1
+            return
+        }
 
-    $DeviceIds = $UnhealthySSDDisks | Sort-Object -Property DeviceId -Unique | Select-Object -ExpandProperty DeviceId
-    $DriveCount = Write-UnhealthyDisk -Disks $DeviceIds
+        Write-Log "Checking SSD wear levels (threshold: $WearLevelPercentMax%)"
 
-    if ($DeviceIds.Count -and $DriveCount) {
-        Write-Host "WARNING: $($DeviceIds.Count) disks were found with wear level above $WearLevelPercentMax%."
-        exit 1
+        $Disks = Get-PhysicalDisk
+        
+        $UnhealthySSDDisks = $Disks | Where-Object { 
+            $_.MediaType -like "SSD" -and $_.PhysicalLocation -notlike "*.vhd*" 
+        } | Get-StorageReliabilityCounter | Where-Object {
+            (
+                $null -ne $_.WriteErrorsTotal -and
+                $_.WriteErrorsTotal -ge 1
+            ) -or
+            (
+                $null -ne $_.Wear -and
+                $_.Wear -ge $WearLevelPercentMax
+            )
+        }
+
+        $DeviceIds = $UnhealthySSDDisks | Sort-Object -Property DeviceId -Unique | Select-Object -ExpandProperty DeviceId
+        $DriveCount = Write-UnhealthyDisk -Disks $DeviceIds
+
+        if ($DeviceIds.Count -and $DriveCount) {
+            Write-Log "Found $($DeviceIds.Count) disk(s) with wear level above $WearLevelPercentMax%" -Level WARNING
+            $ExitCode = 1
+        }
+        else {
+            Write-Log "No disks were found with wear level above $WearLevelPercentMax%"
+        }
     }
-
-    Write-Host "No disks were found with wear level above $WearLevelPercentMax%."
-    exit 0
+    catch {
+        Write-Log "An unexpected error occurred: $_" -Level ERROR
+        $ExitCode = 1
+    }
 }
+
 end {
-    
-    
-    
+    try {
+        $EndTime = Get-Date
+        $Duration = ($EndTime - $StartTime).TotalSeconds
+        Write-Log "Script execution completed in $Duration seconds"
+    }
+    finally {
+        [System.GC]::Collect()
+        exit $ExitCode
+    }
 }
-

@@ -71,21 +71,26 @@
     Checks encryption and saves results to custom fields.
 
 .NOTES
-    Script Name:    Security-UnencryptedDiskAlert.ps1
-    Author:         Windows Automation Framework
-    Version:        3.0
-    Creation Date:  2024-01-15
-    Last Modified:  2026-02-10
+    File Name      : Security-UnencryptedDiskAlert.ps1
+    Prerequisite   : PowerShell 5.1 or higher
+    Minimum OS     : Windows 10, Windows Server 2016
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: V3 standards with Set-StrictMode and begin/process/end blocks
+    - 3.0: Enhanced documentation and error handling
+    - 2.0: Added modern BitLocker cmdlet support
+    - 1.0: Initial release
     
     Execution Context: Administrator (required for BitLocker queries)
     Execution Frequency: Daily or on-demand
-    Typical Duration: ~2-5 seconds
+    Typical Duration: 2-5 seconds
     Timeout Setting: 30 seconds recommended
     
-    User Interaction: NONE (fully automated, no prompts)
+    User Interaction: None (fully automated, no prompts)
     Restart Behavior: N/A (no restart required)
     
-    Fields Updated:
+    NinjaRMM Fields Updated:
         - StatusField - Detailed encryption status per volume (if specified)
         - UnencryptedCountField - Count of unencrypted drives (if specified)
     
@@ -116,343 +121,302 @@ param (
     [string]$UnencryptedCountField
 )
 
-# ============================================================================
-# CONFIGURATION
-# ============================================================================
+begin {
+    Set-StrictMode -Version Latest
+    
+    $ScriptVersion = "3.0.0"
+    $ScriptName = "Security-UnencryptedDiskAlert"
+    
+    $StartTime = Get-Date
+    $ErrorActionPreference = 'Continue'
+    $script:ErrorCount = 0
+    $script:WarningCount = 0
+    $script:ExitCode = 0
+    $script:CLIFallbackCount = 0
+    
+    $NinjaRMMCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
 
-$ScriptVersion = "3.0"
-$ScriptName = "Security-UnencryptedDiskAlert"
-
-# NinjaRMM CLI path for fallback
-$NinjaRMMCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
-
-# ============================================================================
-# INITIALIZATION
-# ============================================================================
-
-$StartTime = Get-Date
-$ErrorActionPreference = 'Continue'
-$script:ErrorCount = 0
-$script:WarningCount = 0
-$script:CLIFallbackCount = 0
-
-# ============================================================================
-# FUNCTIONS
-# ============================================================================
-
-function Write-Log {
-    <#
-    .SYNOPSIS
-        Writes structured log messages with plain text output
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$Message,
+    function Write-Log {
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory=$true)]
+            [string]$Message,
+            [Parameter(Mandatory=$false)]
+            [ValidateSet('DEBUG','INFO','WARN','ERROR','SUCCESS')]
+            [string]$Level = 'INFO'
+        )
         
-        [Parameter(Mandatory=$false)]
-        [ValidateSet('DEBUG','INFO','WARN','ERROR','SUCCESS')]
-        [string]$Level = 'INFO'
-    )
-    
-    $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    $LogMessage = "[$Timestamp] [$Level] $Message"
-    
-    Write-Output $LogMessage
-    
-    switch ($Level) {
-        'WARN'  { $script:WarningCount++ }
-        'ERROR' { $script:ErrorCount++ }
-    }
-}
-
-function Set-NinjaField {
-    <#
-    .SYNOPSIS
-        Sets a NinjaRMM custom field value with automatic fallback to CLI
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$FieldName,
+        $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        Write-Output "[$Timestamp] [$Level] $Message"
         
-        [Parameter(Mandatory=$true)]
-        [AllowNull()]
-        $Value
-    )
-    
-    if ($null -eq $Value -or $Value -eq "") {
-        Write-Log "Skipping field '$FieldName' - no value" -Level DEBUG
-        return
-    }
-    
-    $ValueString = $Value.ToString()
-    
-    try {
-        if (Get-Command Ninja-Property-Set -ErrorAction SilentlyContinue) {
-            Ninja-Property-Set $FieldName $ValueString -ErrorAction Stop
-            Write-Log "Field '$FieldName' set successfully" -Level DEBUG
-            return
-        } else {
-            throw "Ninja-Property-Set cmdlet not available"
+        switch ($Level) {
+            'WARN'  { $script:WarningCount++ }
+            'ERROR' { $script:ErrorCount++ }
         }
-    } catch {
-        Write-Log "Ninja-Property-Set failed, using CLI fallback" -Level DEBUG
+    }
+
+    function Set-NinjaField {
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory=$true)]
+            [string]$FieldName,
+            [Parameter(Mandatory=$true)]
+            [AllowNull()]
+            $Value
+        )
+        
+        if ($null -eq $Value -or $Value -eq "") {
+            Write-Log "Skipping field '$FieldName' - no value" -Level DEBUG
+            return
+        }
+        
+        $ValueString = $Value.ToString()
         
         try {
-            if (-not (Test-Path $NinjaRMMCLI)) {
-                throw "NinjaRMM CLI not found at: $NinjaRMMCLI"
+            if (Get-Command Ninja-Property-Set -ErrorAction SilentlyContinue) {
+                Ninja-Property-Set $FieldName $ValueString -ErrorAction Stop
+                Write-Log "Field '$FieldName' set successfully" -Level DEBUG
+                return
+            } else {
+                throw "Ninja-Property-Set cmdlet not available"
             }
-            
-            $CLIArgs = @("set", $FieldName, $ValueString)
-            $CLIResult = & $NinjaRMMCLI $CLIArgs 2>&1
-            
-            if ($LASTEXITCODE -ne 0) {
-                throw "CLI exit code: $LASTEXITCODE, Output: $CLIResult"
-            }
-            
-            Write-Log "Field '$FieldName' set via CLI" -Level DEBUG
-            $script:CLIFallbackCount++
-            
         } catch {
-            Write-Log "Failed to set field '$FieldName': $_" -Level ERROR
-        }
-    }
-}
-
-function Test-IsElevated {
-    <#
-    .SYNOPSIS
-        Checks if script is running with Administrator privileges
-    #>
-    $Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-    $Principal = New-Object System.Security.Principal.WindowsPrincipal($Identity)
-    return $Principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
-}
-
-function Get-PhysicalDriveLetters {
-    <#
-    .SYNOPSIS
-        Gets drive letters for physical (non-USB) drives
-    #>
-    try {
-        $PhysicalDrives = Get-Disk | Where-Object { $_.BusType -ne 'USB' -and $_.BusType -ne 'File Backed Virtual' }
-        
-        $DriveLetters = $PhysicalDrives | Get-Partition | 
-            Where-Object { $_.DriveLetter } | 
-            Select-Object -ExpandProperty DriveLetter
-        
-        Write-Log "Found $($DriveLetters.Count) physical drive letter(s)" -Level DEBUG
-        return $DriveLetters
-        
-    } catch {
-        Write-Log "Failed to enumerate physical drives: $_" -Level ERROR
-        throw
-    }
-}
-
-function Get-BitLockerStatusModern {
-    <#
-    .SYNOPSIS
-        Gets BitLocker status using Get-BitLockerVolume cmdlet
-    #>
-    try {
-        $DriveLetters = Get-PhysicalDriveLetters
-        
-        if (-not $DriveLetters) {
-            Write-Log "No physical drives found" -Level WARN
-            return $null
-        }
-        
-        $Results = New-Object System.Collections.Generic.List[Object]
-        
-        foreach ($Letter in $DriveLetters) {
+            Write-Log "Ninja-Property-Set failed, using CLI fallback" -Level DEBUG
+            
             try {
-                $Volume = Get-BitLockerVolume -MountPoint "${Letter}:" -ErrorAction Stop
+                if (-not (Test-Path $NinjaRMMCLI)) {
+                    throw "NinjaRMM CLI not found at: $NinjaRMMCLI"
+                }
                 
-                $Results.Add([PSCustomObject]@{
-                    MountPoint = $Volume.MountPoint
-                    LockStatus = $Volume.LockStatus.ToString()
-                    VolumeStatus = $Volume.VolumeStatus.ToString()
-                    EncryptionPercentage = $Volume.EncryptionPercentage
-                    ProtectionStatus = $Volume.ProtectionStatus.ToString()
-                })
-                
-            } catch {
-                Write-Log "Failed to query BitLocker status for ${Letter}: - $_" -Level WARN
-            }
-        }
-        
-        return $Results
-        
-    } catch {
-        Write-Log "Get-BitLockerVolume failed: $_" -Level WARN
-        return $null
-    }
-}
-
-function Get-BitLockerStatusLegacy {
-    <#
-    .SYNOPSIS
-        Gets BitLocker status using manage-bde.exe (fallback)
-    #>
-    try {
-        if (-not (Get-Command manage-bde.exe -ErrorAction SilentlyContinue)) {
-            Write-Log "manage-bde.exe not found (BitLocker feature not installed)" -Level WARN
-            return $null
-        }
-        
-        $DriveLetters = Get-PhysicalDriveLetters
-        
-        if (-not $DriveLetters) {
-            return $null
-        }
-        
-        $Results = New-Object System.Collections.Generic.List[Object]
-        
-        foreach ($Letter in $DriveLetters) {
-            try {
-                $Output = manage-bde.exe -status "${Letter}:" 2>&1
+                $CLIArgs = @("set", $FieldName, $ValueString)
+                $CLIResult = & $NinjaRMMCLI $CLIArgs 2>&1
                 
                 if ($LASTEXITCODE -ne 0) {
-                    Write-Log "manage-bde failed for ${Letter}: (exit code $LASTEXITCODE)" -Level DEBUG
-                    continue
+                    throw "CLI exit code: $LASTEXITCODE, Output: $CLIResult"
                 }
                 
-                $VolumeData = @{
-                    MountPoint = "${Letter}:"
-                    LockStatus = "Unknown"
-                    VolumeStatus = "Unknown"
-                }
-                
-                $Output -split "`n" | ForEach-Object {
-                    if ($_ -match '\s*Lock Status\s*:\s*(.+)') {
-                        $VolumeData.LockStatus = $Matches[1].Trim()
-                    }
-                    elseif ($_ -match '\s*Conversion Status\s*:\s*(.+)') {
-                        $VolumeData.VolumeStatus = $Matches[1].Trim()
-                    }
-                }
-                
-                $Results.Add([PSCustomObject]$VolumeData)
+                Write-Log "Field '$FieldName' set via CLI" -Level DEBUG
+                $script:CLIFallbackCount++
                 
             } catch {
-                Write-Log "Failed to parse manage-bde output for ${Letter}: - $_" -Level WARN
+                Write-Log "Failed to set field '$FieldName': $_" -Level ERROR
             }
         }
-        
-        return $Results
-        
-    } catch {
-        Write-Log "manage-bde.exe query failed: $_" -Level ERROR
-        return $null
+    }
+
+    function Test-IsElevated {
+        $Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        $Principal = New-Object System.Security.Principal.WindowsPrincipal($Identity)
+        return $Principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+    }
+
+    function Get-PhysicalDriveLetters {
+        try {
+            $PhysicalDrives = Get-Disk | Where-Object { $_.BusType -ne 'USB' -and $_.BusType -ne 'File Backed Virtual' }
+            
+            $DriveLetters = $PhysicalDrives | Get-Partition | 
+                Where-Object { $_.DriveLetter } | 
+                Select-Object -ExpandProperty DriveLetter
+            
+            Write-Log "Found $($DriveLetters.Count) physical drive letter(s)" -Level DEBUG
+            return $DriveLetters
+            
+        } catch {
+            Write-Log "Failed to enumerate physical drives: $_" -Level ERROR
+            throw
+        }
+    }
+
+    function Get-BitLockerStatusModern {
+        try {
+            $DriveLetters = Get-PhysicalDriveLetters
+            
+            if (-not $DriveLetters) {
+                Write-Log "No physical drives found" -Level WARN
+                return $null
+            }
+            
+            $Results = New-Object System.Collections.Generic.List[Object]
+            
+            foreach ($Letter in $DriveLetters) {
+                try {
+                    $Volume = Get-BitLockerVolume -MountPoint "${Letter}:" -ErrorAction Stop
+                    
+                    $Results.Add([PSCustomObject]@{
+                        MountPoint = $Volume.MountPoint
+                        LockStatus = $Volume.LockStatus.ToString()
+                        VolumeStatus = $Volume.VolumeStatus.ToString()
+                        EncryptionPercentage = $Volume.EncryptionPercentage
+                        ProtectionStatus = $Volume.ProtectionStatus.ToString()
+                    })
+                    
+                } catch {
+                    Write-Log "Failed to query BitLocker status for ${Letter}: - $_" -Level WARN
+                }
+            }
+            
+            return $Results
+            
+        } catch {
+            Write-Log "Get-BitLockerVolume failed: $_" -Level WARN
+            return $null
+        }
+    }
+
+    function Get-BitLockerStatusLegacy {
+        try {
+            if (-not (Get-Command manage-bde.exe -ErrorAction SilentlyContinue)) {
+                Write-Log "manage-bde.exe not found (BitLocker feature not installed)" -Level WARN
+                return $null
+            }
+            
+            $DriveLetters = Get-PhysicalDriveLetters
+            
+            if (-not $DriveLetters) {
+                return $null
+            }
+            
+            $Results = New-Object System.Collections.Generic.List[Object]
+            
+            foreach ($Letter in $DriveLetters) {
+                try {
+                    $Output = manage-bde.exe -status "${Letter}:" 2>&1
+                    
+                    if ($LASTEXITCODE -ne 0) {
+                        Write-Log "manage-bde failed for ${Letter}: (exit code $LASTEXITCODE)" -Level DEBUG
+                        continue
+                    }
+                    
+                    $VolumeData = @{
+                        MountPoint = "${Letter}:"
+                        LockStatus = "Unknown"
+                        VolumeStatus = "Unknown"
+                    }
+                    
+                    $Output -split "`n" | ForEach-Object {
+                        if ($_ -match '\s*Lock Status\s*:\s*(.+)') {
+                            $VolumeData.LockStatus = $Matches[1].Trim()
+                        }
+                        elseif ($_ -match '\s*Conversion Status\s*:\s*(.+)') {
+                            $VolumeData.VolumeStatus = $Matches[1].Trim()
+                        }
+                    }
+                    
+                    $Results.Add([PSCustomObject]$VolumeData)
+                    
+                } catch {
+                    Write-Log "Failed to parse manage-bde output for ${Letter}: - $_" -Level WARN
+                }
+            }
+            
+            return $Results
+            
+        } catch {
+            Write-Log "manage-bde.exe query failed: $_" -Level ERROR
+            return $null
+        }
     }
 }
 
-# ============================================================================
-# MAIN EXECUTION
-# ============================================================================
-
-try {
-    Write-Log "========================================" -Level INFO
-    Write-Log "Starting: $ScriptName v$ScriptVersion" -Level INFO
-    Write-Log "========================================" -Level INFO
-    
-    # Check administrator privileges
-    if (-not (Test-IsElevated)) {
-        throw "Administrator privileges required for BitLocker status queries"
-    }
-    Write-Log "Administrator privileges confirmed" -Level SUCCESS
-    
-    # Get BitLocker status (try modern method first)
-    Write-Log "Querying BitLocker status..." -Level INFO
-    
-    $Volumes = Get-BitLockerStatusModern
-    
-    if (-not $Volumes) {
-        Write-Log "Falling back to manage-bde.exe" -Level INFO
-        $Volumes = Get-BitLockerStatusLegacy
-    }
-    
-    if (-not $Volumes) {
-        Write-Log "Unable to determine BitLocker status" -Level ERROR
-        Write-Log "BitLocker feature may not be installed" -Level WARN
-        exit 1
-    }
-    
-    # Analyze encryption status
-    Write-Log "" -Level INFO
-    Write-Log "BitLocker Volume Status:" -Level INFO
-    Write-Log "========================" -Level INFO
-    
-    $UnencryptedCount = 0
-    $StatusDetails = New-Object System.Collections.Generic.List[String]
-    
-    foreach ($Volume in $Volumes) {
-        $IsUnencrypted = ($Volume.LockStatus -eq "Unlocked" -and $Volume.VolumeStatus -eq "FullyDecrypted")
+process {
+    try {
+        Write-Log "========================================" -Level INFO
+        Write-Log "Starting: $ScriptName v$ScriptVersion" -Level INFO
+        Write-Log "========================================" -Level INFO
         
-        $Status = if ($IsUnencrypted) { "UNENCRYPTED" } else { "ENCRYPTED" }
-        $StatusSymbol = if ($IsUnencrypted) { "[!]" } else { "[OK]" }
+        if (-not (Test-IsElevated)) {
+            Write-Log "Administrator privileges required for BitLocker status queries" -Level ERROR
+            $script:ExitCode = 1
+            return
+        }
+        Write-Log "Administrator privileges confirmed" -Level SUCCESS
         
-        if ($IsUnencrypted) {
-            $UnencryptedCount++
-            Write-Log "$StatusSymbol $($Volume.MountPoint) - $Status (Lock: $($Volume.LockStatus), Volume: $($Volume.VolumeStatus))" -Level WARN
-        } else {
-            Write-Log "$StatusSymbol $($Volume.MountPoint) - $Status (Lock: $($Volume.LockStatus), Volume: $($Volume.VolumeStatus))" -Level SUCCESS
+        Write-Log "Querying BitLocker status..." -Level INFO
+        
+        $Volumes = Get-BitLockerStatusModern
+        
+        if (-not $Volumes) {
+            Write-Log "Falling back to manage-bde.exe" -Level INFO
+            $Volumes = Get-BitLockerStatusLegacy
         }
         
-        $StatusDetails.Add("$($Volume.MountPoint): $Status")
+        if (-not $Volumes) {
+            Write-Log "Unable to determine BitLocker status" -Level ERROR
+            Write-Log "BitLocker feature may not be installed" -Level WARN
+            $script:ExitCode = 1
+            return
+        }
+        
+        Write-Log "BitLocker Volume Status:" -Level INFO
+        Write-Log "========================" -Level INFO
+        
+        $UnencryptedCount = 0
+        $StatusDetails = New-Object System.Collections.Generic.List[String]
+        
+        foreach ($Volume in $Volumes) {
+            $IsUnencrypted = ($Volume.LockStatus -eq "Unlocked" -and $Volume.VolumeStatus -eq "FullyDecrypted")
+            
+            $Status = if ($IsUnencrypted) { "UNENCRYPTED" } else { "ENCRYPTED" }
+            $StatusSymbol = if ($IsUnencrypted) { "[!]" } else { "[OK]" }
+            
+            if ($IsUnencrypted) {
+                $UnencryptedCount++
+                Write-Log "$StatusSymbol $($Volume.MountPoint) - $Status (Lock: $($Volume.LockStatus), Volume: $($Volume.VolumeStatus))" -Level WARN
+            } else {
+                Write-Log "$StatusSymbol $($Volume.MountPoint) - $Status (Lock: $($Volume.LockStatus), Volume: $($Volume.VolumeStatus))" -Level SUCCESS
+            }
+            
+            $StatusDetails.Add("$($Volume.MountPoint): $Status")
+        }
+        
+        Write-Log "Encryption Summary:" -Level INFO
+        Write-Log "  Total Volumes: $($Volumes.Count)" -Level INFO
+        Write-Log "  Unencrypted: $UnencryptedCount" -Level INFO
+        Write-Log "  Encrypted: $($Volumes.Count - $UnencryptedCount)" -Level INFO
+        
+        if ($StatusField) {
+            $StatusString = $StatusDetails -join ", "
+            Set-NinjaField -FieldName $StatusField -Value $StatusString
+            Write-Log "Status saved to field: $StatusField" -Level SUCCESS
+        }
+        
+        if ($UnencryptedCountField) {
+            Set-NinjaField -FieldName $UnencryptedCountField -Value $UnencryptedCount
+            Write-Log "Unencrypted count saved to field: $UnencryptedCountField" -Level SUCCESS
+        }
+        
+        if ($UnencryptedCount -gt 0) {
+            Write-Log "ALERT: $UnencryptedCount unencrypted drive(s) detected" -Level ERROR
+            Write-Log "Exiting with code 2 (non-compliant)" -Level INFO
+            $script:ExitCode = 2
+        } else {
+            Write-Log "All drives are encrypted (compliant)" -Level SUCCESS
+            $script:ExitCode = 0
+        }
+        
+    } catch {
+        Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
+        $script:ExitCode = 1
     }
-    
-    # Summary
-    Write-Log "" -Level INFO
-    Write-Log "Encryption Summary:" -Level INFO
-    Write-Log "  Total Volumes: $($Volumes.Count)" -Level INFO
-    Write-Log "  Unencrypted: $UnencryptedCount" -Level INFO
-    Write-Log "  Encrypted: $($Volumes.Count - $UnencryptedCount)" -Level INFO
-    
-    # Update custom fields if specified
-    if ($StatusField) {
-        $StatusString = $StatusDetails -join ", "
-        Set-NinjaField -FieldName $StatusField -Value $StatusString
-        Write-Log "Status saved to field: $StatusField" -Level SUCCESS
+}
+
+end {
+    try {
+        $EndTime = Get-Date
+        $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+        
+        Write-Log "========================================" -Level INFO
+        Write-Log "Execution Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
+        Write-Log "Warnings: $script:WarningCount, Errors: $script:ErrorCount" -Level INFO
+        
+        if ($script:CLIFallbackCount -gt 0) {
+            Write-Log "CLI Fallbacks: $script:CLIFallbackCount" -Level INFO
+        }
+        
+        Write-Log "========================================" -Level INFO
     }
-    
-    if ($UnencryptedCountField) {
-        Set-NinjaField -FieldName $UnencryptedCountField -Value $UnencryptedCount
-        Write-Log "Unencrypted count saved to field: $UnencryptedCountField" -Level SUCCESS
+    finally {
+        [System.GC]::Collect()
+        exit $script:ExitCode
     }
-    
-    # Exit with appropriate code
-    if ($UnencryptedCount -gt 0) {
-        Write-Log "" -Level INFO
-        Write-Log "ALERT: $UnencryptedCount unencrypted drive(s) detected" -Level ERROR
-        Write-Log "Exiting with code 2 (non-compliant)" -Level INFO
-        exit 2
-    } else {
-        Write-Log "" -Level INFO
-        Write-Log "All drives are encrypted (compliant)" -Level SUCCESS
-        exit 0
-    }
-    
-} catch {
-    Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
-    Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
-    exit 1
-    
-} finally {
-    $EndTime = Get-Date
-    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
-    
-    Write-Log "========================================" -Level INFO
-    Write-Log "Execution Summary:" -Level INFO
-    Write-Log "  Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
-    Write-Log "  Errors: $script:ErrorCount" -Level INFO
-    Write-Log "  Warnings: $script:WarningCount" -Level INFO
-    
-    if ($script:CLIFallbackCount -gt 0) {
-        Write-Log "  CLI Fallbacks: $script:CLIFallbackCount" -Level INFO
-    }
-    
-    Write-Log "========================================" -Level INFO
 }

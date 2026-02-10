@@ -24,22 +24,30 @@
     Name of a custom field to save the expiring certificates report.
 
 .EXAMPLE
-    -DaysUntilExpiration 30
-
-    [Info] Scanning LocalMachine certificate store for certificates expiring within 30 days...
-    [Alert] Found 2 certificate(s) expiring within 30 days
+    .\Certificates-GetExpiring.ps1 -DaysUntilExpiration 30
     
-    Subject: CN=webserver.contoso.com
-    Thumbprint: A1B2C3D4E5F6...
-    Issuer: CN=Contoso CA
-    Expires: 03/15/2026 14:30:00
+    Scanning LocalMachine certificate store for certificates expiring within 30 days...
+    Found 2 certificate(s) expiring within 30 days
+    
+    Subject: CN=webserver.contoso.com | Expires: 03/15/2026 14:30:00
+
+.EXAMPLE
+    .\Certificates-GetExpiring.ps1 -DaysUntilExpiration 60 -SaveToCustomField "ExpiringCerts"
+    
+    Scans for certificates expiring within 60 days and saves report to custom field.
 
 .OUTPUTS
-    None
+    None. Status information is written to the console and optionally to a custom field.
 
 .NOTES
-    Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Release notes: Initial release for WAF v3.0
+    File Name      : Certificates-GetExpiring.ps1
+    Prerequisite   : PowerShell 5.1 or higher
+    Minimum OS     : Windows 10, Windows Server 2016
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: Upgraded to V3 standards with Write-Log function and execution tracking
+    - 1.0: Initial release
     
 .COMPONENT
     PKI - Public Key Infrastructure certificate management
@@ -57,21 +65,34 @@
 
 [CmdletBinding()]
 param(
+    [Parameter()]
     [int]$DaysUntilExpiration = 30,
+    
+    [Parameter()]
     [ValidateSet("LocalMachine", "CurrentUser")]
     [string]$StoreLocation = "LocalMachine",
+    
+    [Parameter()]
     [string]$SaveToCustomField
 )
 
 begin {
-    if ($env:daysUntilExpiration -and $env:daysUntilExpiration -notlike "null") {
-        $DaysUntilExpiration = [int]$env:daysUntilExpiration
-    }
-    if ($env:storeLocation -and $env:storeLocation -notlike "null") {
-        $StoreLocation = $env:storeLocation
-    }
-    if ($env:saveToCustomField -and $env:saveToCustomField -notlike "null") {
-        $SaveToCustomField = $env:saveToCustomField
+    $ErrorActionPreference = 'Stop'
+    $ProgressPreference = 'SilentlyContinue'
+    $StartTime = Get-Date
+    
+    Set-StrictMode -Version Latest
+
+    function Write-Log {
+        param([string]$Message, [string]$Level = 'INFO')
+        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $logMessage = "[$timestamp] [$Level] $Message"
+        
+        switch ($Level) {
+            'ERROR' { Write-Error $logMessage }
+            'WARNING' { Write-Warning $logMessage }
+            default { Write-Output $logMessage }
+        }
     }
 
     function Set-NinjaProperty {
@@ -82,11 +103,27 @@ begin {
             [Parameter(Mandatory = $True, ValueFromPipeline = $True)]
             $Value
         )
-        $NinjaValue = $Value
-        $CustomField = $NinjaValue | Ninja-Property-Set-Piped -Name $Name 2>&1
-        if ($CustomField.Exception) {
-            throw $CustomField
+        
+        try {
+            $CustomField = $Value | Ninja-Property-Set-Piped -Name $Name 2>&1
+            if ($CustomField.Exception) {
+                throw $CustomField
+            }
         }
+        catch {
+            Write-Log "Failed to set custom field: $_" -Level ERROR
+            throw
+        }
+    }
+
+    if ($env:daysUntilExpiration -and $env:daysUntilExpiration -notlike "null") {
+        $DaysUntilExpiration = [int]$env:daysUntilExpiration
+    }
+    if ($env:storeLocation -and $env:storeLocation -notlike "null") {
+        $StoreLocation = $env:storeLocation
+    }
+    if ($env:saveToCustomField -and $env:saveToCustomField -notlike "null") {
+        $SaveToCustomField = $env:saveToCustomField
     }
 
     $ExitCode = 0
@@ -95,29 +132,29 @@ begin {
 
 process {
     try {
-        Write-Host "[Info] Scanning $StoreLocation certificate store for certificates expiring within $DaysUntilExpiration days..."
+        Write-Log "Scanning $StoreLocation certificate store for certificates expiring within $DaysUntilExpiration days..."
         
         $ExpiringCerts = Get-ChildItem -Path "Cert:\$StoreLocation\My" -ErrorAction Stop | Where-Object {
             $_.NotAfter -le $ExpirationThreshold -and $_.NotAfter -ge (Get-Date)
         }
 
         if ($ExpiringCerts) {
-            Write-Host "[Alert] Found $($ExpiringCerts.Count) certificate(s) expiring within $DaysUntilExpiration days`n"
+            Write-Log "Found $($ExpiringCerts.Count) certificate(s) expiring within $DaysUntilExpiration days" -Level WARNING
             
             $Report = @()
             foreach ($Cert in $ExpiringCerts) {
                 $CertInfo = "Subject: $($Cert.Subject) | Thumbprint: $($Cert.Thumbprint) | Issuer: $($Cert.Issuer) | Expires: $($Cert.NotAfter)"
-                Write-Host $CertInfo
+                Write-Log $CertInfo
                 $Report += $CertInfo
             }
 
             if ($SaveToCustomField) {
                 try {
                     $Report -join "; " | Set-NinjaProperty -Name $SaveToCustomField
-                    Write-Host "`n[Info] Report saved to custom field '$SaveToCustomField'"
+                    Write-Log "Report saved to custom field '$SaveToCustomField'"
                 }
                 catch {
-                    Write-Host "[Error] Failed to save to custom field: $_"
+                    Write-Log "Failed to save to custom field: $_" -Level ERROR
                     $ExitCode = 1
                 }
             }
@@ -125,16 +162,23 @@ process {
             $ExitCode = 1
         }
         else {
-            Write-Host "[Info] No certificates expiring within $DaysUntilExpiration days"
+            Write-Log "No certificates expiring within $DaysUntilExpiration days"
         }
     }
     catch {
-        Write-Host "[Error] Failed to scan certificates: $_"
+        Write-Log "Failed to scan certificates: $_" -Level ERROR
         $ExitCode = 1
     }
-
-    exit $ExitCode
 }
 
 end {
+    try {
+        $EndTime = Get-Date
+        $Duration = ($EndTime - $StartTime).TotalSeconds
+        Write-Log "Script execution completed in $Duration seconds"
+    }
+    finally {
+        [System.GC]::Collect()
+        exit $ExitCode
+    }
 }

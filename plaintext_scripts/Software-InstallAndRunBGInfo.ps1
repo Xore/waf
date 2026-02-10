@@ -94,6 +94,7 @@ begin {
     
     $StartTime = Get-Date
     $ErrorActionPreference = 'Stop'
+    $script:ExitCode = 0
     $script:ErrorCount = 0
     $script:WarningCount = 0
     $script:CLIFallbackCount = 0
@@ -349,8 +350,6 @@ process {
         Write-Log "BGInfo installed and configured successfully" -Level SUCCESS
         Write-Log "Users must logout/login to see BGInfo on desktop" -Level INFO
         
-        $ExitCode = 0
-        
     } catch {
         Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
         Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
@@ -358,7 +357,7 @@ process {
         Set-NinjaField -FieldName "bginfoInstallStatus" -Value "Failed"
         Set-NinjaField -FieldName "bginfoInstallDate" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
         
-        $ExitCode = 1
+        $script:ExitCode = 1
     }
 }
 
@@ -377,10 +376,11 @@ end {
             Write-Log "  CLI Fallbacks: $script:CLIFallbackCount" -Level INFO
         }
         
+        Write-Log "  Exit Code: $script:ExitCode" -Level INFO
         Write-Log "========================================" -Level INFO
     }
     finally {
         [System.GC]::Collect()
-        exit $ExitCode
+        exit $script:ExitCode
     }
 }

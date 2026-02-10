@@ -33,10 +33,7 @@
 
 .NOTES
     Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Release notes:
-    (v3.0) 2026-02-10 - Upgraded to V3 standards: Write-Log function, execution tracking, enhanced error handling
-    (v1.1) 2025-12-01 - Renamed script
-    (v1.0) 2025-11-01 - Initial release
+    Release notes: v3.0.0 - Upgraded to V3.0.0 standards (script-scoped exit code)
     
 .COMPONENT
     Registry - User profile registry hive loading and querying
@@ -63,7 +60,7 @@ begin {
     Set-StrictMode -Version Latest
     
     $startTime = Get-Date
-    $exitCode = 0
+    $script:ExitCode = 0
     $foundModernAuthDisabled = $false
     $disabledUsers = [System.Collections.ArrayList]::new()
 
@@ -221,7 +218,7 @@ process {
         
         if (-not (Test-IsElevated)) {
             Write-Log "Access Denied. This script must be run with Administrator privileges" -Level ERROR
-            $exitCode = 1
+            $script:ExitCode = 1
             return
         }
         
@@ -242,7 +239,7 @@ process {
         
         if (-not $userProfiles -or $userProfiles.Count -eq 0) {
             Write-Log "No user profiles found on this system" -Level WARNING
-            $exitCode = 0
+            $script:ExitCode = 0
             return
         }
         
@@ -283,29 +280,26 @@ process {
         
         if ($foundModernAuthDisabled) {
             Write-Log "Found $($disabledUsers.Count) user(s) with modern auth disabled: $($disabledUsers -join ', ')" -Level WARNING
-            $exitCode = 1
+            $script:ExitCode = 1
         }
         else {
             Write-Log "All user profiles have modern authentication enabled" -Level SUCCESS
-            $exitCode = 0
+            $script:ExitCode = 0
         }
     }
     catch {
         Write-Log "Critical error during modern auth check: $($_.Exception.Message)" -Level ERROR
         Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
-        $exitCode = 1
+        $script:ExitCode = 1
     }
 }
 
 end {
-}
-
-finally {
     $duration = (Get-Date) - $startTime
     Write-Log "Script execution completed in $($duration.TotalSeconds) seconds" -Level DEBUG
     
     [System.GC]::Collect()
     [System.GC]::WaitForPendingFinalizers()
     
-    exit $exitCode
+    exit $script:ExitCode
 }

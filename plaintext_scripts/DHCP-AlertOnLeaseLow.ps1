@@ -38,7 +38,7 @@
     Version        : 3.0.0
     Author         : WAF Team
     Change Log:
-    - 3.0.0: Upgraded to V3 standards with Write-Log function and execution tracking
+    - 3.0.0: Upgraded to V3.0.0 standards (script-scoped exit code)
     - 1.0: Initial release
     
 .COMPONENT
@@ -110,7 +110,7 @@ begin {
         $SaveToCustomField = $env:saveToCustomField
     }
 
-    $ExitCode = 0
+    $script:ExitCode = 0
 }
 
 process {
@@ -158,17 +158,17 @@ process {
             }
             catch {
                 Write-Log "Failed to save to custom field: $_" -Level ERROR
-                $ExitCode = 1
+                $script:ExitCode = 1
             }
         }
 
         if ($AlertTriggered) {
-            $ExitCode = 1
+            $script:ExitCode = 1
         }
     }
     catch {
         Write-Log "Failed to monitor DHCP scopes: $_" -Level ERROR
-        $ExitCode = 1
+        $script:ExitCode = 1
     }
 }
 
@@ -180,6 +180,6 @@ end {
     }
     finally {
         [System.GC]::Collect()
-        exit $ExitCode
+        exit $script:ExitCode
     }
 }

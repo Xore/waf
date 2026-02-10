@@ -1,4 +1,5 @@
 #Requires -Version 5.1
+#Requires -RunAsAdministrator
 
 <#
 .SYNOPSIS
@@ -45,13 +46,15 @@
     Installs Dell Command Update, applies updates, and schedules reboot in 60 seconds.
 
 .NOTES
-    Script Name:    Software-InstallDellCommandUpdate.ps1
-    Author:         Windows Automation Framework
-    Version:        3.0
-    Creation Date:  2024-01-15
-    Last Modified:  2026-02-10
-    
-    Minimum OS: Windows 10, Windows Server 2016
+    File Name      : Software-InstallDellCommandUpdate.ps1
+    Prerequisite   : PowerShell 5.1 or higher, Administrator privileges
+    Minimum OS     : Windows 10, Windows Server 2016
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: Complete V3 standards with enhanced logging and statistics
+    - 3.0: Added comprehensive installation automation
+    - 1.0: Initial release
     
     Execution Context: SYSTEM or Administrator required
     Execution Frequency: Quarterly or as needed
@@ -61,7 +64,7 @@
     User Interaction: None (silent installation)
     Restart Behavior: Optional via -Reboot parameter
     
-    NinjaRMM Fields Updated: None
+    Fields Updated: None
     
     Dependencies:
         - Administrator privileges (mandatory)
@@ -69,50 +72,48 @@
         - Dell system (script exits gracefully on non-Dell hardware)
         - 2+ GB free disk space
     
-    Exit Codes:
-        0 - Success (DCU installed/updated or not needed, or non-Dell system)
-        1 - Installation failed, checksum validation failed, or DCU CLI execution failed
+    Environment Variables: None
 
 .LINK
     https://github.com/Xore/waf
-    
-.LINK
     https://www.dell.com/support/kbdoc/en-us/000177325/dell-command-update
 #>
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory=$false, HelpMessage="Schedule system reboot after updates")]
     [Switch]$Reboot
 )
 
 begin {
+    Set-StrictMode -Version Latest
     $ErrorActionPreference = 'Stop'
     $ProgressPreference = 'SilentlyContinue'
-    Set-StrictMode -Version Latest
     Set-Location -Path $env:SystemRoot
     
-    $ScriptVersion = "3.0"
+    $ScriptVersion = "3.0.0"
     $ScriptName = "Software-InstallDellCommandUpdate"
     $StartTime = Get-Date
+    $script:ErrorCount = 0
+    $script:WarningCount = 0
     
     function Write-Log {
+        [CmdletBinding()]
         param(
             [Parameter(Mandatory=$true)]
             [string]$Message,
-            
             [Parameter(Mandatory=$false)]
-            [ValidateSet('INFO', 'WARNING', 'ERROR')]
+            [ValidateSet('DEBUG','INFO','WARN','ERROR','SUCCESS')]
             [string]$Level = 'INFO'
         )
         
-        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-        $logMessage = "[$timestamp] [$Level] $Message"
+        $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $LogMessage = "[$Timestamp] [$Level] $Message"
+        Write-Output $LogMessage
         
         switch ($Level) {
-            'ERROR'   { Write-Error $logMessage }
-            'WARNING' { Write-Warning $logMessage }
-            default   { Write-Host $logMessage }
+            'WARN'  { $script:WarningCount++ }
+            'ERROR' { $script:ErrorCount++ }
         }
     }
     
@@ -168,7 +169,7 @@ begin {
         
         $Apps = Get-InstalledApps -DisplayNames $DisplayNames -Exclude 'Dell SupportAssist OS Recovery Plugin for Dell Update'
         foreach ($App in $Apps) {
-            Write-Log "Attempting to remove $($App.DisplayName)..."
+            Write-Log "Attempting to remove $($App.DisplayName)..." -Level INFO
             try {
                 if ($App.UninstallString -match 'msiexec') {
                     $Guid = [regex]::Match($App.UninstallString, '\{[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\}').Value
@@ -177,11 +178,11 @@ begin {
                 else { 
                     Start-Process -NoNewWindow -Wait -FilePath $App.UninstallString -ArgumentList '/quiet' 
                 }
-                Write-Log "Successfully removed $($App.DisplayName) [$($App.DisplayVersion)]"
+                Write-Log "Successfully removed $($App.DisplayName) [$($App.DisplayVersion)]" -Level SUCCESS
             }
             catch { 
-                Write-Log "Failed to remove $($App.DisplayName) [$($App.DisplayVersion)]" "WARNING"
-                Write-Log $_.Exception.Message "WARNING"
+                Write-Log "Failed to remove $($App.DisplayName) [$($App.DisplayVersion)]" -Level WARN
+                Write-Log $_.Exception.Message -Level WARN
                 exit 1
             }
         }
@@ -240,7 +241,7 @@ begin {
             catch {}
             finally {
                 if ($null -eq $DownloadObject.URL -or $null -eq $DownloadObject.Checksum) { 
-                    Write-Log 'Unable to retrieve latest version info from Dell - reverting to fallback...' "WARNING"
+                    Write-Log 'Unable to retrieve latest version info from Dell - using fallback' -Level WARN
                     $DownloadURL = $FallbackDownloadURL
                     $Checksum = $FallbackChecksum.ToUpper()
                     $Version = $FallbackVersion
@@ -264,46 +265,47 @@ begin {
         $CurrentVersion = Get-InstalledApps -DisplayName 'Dell Command | Update'
         $CurrentVersionString = ("$($CurrentVersion.DisplayName) [$($CurrentVersion.DisplayVersion)]").Trim()
         
-        Write-Log "Dell Command Update Version Info"
-        Write-Log "Installed: $CurrentVersionString"
-        Write-Log "Latest / Fallback: $($LatestDellCommandUpdate.Version)"
+        Write-Log "Dell Command Update Version Info" -Level INFO
+        Write-Log "  Installed: $CurrentVersionString" -Level DEBUG
+        Write-Log "  Latest/Fallback: $($LatestDellCommandUpdate.Version)" -Level DEBUG
         
         if ($CurrentVersion.DisplayVersion -lt $LatestDellCommandUpdate.Version) {
-            Write-Log "Dell Command Update installation needed"
-            Write-Log "Downloading..."
+            Write-Log "Dell Command Update installation needed" -Level INFO
+            Write-Log "Downloading DCU installer..." -Level INFO
             Invoke-WebRequest -Uri $LatestDellCommandUpdate.URL -OutFile $Installer -UserAgent ([Microsoft.PowerShell.Commands.PSUserAgent]::Chrome)
             
             if ($null -ne $LatestDellCommandUpdate.Checksum) {
-                Write-Log "Verifying SHA256 checksum..."
+                Write-Log "Verifying SHA256 checksum..." -Level DEBUG
                 $InstallerChecksum = (Get-FileHash -Path $Installer -Algorithm SHA256).Hash
                 if ($InstallerChecksum -ne $LatestDellCommandUpdate.Checksum) {
-                    Write-Log "SHA256 checksum verification failed - aborting..." "ERROR"
+                    Write-Log "SHA256 checksum verification failed - aborting" -Level ERROR
                     Remove-Item $Installer -Force -ErrorAction Ignore
                     exit 1
                 }
+                Write-Log "Checksum verified successfully" -Level SUCCESS
             }
             else { 
-                Write-Log "Unable to retrieve checksum from Dell for validation - skipping..." "WARNING" 
+                Write-Log "Unable to retrieve checksum - skipping validation" -Level WARN
             }
             
             if ($CurrentVersion) { Remove-DellUpdateApps -DisplayNames 'Dell Command | Update' }
             
-            Write-Log "Installing latest..."
+            Write-Log "Installing Dell Command Update..." -Level INFO
             Start-Process -Wait -NoNewWindow -FilePath $Installer -ArgumentList '/s'
             
             $CurrentVersion = Get-InstalledApps -DisplayName 'Dell Command | Update'
             if ($CurrentVersion -match $LatestDellCommandUpdate.Version) {
-                Write-Log "Successfully installed $($CurrentVersion.DisplayName) [$($CurrentVersion.DisplayVersion)]"
+                Write-Log "Successfully installed $($CurrentVersion.DisplayName) [$($CurrentVersion.DisplayVersion)]" -Level SUCCESS
                 Remove-Item $Installer -Force -ErrorAction Ignore 
             }
             else {
-                Write-Log "Dell Command Update [$($LatestDellCommandUpdate.Version)] not detected after installation attempt" "ERROR"
+                Write-Log "DCU [$($LatestDellCommandUpdate.Version)] not detected after installation" -Level ERROR
                 Remove-Item $Installer -Force -ErrorAction Ignore 
                 exit 1
             }
         }
         else { 
-            Write-Log "Dell Command Update installation / upgrade not needed" 
+            Write-Log "Dell Command Update installation/upgrade not needed" -Level INFO
         }
     }
     
@@ -337,75 +339,79 @@ begin {
         $LatestDotNet = Get-LatestDotNetDesktopRuntime
         $CurrentVersion = (Get-InstalledApps -DisplayName 'Microsoft Windows Desktop Runtime').BundleVersion | Where-Object { $_ -like '8.*' }
         
-        Write-Log ".NET 8.0 Desktop Runtime Info"
-        Write-Log "Installed: $CurrentVersion"
-        Write-Log "Latest: $($LatestDotNet.Version)"
+        Write-Log ".NET 8.0 Desktop Runtime Info" -Level INFO
+        Write-Log "  Installed: $CurrentVersion" -Level DEBUG
+        Write-Log "  Latest: $($LatestDotNet.Version)" -Level DEBUG
         
         if ($CurrentVersion -is [system.array]) { $CurrentVersion = $CurrentVersion[0] }
         if ($CurrentVersion -lt $LatestDotNet.Version) {
-            Write-Log ".NET 8.0 Desktop Runtime installation needed"
-            Write-Log "Downloading..."
+            Write-Log ".NET 8.0 Desktop Runtime installation needed" -Level INFO
+            Write-Log "Downloading .NET Runtime..." -Level INFO
             $Installer = Join-Path -Path $env:TEMP -ChildPath (Split-Path $LatestDotNet.URL -Leaf)
             Invoke-WebRequest -Uri $LatestDotNet.URL -OutFile $Installer
             
             if ($null -ne $LatestDotNet.Checksum) {
-                Write-Log "Verifying SHA512 checksum..."
+                Write-Log "Verifying SHA512 checksum..." -Level DEBUG
                 $InstallerChecksum = (Get-FileHash -Path $Installer -Algorithm SHA512).Hash
                 if ($InstallerChecksum -ne $LatestDotNet.Checksum) {
-                    Write-Log "SHA512 checksum verification failed - aborting..." "ERROR"
+                    Write-Log "SHA512 checksum verification failed - aborting" -Level ERROR
                     Remove-Item $Installer -Force -ErrorAction Ignore
                     exit 1
                 }
+                Write-Log "Checksum verified successfully" -Level SUCCESS
             }
             else { 
-                Write-Log "Unable to retrieve checksum from Microsoft for validation - skipping..." "WARNING" 
+                Write-Log "Unable to retrieve checksum - skipping validation" -Level WARN
             }
             
-            Write-Log "Installing..."
+            Write-Log "Installing .NET Runtime..." -Level INFO
             Start-Process -Wait -NoNewWindow -FilePath $Installer -ArgumentList '/install /quiet /norestart'
             
             $CurrentVersion = (Get-InstalledApps -DisplayName 'Microsoft Windows Desktop Runtime').BundleVersion | Where-Object { $_ -like '8.*' }
             if ($CurrentVersion -is [system.array]) { $CurrentVersion = $CurrentVersion[0] }
             if ($CurrentVersion -match $LatestDotNet.Version) {
-                Write-Log "Successfully installed .NET 8.0 Desktop Runtime [$CurrentVersion]"
+                Write-Log "Successfully installed .NET 8.0 Desktop Runtime [$CurrentVersion]" -Level SUCCESS
                 Remove-Item $Installer -Force -ErrorAction Ignore 
             }
             else {
-                Write-Log ".NET 8.0 Desktop Runtime [$($LatestDotNet.Version)] not detected after installation attempt" "ERROR"
+                Write-Log ".NET 8.0 Runtime [$($LatestDotNet.Version)] not detected after installation" -Level ERROR
                 Remove-Item $Installer -Force -ErrorAction Ignore 
                 exit 1
             }
         }
         elseif ($null -eq $LatestDotNet.Version) { 
-            Write-Log "Unable to retrieve latest .NET 8.0 Desktop Runtime version - skipping installation / upgrade" "WARNING"
+            Write-Log "Unable to retrieve latest .NET version - skipping" -Level WARN
         }
         else { 
-            Write-Log ".NET 8.0 Desktop Runtime installation / upgrade not needed" 
+            Write-Log ".NET 8.0 Desktop Runtime installation/upgrade not needed" -Level INFO
         }
     }
     
     function Invoke-DellCommandUpdate {
         $DCU = (Resolve-Path "$env:SystemDrive\Program Files*\Dell\CommandUpdate\dcu-cli.exe" -ErrorAction SilentlyContinue).Path
         if ($null -eq $DCU) {
-            Write-Log "Dell Command Update CLI was not detected." "ERROR"
+            Write-Log "Dell Command Update CLI not detected" -Level ERROR
             exit 1
         }
         
         try {
-            Write-Log "Configuring DCU automatic updates..."
+            Write-Log "Configuring DCU automatic updates..." -Level INFO
             Start-Process -NoNewWindow -Wait -FilePath $DCU -ArgumentList '/configure -scheduleAction=DownloadInstallAndNotify -updatesNotification=disable -forceRestart=disable -scheduleAuto -silent'
             
-            Write-Log "Applying updates using dcu-cli..."
+            Write-Log "Applying updates using dcu-cli..." -Level INFO
             Start-Process -NoNewWindow -Wait -FilePath $DCU -ArgumentList '/applyUpdates -autoSuspendBitLocker=enable -reboot=disable'
+            Write-Log "DCU updates applied successfully" -Level SUCCESS
         }
         catch {
-            Write-Log "Unable to apply updates using the dcu-cli." "ERROR"
-            Write-Log $_.Exception.Message "ERROR"
+            Write-Log "Unable to apply updates using dcu-cli" -Level ERROR
+            Write-Log $_.Exception.Message -Level ERROR
             exit 1
         }
     }
     
-    Write-Log "Starting $ScriptName v$ScriptVersion"
+    Write-Log "========================================" -Level INFO
+    Write-Log "Starting: $ScriptName v$ScriptVersion" -Level INFO
+    Write-Log "========================================" -Level INFO
     
     if ([Net.ServicePointManager]::SecurityProtocol -notcontains 'Tls12' -and [Net.ServicePointManager]::SecurityProtocol -notcontains 'Tls13') {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -414,46 +420,57 @@ begin {
 
 process {
     try {
-        Write-Log "Checking device manufacturer..."
+        Write-Log "Checking device manufacturer..." -Level INFO
         if ((Get-CimInstance -ClassName Win32_BIOS).Manufacturer -notlike '*Dell*') {
-            Write-Log "Not a Dell system. Aborting..."
+            Write-Log "Not a Dell system - exiting gracefully" -Level INFO
             exit 0
         }
         
-        Write-Log "Dell system detected - proceeding with installation"
+        Write-Log "Dell system detected - proceeding" -Level SUCCESS
         
-        Write-Log "Removing legacy Dell Update applications..."
+        Write-Log "Removing legacy Dell Update applications..." -Level INFO
         Remove-DellUpdateApps -DisplayNames 'Dell Update'
         
-        Write-Log "Installing .NET Desktop Runtime..."
+        Write-Log "Installing .NET Desktop Runtime..." -Level INFO
         Install-DotNetDesktopRuntime
         
-        Write-Log "Installing Dell Command Update..."
+        Write-Log "Installing Dell Command Update..." -Level INFO
         Install-DellCommandUpdate
         
-        Write-Log "Invoking Dell Command Update to apply available updates..."
+        Write-Log "Applying available updates..." -Level INFO
         Invoke-DellCommandUpdate
         
         if ($Reboot) {
-            Write-Log "Reboot specified - rebooting in 60 seconds..." "WARNING"
+            Write-Log "Reboot specified - scheduling restart in 60 seconds" -Level WARN
             Start-Process -Wait -NoNewWindow -FilePath 'shutdown.exe' -ArgumentList '/r /f /t 60 /c "This system will restart in 60 seconds to install driver and firmware updates. Please save and close your work." /d p:4:1'
         }
         else { 
-            Write-Log "A reboot may be needed to complete the installation of driver and firmware updates."
+            Write-Log "Reboot may be needed to complete update installation" -Level INFO
         }
         
-        exit 0
+        $ExitCode = 0
     }
     catch {
-        Write-Log "An unexpected error occurred: $($_.Exception.Message)" "ERROR"
-        exit 1
+        Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
+        Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
+        $ExitCode = 1
     }
 }
 
 end {
-    if ($StartTime) {
-        $executionTime = (Get-Date) - $StartTime
-        Write-Log "Script execution time: $($executionTime.TotalSeconds) seconds"
+    try {
+        $EndTime = Get-Date
+        $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+        
+        Write-Log "========================================" -Level INFO
+        Write-Log "Execution Summary:" -Level INFO
+        Write-Log "  Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
+        Write-Log "  Errors: $script:ErrorCount" -Level INFO
+        Write-Log "  Warnings: $script:WarningCount" -Level INFO
+        Write-Log "========================================" -Level INFO
     }
-    [System.GC]::Collect()
+    finally {
+        [System.GC]::Collect()
+        exit $ExitCode
+    }
 }

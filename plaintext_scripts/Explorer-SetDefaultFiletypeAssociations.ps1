@@ -2,31 +2,19 @@
 
 <#
 .SYNOPSIS
-    Set the default application a given file extension should be opened with for all users.
+    Set the default application for file extensions for all users.
 .DESCRIPTION
     Set the default application a given file extension should be opened with for all users.
+    This script can also enable/disable the User Choice Protection Driver.
 .EXAMPLE
-    -Action "Set File Association" -ApplicationName "Notepad" -Extensions ".txt, .csv" -ProgId "AppXkv2jqn1pq8ajm0p5dhgqde7aafykkrrn"
-
-    Checking that 'Notepad' is installed.
-    Found 'Notepad'.
+    .\Explorer-SetDefaultFiletypeAssociations.ps1 -Action "Set File Association" -ApplicationName "Notepad" -Extensions ".txt, .csv" -ProgId "AppXkv2jqn1pq8ajm0p5dhgqde7aafykkrrn"
 
     Setting association of '.csv' to 'AppXkv2jqn1pq8ajm0p5dhgqde7aafykkrrn' for Administrator.
-    Registry::HKEY_USERS\S-1-5-21-310806365-1327645792-1560496493-500\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.csv\UserChoice\Hash changed from 9lk186jZ4QQ= to MPJbUZcy3qc=
-    Registry::HKEY_USERS\S-1-5-21-310806365-1327645792-1560496493-500\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.csv\UserChoice\ProgId changed from AppXkv2jqn1pq8ajm0p5dhgqde7aafykkrrn to AppXkv2jqn1pq8ajm0p5dhgqde7aafykkrrn
     Association set.
-
-    Setting association of '.txt' to 'AppXkv2jqn1pq8ajm0p5dhgqde7aafykkrrn' for Administrator.
-    Registry::HKEY_USERS\S-1-5-21-310806365-1327645792-1560496493-500\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.txt\UserChoice\Hash changed from y+/OgocyOH8= to es3/U8QFd80=
-    Registry::HKEY_USERS\S-1-5-21-310806365-1327645792-1560496493-500\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.txt\UserChoice\ProgId changed from AppXkv2jqn1pq8ajm0p5dhgqde7aafykkrrn to AppXkv2jqn1pq8ajm0p5dhgqde7aafykkrrn
-    Association set.
-    
-    [Warning] In order for the thumbnails to update immediately, you may need to restart Explorer.
 
 PARAMETER: -Action "Set File Association"
     Specify whether you would like to set the default application for a given extension, or disable or enable the block on the '.html', '.htm', or '.pdf' extensions.
     Valid actions are 'Set File Association', 'Disable User Choice Protection Driver' or 'Enable User Choice Protection Driver'.
-    https://blogs.windows.com/windows-insider/2023/11/16/previewing-changes-in-windows-to-comply-with-the-digital-markets-act-in-the-european-economic-area/
 
 PARAMETER: -ApplicationName "ReplaceMeWithTheNameOfAnApplication"
     Specify the application you are setting as the default for your given file extension(s).
@@ -35,40 +23,22 @@ PARAMETER: -Extensions ".ai, .csv, .txt"
     Provide a comma-separated list of file extensions to set the default association for.
 
 PARAMETER: -ProgId "ChromeHTML"
-    Enter the programmatic identifier for your given application. You can usually find this in HKEY_CLASSES_ROOT.
-    https://learn.microsoft.com/en-us/windows/win32/shell/fa-progids
+    Enter the programmatic identifier for your given application.
 
 LICENSE:
-    Modified version from: https://github.com/DanysysTeam/PS-SFTA/blob/22a32292e576afc976a1167d92b50741ef523066/SFTA.ps1
-    This script incorporates the `Get-HexDateTime` and `Get-Hash` functions from Danysys, without which it would not be possible.
-    
-    LICENSE: https://github.com/DanysysTeam/PS-SFTA/blob/22a32292e576afc976a1167d92b50741ef523066/SFTA.ps1
-    MIT License
-    
-    Copyright (c) 2022 Danysys. <danysys.com>
-
-    Permission is hereby granted, free of charge, to any person obtaining a copy
-    of this software and associated documentation files (the "Software"), to deal
-    in the Software without restriction, including without limitation the rights
-    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-    copies of the Software, and to permit persons to whom the Software is
-    furnished to do so, subject to the following conditions:
-
-    The above copyright notice and this permission notice shall be included in all
-    copies or substantial portions of the Software.
-
-    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-    SOFTWARE.
+    Modified version from: https://github.com/DanysysTeam/PS-SFTA/
+    This script incorporates the Get-HexDateTime and Get-Hash functions from Danysys.
+    MIT License - Copyright (c) 2022 Danysys. <danysys.com>
 
 .NOTES
-    Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Version: 1.0
-    Release Notes: Initial Release
+    File Name      : Explorer-SetDefaultFiletypeAssociations.ps1
+    Prerequisite   : PowerShell 5.1 or higher
+    Minimum OS     : Windows 10, Windows Server 2016
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: Upgraded to V3 standards with Write-Log function and execution tracking
+    - 1.0: Initial release
 #>
 
 [CmdletBinding()]
@@ -82,146 +52,134 @@ param (
     [Parameter()]
     [String]$ProgID,
     [Parameter()]
-    [Switch]$RestartExplorer = [System.Convert]::ToBoolean($env:restartExplorer),
+    [Switch]$RestartExplorer,
     [Parameter()]
-    [Switch]$ForceRestartComputer = [System.Convert]::ToBoolean($env:forceRestartComputer)
+    [Switch]$ForceRestartComputer
 )
 
 begin {
-    # If script form variables are used, replace the command line parameters with the form variables.
+    $ErrorActionPreference = 'Continue'  # Must be Continue for this script's error handling
+    $ProgressPreference = 'SilentlyContinue'
+    $StartTime = Get-Date
+    
+    Set-StrictMode -Version Latest
+
+    function Write-Log {
+        param([string]$Message, [string]$Level = 'INFO')
+        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $logMessage = "[$timestamp] [$Level] $Message"
+        
+        switch ($Level) {
+            'ERROR' { Write-Error $logMessage }
+            'WARNING' { Write-Warning $logMessage }
+            default { Write-Output $logMessage }
+        }
+    }
+
+    if ($env:restartExplorer -eq "true") { $RestartExplorer = $true }
+    if ($env:forceRestartComputer -eq "true") { $ForceRestartComputer = $true }
     if ($env:action -and $env:action -notlike "null") { $Action = $env:action }
     if ($env:applicationName -and $env:applicationName -notlike "null") { $ApplicationName = $env:applicationName }
     if ($env:fileExtensions -and $env:fileExtensions -notlike "null") { $Extensions = $env:fileExtensions }
     if ($env:programId -and $env:programId -notlike "null") { $ProgID = $env:programId }
 
-    # Trim any leading or trailing whitespace from $Action if it is set
-    if ($Action) {
-        $Action = $Action.Trim()
-    }
+    if ($Action) { $Action = $Action.Trim() }
 
-    # If no action was specified, display an error message and exit with code 1
     if (!$Action) {
-        Write-Host -Object "[Error] No action was specified. Please specify either 'Set File Association', 'Disable User Choice Protection Driver' or 'Enable User Choice Protection Driver'."
+        Write-Log "No action was specified. Please specify either 'Set File Association', 'Disable User Choice Protection Driver' or 'Enable User Choice Protection Driver'." -Level ERROR
         exit 1
     }
 
-    # Define valid actions
     $ValidActions = "Set File Association", "Disable User Choice Protection Driver", "Enable User Choice Protection Driver"
-    # If the action is invalid, display an error message and exit with code 1
     if ($ValidActions -notcontains $Action) {
-        Write-Host -Object "[Error] An invalid action of '$Action' was given. Please give a valid action such as 'Set File Association', 'Disable User Choice Protection Driver' or 'Enable User Choice Protection Driver'."
+        Write-Log "An invalid action of '$Action' was given. Please give a valid action such as 'Set File Association', 'Disable User Choice Protection Driver' or 'Enable User Choice Protection Driver'." -Level ERROR
         exit 1
     }
 
-    # Trim any leading or trailing whitespace from $ApplicationName if it is set
-    if ($ApplicationName) {
-        $ApplicationName = $ApplicationName.Trim()
-    }
+    if ($ApplicationName) { $ApplicationName = $ApplicationName.Trim() }
 
-    if($Action -eq "Disable User Choice Protection Driver" -or $Action -eq "Enable User Choice Protection Driver" -and $ApplicationName){
-        Write-Host -Object "[Error] Cannot add an association and '$Action' at the same time."
+    if(($Action -eq "Disable User Choice Protection Driver" -or $Action -eq "Enable User Choice Protection Driver") -and $ApplicationName){
+        Write-Log "Cannot add an association and '$Action' at the same time." -Level ERROR
         exit 1
     }
 
-    # If invalid characters are found in $ApplicationName, display an error message and exit with code 1
     if ($ApplicationName -match '[\\/:*?"<>\|]') {
-        Write-Host -Object "[Error] The application name '$ApplicationName' contains one of the following invalid characters: '\/:*?`"<>|'"
+        Write-Log "The application name '$ApplicationName' contains invalid characters: '\/:*?`"<>|'" -Level ERROR
         exit 1
     }
 
-    # Check if $ApplicationName is not set and the action is not related to the User Choice Protection Driver
     if (!$ApplicationName -and $Action -ne "Disable User Choice Protection Driver" -and $Action -ne "Enable User Choice Protection Driver") {
-        Write-Host -Object "[Error] An application name was not given. The application name as shown in Ninja is required."
+        Write-Log "An application name was not given. The application name as shown in Ninja is required." -Level ERROR
         exit 1
     }
 
-    # Create a list to store valid extensions
     $ExtensionList = New-Object System.Collections.Generic.List[string]
-    # Define extensions protected by the User Choice Protection Driver
     $ProtectedExtensions = ".html", ".htm", ".pdf"
 
-    # Get the status of the User Choice Protection Driver service and scheduled task
     $UserProtectionService = Get-Service -Name "UCPD" -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq "Running" }
     $UserProtectionTask = Get-ScheduledTask -TaskName "UCPD velocity" -TaskPath "\Microsoft\Windows\AppxDeploymentClient\" -ErrorAction SilentlyContinue | Where-Object { $_.State -ne "Disabled" }
 
-    if($Action -eq "Disable User Choice Protection Driver" -or $Action -eq "Enable User Choice Protection Driver" -and $Extensions){
-        Write-Host -Object "[Error] Cannot add an association and '$Action' at the same time."
+    if(($Action -eq "Disable User Choice Protection Driver" -or $Action -eq "Enable User Choice Protection Driver") -and $Extensions){
+        Write-Log "Cannot add an association and '$Action' at the same time." -Level ERROR
         exit 1
     }
 
-    # If extensions are provided and the action is not related to User Choice Protection Driver
     if ($Extensions -and $Action -ne "Disable User Choice Protection Driver" -and $Action -ne "Enable User Choice Protection Driver") {
-        # Split the extensions string by the comma character and process each extension
         $Extensions -split ',' | ForEach-Object {
             $ExtensionToAdd = $_.Trim()
-            if (!$ExtensionToAdd) {
-                return
-            }
+            if (!$ExtensionToAdd) { return }
 
-            # Add a dot to the extension if it doesn't start with one
             if ($ExtensionToAdd -notmatch '^\.') {
                 $ExtensionToAdd = ".$ExtensionToAdd"
-                Write-Host -Object "[Warning] Added a '.' to the extension. New extension '$ExtensionToAdd'."
+                Write-Log "Added a '.' to the extension. New extension '$ExtensionToAdd'." -Level WARNING
             }
 
-            # Check if the extension contains any invalid characters
             if ($ExtensionToAdd -match '[\\/:*?"<>\|]') {
-                Write-Host -Object "[Error] The extension '$ExtensionToAdd' contains one of the following invalid characters: '\/:*?`"<>|'"
+                Write-Log "The extension '$ExtensionToAdd' contains invalid characters: '\/:*?`"<>|'" -Level ERROR
                 $ExitCode = 1
                 return
             }
 
-            # Check if the extension is not found in the registry
             if (!(Test-Path -Path "Registry::HKEY_CLASSES_ROOT\$ExtensionToAdd" -ErrorAction SilentlyContinue)) {
-                Write-Host -Object "[Error] '$ExtensionToAdd' is invalid; it was not found in HKEY_CLASSES_ROOT."
+                Write-Log "'$ExtensionToAdd' is invalid; it was not found in HKEY_CLASSES_ROOT." -Level ERROR
                 $ExitCode = 1
                 return
             }
 
-            # Check if the extension is protected and the User Protection service or task is running
             if ($ProtectedExtensions -contains $ExtensionToAdd -and ($UserProtectionService -or $UserProtectionTask)) {
-                Write-Host -Object "[Warning] '$ExtensionToAdd' may be protected by the 'User Choice Protection Driver'. You may need to select the 'Disable User Choice Protection Driver' to successfully complete this change."
+                Write-Log "'$ExtensionToAdd' may be protected by the 'User Choice Protection Driver'. You may need to select the 'Disable User Choice Protection Driver' to successfully complete this change." -Level WARNING
             }
 
-            # Add the valid extension to the list
             $ExtensionList.Add($ExtensionToAdd)
         }
     }
 
-    # Check if no valid extensions were provided and the action is not related to the User Choice Protection Driver
     if ((!$Extensions -or $ExtensionList.Count -eq 0) -and $Action -ne "Disable User Choice Protection Driver" -and $Action -ne "Enable User Choice Protection Driver") {
-        Write-Host -Object "[Error] You must provide a valid extension to set a default program association."
+        Write-Log "You must provide a valid extension to set a default program association." -Level ERROR
         exit 1
     }
 
-    # Trim any leading or trailing whitespace from $ProgID if it is set
-    if ($ProgID) {
-        $ProgID = $ProgID.Trim()
-    }
+    if ($ProgID) { $ProgID = $ProgID.Trim() }
 
-    if($Action -eq "Disable User Choice Protection Driver" -or $Action -eq "Enable User Choice Protection Driver" -and $ProgID){
-        Write-Host -Object "[Error] Cannot add an association and '$Action' at the same time."
+    if(($Action -eq "Disable User Choice Protection Driver" -or $Action -eq "Enable User Choice Protection Driver") -and $ProgID){
+        Write-Log "Cannot add an association and '$Action' at the same time." -Level ERROR
         exit 1
     }
 
-    # Check if $ProgID is not set and the action is not related to the User Choice Protection Driver
     if (!$ProgId -and $Action -ne "Disable User Choice Protection Driver" -and $Action -ne "Enable User Choice Protection Driver") {
-        Write-Host -Object "[Error] Missing the program id for the program you'd like to associate with your given file type."
-        Write-Host -Object "https://learn.microsoft.com/en-us/windows/win32/shell/fa-progids"
+        Write-Log "Missing the program id for the program you'd like to associate with your given file type." -Level ERROR
+        Write-Log "https://learn.microsoft.com/en-us/windows/win32/shell/fa-progids"
         exit 1
     }
 
-    # Check if $ProgID is a file extension
     if ($ProgID -Match '^\.') {
-        Write-Host -Object "[Error] Program ID '$ProgID' starts with an invalid character '.'. Please specify a different program id."
-        Write-Host -Object "https://learn.microsoft.com/en-us/windows/win32/shell/fa-progids"
+        Write-Log "Program ID '$ProgID' starts with an invalid character '.'. Please specify a different program id." -Level ERROR
+        Write-Log "https://learn.microsoft.com/en-us/windows/win32/shell/fa-progids"
         exit 1
     }
 
     function Get-HexDateTime {
-        # This function was created by DanySys at https://github.com/DanysysTeam/PS-SFTA
         [OutputType([string])]
-    
         $now = [DateTime]::Now
         $dateTime = [DateTime]::New($now.Year, $now.Month, $now.Day, $now.Hour, $now.Minute, 0)
         $fileTime = $dateTime.ToFileTime()
@@ -231,12 +189,10 @@ begin {
     }
 
     function Get-Hash {
-        # This function was created by DanySys at https://github.com/DanysysTeam/PS-SFTA
         [CmdletBinding()]
         param (
             [Parameter( Position = 0, Mandatory = $True )]
-            [string]
-            $BaseInfo
+            [string]$BaseInfo
         )
     
         function local:Get-ShiftRight {
@@ -244,11 +200,9 @@ begin {
             param (
                 [Parameter( Position = 0, Mandatory = $true)]
                 [long] $iValue, 
-                
                 [Parameter( Position = 1, Mandatory = $true)]
                 [int] $iCount 
             )
-        
             if ($iValue -band 0x80000000) {
                 Write-Output (( $iValue -shr $iCount) -bxor 0xFFFF0000)
             }
@@ -262,11 +216,9 @@ begin {
             param (
                 [Parameter( Position = 0, Mandatory = $true)]
                 [byte[]] $Bytes,
-        
                 [Parameter( Position = 1)]
                 [int] $Index = 0
             )
-        
             Write-Output ([BitConverter]::ToInt32($Bytes, $Index))
         }
     
@@ -275,7 +227,6 @@ begin {
                 [Parameter( Position = 0, Mandatory = $true)]
                 [long] $Value
             )
-        
             [byte[]] $bytes = [BitConverter]::GetBytes($Value)
             return [BitConverter]::ToInt32( $bytes, 0) 
         }
@@ -291,7 +242,6 @@ begin {
         $base64Hash = ""
     
         if ($length -gt 1) {
-        
             $map = @{PDATA = 0; CACHE = 0; COUNTER = 0 ; INDEX = 0; MD51 = 0; MD52 = 0; OUTHASH1 = 0; OUTHASH2 = 0;
                 R0 = 0; R1 = @(0, 0); R2 = @(0, 0); R3 = 0; R4 = @(0, 0); R5 = @(0, 0); R6 = @(0, 0); R7 = @(0, 0)
             }
@@ -372,11 +322,9 @@ begin {
             $buffer.CopyTo($outHashBase, 4)
             $base64Hash = [Convert]::ToBase64String($outHashBase) 
         }
-    
         $base64Hash
     }
 
-    # Function to find installation keys based on the display name, optionally returning uninstall strings
     function Find-InstallKey {
         [CmdletBinding()]
         param (
@@ -388,28 +336,23 @@ begin {
             [String]$UserBaseKey
         )
         process {
-            # Initialize an empty list to hold installation objects
             $InstallList = New-Object System.Collections.Generic.List[Object]
 
-            # If no user base key is specified, search in the default system-wide uninstall paths
             if (!$UserBaseKey) {
-                # Search for programs in 32-bit and 64-bit locations. Then add them to the list if they match the display name
-                $Result = Get-ChildItem -Path "Registry::HKEY_LOCAL_MACHINE\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" | Get-ItemProperty | Where-Object { $_.DisplayName -like "*$DisplayName*" }
+                $Result = Get-ChildItem -Path "Registry::HKEY_LOCAL_MACHINE\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" -ErrorAction SilentlyContinue | Get-ItemProperty | Where-Object { $_.DisplayName -like "*$DisplayName*" }
                 if ($Result) { $InstallList.Add($Result) }
 
-                $Result = Get-ChildItem -Path "Registry::HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Uninstall\*" | Get-ItemProperty | Where-Object { $_.DisplayName -like "*$DisplayName*" }
+                $Result = Get-ChildItem -Path "Registry::HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Uninstall\*" -ErrorAction SilentlyContinue | Get-ItemProperty | Where-Object { $_.DisplayName -like "*$DisplayName*" }
                 if ($Result) { $InstallList.Add($Result) }
             }
             else {
-                # If a user base key is specified, search in the user-specified 64-bit and 32-bit paths.
-                $Result = Get-ChildItem -Path "$UserBaseKey\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" | Get-ItemProperty | Where-Object { $_.DisplayName -like "*$DisplayName*" }
+                $Result = Get-ChildItem -Path "$UserBaseKey\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" -ErrorAction SilentlyContinue | Get-ItemProperty | Where-Object { $_.DisplayName -like "*$DisplayName*" }
                 if ($Result) { $InstallList.Add($Result) }
     
-                $Result = Get-ChildItem -Path "$UserBaseKey\Software\Microsoft\Windows\CurrentVersion\Uninstall\*" | Get-ItemProperty | Where-Object { $_.DisplayName -like "*$DisplayName*" }
+                $Result = Get-ChildItem -Path "$UserBaseKey\Software\Microsoft\Windows\CurrentVersion\Uninstall\*" -ErrorAction SilentlyContinue | Get-ItemProperty | Where-Object { $_.DisplayName -like "*$DisplayName*" }
                 if ($Result) { $InstallList.Add($Result) }
             }
     
-            # If the UninstallString switch is specified, return only the uninstall strings; otherwise, return the full installation objects.
             if ($UninstallString) {
                 $InstallList | Select-Object -ExpandProperty UninstallString -ErrorAction SilentlyContinue
             }
@@ -430,16 +373,14 @@ begin {
             [switch]$IncludeDefault
         )
     
-        # User account SID's follow a particular patter depending on if they're azure AD or a Domain account or a local "workgroup" account.
         $Patterns = switch ($Type) {
             "AzureAD" { "S-1-12-1-(\d+-?){4}$" }
             "DomainAndLocal" { "S-1-5-21-(\d+-?){4}$" }
             "All" { "S-1-12-1-(\d+-?){4}$" ; "S-1-5-21-(\d+-?){4}$" } 
         }
     
-        # We'll need the NTuser.dat file to load each users registry hive. So we grab it if their account sid matches the above pattern. 
         $UserProfiles = Foreach ($Pattern in $Patterns) { 
-            Get-ItemProperty "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\*" |
+            Get-ItemProperty "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\*" -ErrorAction SilentlyContinue |
                 Where-Object { $_.PSChildName -match $Pattern } | 
                 Select-Object @{Name = "SID"; Expression = { $_.PSChildName } },
                 @{Name = "UserName"; Expression = { "$($_.ProfileImagePath | Split-Path -Leaf)" } }, 
@@ -447,7 +388,6 @@ begin {
                 @{Name = "Path"; Expression = { $_.ProfileImagePath } }
         }
     
-        # There are some situations where grabbing the .Default user's info is needed.
         switch ($IncludeDefault) {
             $True {
                 $DefaultProfile = "" | Select-Object UserName, SID, UserHive, Path
@@ -455,7 +395,6 @@ begin {
                 $DefaultProfile.SID = "DefaultProfile"
                 $DefaultProfile.Userhive = "$env:SystemDrive\Users\Default\NTUSER.DAT"
                 $DefaultProfile.Path = "C:\Users\Default"
-    
                 $DefaultProfile | Where-Object { $ExcludedUsers -notcontains $_.UserName }
             }
         }
@@ -472,259 +411,205 @@ begin {
             $PropertyType = "DWord"
         )
         if (-not (Test-Path -Path $Path)) {
-            # Check if path does not exist and create the path
             try {
                 New-Item -Path $Path -Force -ErrorAction Stop | Out-Null
             }
             catch {
-                Write-Host "[Error] Unable to create the registry path $Path for $Name. Please see the error below!"
-                Write-Host "[Error] $($_.Exception.Message)"
+                Write-Log "Unable to create the registry path $Path for $Name: $($_.Exception.Message)" -Level ERROR
                 exit 1
             }
         }
         if (Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue) {
-            # Update property and print out what it was changed from and changed to
             $CurrentValue = (Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue).$Name
             try {
                 Set-ItemProperty -Path $Path -Name $Name -Value $Value -Force -Confirm:$false -ErrorAction Stop | Out-Null
             }
             catch {
-                Write-Host "[Error] Unable to set registry key for $Name at $Path. Please see the error below!"
-                Write-Host "[Error] $($_.Exception.Message)"
+                Write-Log "Unable to set registry key for $Name at $Path: $($_.Exception.Message)" -Level ERROR
                 exit 1
             }
-            Write-Host "$Path\$Name changed from $CurrentValue to $((Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue).$Name)"
+            Write-Log "$Path\$Name changed from $CurrentValue to $((Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue).$Name)"
         }
         else {
-            # Create property with value
             try {
                 New-ItemProperty -Path $Path -Name $Name -Value $Value -PropertyType $PropertyType -Force -Confirm:$false -ErrorAction Stop | Out-Null
             }
             catch {
-                Write-Host "[Error] Unable to set registry key for $Name at $Path. Please see the error below!"
-                Write-Host "[Error] $($_.Exception.Message)"
+                Write-Log "Unable to set registry key for $Name at $Path: $($_.Exception.Message)" -Level ERROR
                 exit 1
             }
-            Write-Host "Set $Path\$Name to $((Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue).$Name)"
+            Write-Log "Set $Path\$Name to $((Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue).$Name)"
         }
     }
 
-    # Test if running as Administrator
     function Test-IsElevated {
         $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
         $p = New-Object System.Security.Principal.WindowsPrincipal($id)
         $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
     }
 
-    # Test if running as System
     function Test-IsSystem {
         $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
         return $id.Name -like "NT AUTHORITY*" -or $id.IsSystem
     }
 
-    if (!$ExitCode) {
-        $ExitCode = 0
-    }
+    if (!$ExitCode) { $ExitCode = 0 }
 }
+
 process {
-    # Check if the script is running with elevated privileges
     if (!(Test-IsElevated)) {
-        Write-Host -Object "[Error] Access Denied. Please run with administrator privileges."
+        Write-Log "Access Denied. Please run with administrator privileges." -Level ERROR
         exit 1
     }
 
-    # Check if the action is to disable the User Choice Protection Driver
     if ($Action -eq "Disable User Choice Protection Driver") {
-        Write-Host -Object "Disabling the User Choice Protection Driver service."
+        Write-Log "Disabling the User Choice Protection Driver service."
 
-        # Check if the registry path for the User Choice Protection Driver service exists
         if (Test-Path -Path "Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\UCPD" -ErrorAction SilentlyContinue) {
             Set-RegKey -Path "Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\UCPD" -Name "Start" -Value 4
         }
         else {
-            Write-Host -Object "[Error] The User Choice Protection Driver service does not exist."
+            Write-Log "The User Choice Protection Driver service does not exist." -Level ERROR
             $ExitCode = 1
         }
 
-        Write-Host -Object "Disabling the User Choice Protection scheduled task."
-
-        # Get the scheduled task for the User Choice Protection Driver
+        Write-Log "Disabling the User Choice Protection scheduled task."
         $ScheduledTask = Get-ScheduledTask -TaskName "UCPD velocity" -TaskPath "\Microsoft\Windows\AppxDeploymentClient\" -ErrorAction SilentlyContinue
         if ($ScheduledTask) {
             try {
-                # Disable the scheduled task
-                $ScheduledTask | Disable-ScheduledTask -ErrorAction Stop
+                $ScheduledTask | Disable-ScheduledTask -ErrorAction Stop | Out-Null
             }
             catch {
-                Write-Host -Object "[Error] Failed to disable User Choice Protection scheduled task at '\Microsoft\Windows\AppxDeploymentClient\UCPD velocity'."
-                Write-Host -Object "[Error] $($_.Exception.Message)"
+                Write-Log "Failed to disable User Choice Protection scheduled task: $($_.Exception.Message)" -Level ERROR
                 exit 1
             }
         }
         else {
-            Write-Host -Object "[Error] The 'UCPD velocity' scheduled task was not found."
+            Write-Log "The 'UCPD velocity' scheduled task was not found." -Level ERROR
             $ExitCode = 1
         }
 
-        # Restart explorer if requested
         if ($RestartExplorer -and $ExitCode -eq 0) {
-            Write-Host "`nRestarting Explorer.exe as requested."
-
-            # Stop all instances of Explorer
-            Get-Process explorer | Stop-Process -Force
-        
+            Write-Log "Restarting Explorer.exe as requested."
+            Get-Process explorer -ErrorAction SilentlyContinue | Stop-Process -Force
             Start-Sleep -Seconds 1
-
-            # Restart Explorer if not running as System and Explorer is not already running
-            if (!(Test-IsSystem) -and !(Get-Process -Name "explorer")) {
+            if (!(Test-IsSystem) -and !(Get-Process -Name "explorer" -ErrorAction SilentlyContinue)) {
                 Start-Process explorer.exe
             }
         }
 
-        # Restart computer if requested
         if ($ForceRestartComputer -and $ExitCode -eq 0) {
-            Write-Host "`nScheduling forced restart for $((Get-Date).AddSeconds(60))."
-
-            # Restart Computer
+            Write-Log "Scheduling forced restart for $((Get-Date).AddSeconds(60))."
             Start-Process shutdown.exe -ArgumentList "/r /t 60" -Wait -NoNewWindow
         }
         elseif ($ExitCode -eq 0) {
-            Write-Host -Object "`n[Warning] In order for the User Protection Driver updates to take immediate effect, you may need to restart the computer."
+            Write-Log "In order for the User Protection Driver updates to take immediate effect, you may need to restart the computer." -Level WARNING
         }
 
         exit $ExitCode
     }
 
-    # Check if the action is to enable the User Choice Protection Driver
     if ($Action -eq "Enable User Choice Protection Driver") {
-        Write-Host -Object "Enabling the User Choice Protection Driver service."
+        Write-Log "Enabling the User Choice Protection Driver service."
 
-        # Check if the registry path for the User Choice Protection Driver service exists
         if (Test-Path -Path "Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\UCPD" -ErrorAction SilentlyContinue) {
             Set-RegKey -Path "Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\UCPD" -Name "Start" -Value 1
         }
         else {
-            Write-Host -Object "[Error] The User Choice Protection Driver service does not exist."
+            Write-Log "The User Choice Protection Driver service does not exist." -Level ERROR
             $ExitCode = 1
         }
 
-        Write-Host -Object "Enabling the User Choice Protection scheduled task."
-
-        # Get the scheduled task for the User Choice Protection Driver
+        Write-Log "Enabling the User Choice Protection scheduled task."
         $ScheduledTask = Get-ScheduledTask -TaskName "UCPD velocity" -TaskPath "\Microsoft\Windows\AppxDeploymentClient\" -ErrorAction SilentlyContinue
         if ($ScheduledTask) {
             try {
-                # Enable the scheduled task
-                $ScheduledTask | Enable-ScheduledTask -ErrorAction Stop
+                $ScheduledTask | Enable-ScheduledTask -ErrorAction Stop | Out-Null
             }
             catch {
-                Write-Host -Object "[Error] Failed to enable User Choice Protection scheduled task at '\Microsoft\Windows\AppxDeploymentClient\UCPD velocity'."
-                Write-Host -Object "[Error] $($_.Exception.Message)"
+                Write-Log "Failed to enable User Choice Protection scheduled task: $($_.Exception.Message)" -Level ERROR
                 exit 1
             }
         }
         else {
-            Write-Host -Object "[Error] The 'UCPD velocity' scheduled task was not found."
+            Write-Log "The 'UCPD velocity' scheduled task was not found." -Level ERROR
             $ExitCode = 1
         }
 
-        # Restart explorer if requested
         if ($RestartExplorer -and $ExitCode -eq 0) {
-            Write-Host "`nRestarting Explorer.exe as requested."
-
-            # Stop all instances of Explorer
-            Get-Process explorer | Stop-Process -Force
-        
+            Write-Log "Restarting Explorer.exe as requested."
+            Get-Process explorer -ErrorAction SilentlyContinue | Stop-Process -Force
             Start-Sleep -Seconds 1
-
-            # Restart Explorer if not running as System and Explorer is not already running
-            if (!(Test-IsSystem) -and !(Get-Process -Name "explorer")) {
+            if (!(Test-IsSystem) -and !(Get-Process -Name "explorer" -ErrorAction SilentlyContinue)) {
                 Start-Process explorer.exe
             }
         }
 
-        # Restart computer if requested
         if ($ForceRestartComputer -and $ExitCode -eq 0) {
-            Write-Host "`nScheduling forced restart for $((Get-Date).AddSeconds(60))."
-
-            # Restart Computer
+            Write-Log "Scheduling forced restart for $((Get-Date).AddSeconds(60))."
             Start-Process shutdown.exe -ArgumentList "/r /t 60" -Wait -NoNewWindow
         }
         elseif ($ExitCode -eq 0) {
-            Write-Host -Object "`n[Warning] In order for the User Protection Driver updates to take immediate effect, you may need to restart the computer."
+            Write-Log "In order for the User Protection Driver updates to take immediate effect, you may need to restart the computer." -Level WARNING
         }
 
         exit $ExitCode
     }
 
-    # Check if the application is installed
-    Write-Host -Object "Checking that '$ApplicationName' is installed."
+    Write-Log "Checking that '$ApplicationName' is installed."
     $ProgramIsInstalled = Find-InstallKey -DisplayName $ApplicationName
 
-    # Get all user profiles on the machine
     $UserProfiles = Get-UserHives -Type "All"
     $ProfileWasLoaded = New-Object System.Collections.Generic.List[object]
 
-    # Check if $ProgID is found in the registry
     if (Test-Path -Path "Registry::HKEY_LOCAL_MACHINE\Software\Classes\$ProgID" -ErrorAction SilentlyContinue) {
         $ProgIDisValid = $True
     }
 
-    # Loop through each profile on the machine
     ForEach ($UserProfile in $UserProfiles) {
-        # Load User ntuser.dat if it's not already loaded
         If (!(Test-Path -Path Registry::HKEY_USERS\$($UserProfile.SID) -ErrorAction SilentlyContinue)) {
             Start-Process -FilePath "cmd.exe" -ArgumentList "/C reg.exe LOAD HKU\$($UserProfile.SID) `"$($UserProfile.UserHive)`"" -Wait -WindowStyle Hidden
             $ProfileWasLoaded.Add($UserProfile)
         }
 
-        # Check if $ProgID is found in the registry under the user profile
         if (Test-Path -Path "Registry::HKEY_USERS\$($UserProfile.SID)\Software\Classes\$ProgID" -ErrorAction SilentlyContinue) {
             $ProgIDisValid = $True
         }
 
-        # Check if the application is installed for this user profile
         if (!$ProgramIsInstalled) {
             $ProgramIsInstalled = Find-InstallKey -DisplayName $ApplicationName -UserBaseKey "Registry::HKEY_USERS\$($UserProfile.SID)"
         }
     }
 
-    # HKEY_CLASSES_ROOT is the combined keys of HKEY_LOCAL_MACHINE\Software\Classes and HKEY_CURRENT_USER\Software\Classes
     if (!$ProgIDisValid) {
-        Write-Host -Object "[Error] Program ID '$ProgID' is invalid and was not found at HKEY_CLASSES_ROOT\$ProgID. Please specify a different program id."
-        Write-Host -Object "https://learn.microsoft.com/en-us/windows/win32/shell/fa-progids"
+        Write-Log "Program ID '$ProgID' is invalid and was not found at HKEY_CLASSES_ROOT\$ProgID. Please specify a different program id." -Level ERROR
+        Write-Log "https://learn.microsoft.com/en-us/windows/win32/shell/fa-progids"
         exit 1
     }
 
-    # Check if the application is installed as an AppX package
     if (!$ProgramIsInstalled) {
         $ProgramIsInstalled = Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "*$ApplicationName*" }
     }
 
-    # If user profiles were loaded and the application is not installed, unload the profiles
     if ($ProfileWasLoaded.Count -gt 0 -and !$ProgramIsInstalled) {
         ForEach ($UserProfile in $ProfileWasLoaded) {
-            # Unload NTuser.dat
             [gc]::Collect()
             Start-Sleep 1
             Start-Process -FilePath "cmd.exe" -ArgumentList "/C reg.exe UNLOAD HKU\$($UserProfile.SID)" -Wait -WindowStyle Hidden | Out-Null
         }
     }
 
-    # If the application is not installed, display a warning
     if (!$ProgramIsInstalled) {
-        Write-Host -Object "[Warning] The application '$ApplicationName' was not found."
+        Write-Log "The application '$ApplicationName' was not found." -Level WARNING
     }
     else {
-        Write-Host -Object "Found '$ApplicationName'."
+        Write-Log "Found '$ApplicationName'."
     }
 
-    # Set file associations for each user profile
     ForEach ($UserProfile in $UserProfiles) {
         $ExtensionList | ForEach-Object {
-            Write-Host -Object "`nSetting association of '$_' to '$ProgId' for $($UserProfile.Username)."
+            Write-Log "Setting association of '$_' to '$ProgId' for $($UserProfile.Username)."
             
-            # Prepare values for setting the association
             $userExperience = "User Choice set via Windows User Experience {D18B6DD5-6124-4341-9318-804003BAFA0B}"
             $hexDateTime = Get-HexDateTime
         
@@ -732,54 +617,47 @@ process {
             $ToBeHashed = "$File$($UserProfile.SID)$ProgID$hexDateTime$userExperience".ToLower()
             $Hash = Get-Hash -BaseInfo $ToBeHashed
 
-            # Set the registry keys for file association
             Set-RegKey -Path "Registry::HKEY_USERS\$($UserProfile.SID)\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$File\UserChoice" -Name "Hash" -Value $Hash -PropertyType String
             Set-RegKey -Path "Registry::HKEY_USERS\$($UserProfile.SID)\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$File\UserChoice" -Name "ProgId" -Value $ProgID -PropertyType String
 
-            Write-Host -Object "Association set."
+            Write-Log "Association set."
         }
     }
 
-    # Unload the profiles if they were loaded during the script execution
     if ($ProfileWasLoaded.Count -gt 0) {
         ForEach ($UserProfile in $ProfileWasLoaded) {
-            # Unload NTuser.dat
             [gc]::Collect()
             Start-Sleep 1
             Start-Process -FilePath "cmd.exe" -ArgumentList "/C reg.exe UNLOAD HKU\$($UserProfile.SID)" -Wait -WindowStyle Hidden | Out-Null
         }
     }
 
-    # Restart explorer if requested
     if ($RestartExplorer -and $ExitCode -eq 0) {
-        Write-Host "`nRestarting Explorer.exe as requested."
-
-        # Stop all instances of Explorer
-        Get-Process explorer | Stop-Process -Force
-        
+        Write-Log "Restarting Explorer.exe as requested."
+        Get-Process explorer -ErrorAction SilentlyContinue | Stop-Process -Force
         Start-Sleep -Seconds 1
-
-        # Restart Explorer if not running as System and Explorer is not already running
-        if (!(Test-IsSystem) -and !(Get-Process -Name "explorer")) {
+        if (!(Test-IsSystem) -and !(Get-Process -Name "explorer" -ErrorAction SilentlyContinue)) {
             Start-Process explorer.exe
         }
     }
     elseif (!$ForceRestartComputer -and $ExitCode -eq 0) {
-        Write-Host -Object "`n[Warning] In order for the thumbnails to update immediately, you may need to restart Explorer."
+        Write-Log "In order for the thumbnails to update immediately, you may need to restart Explorer." -Level WARNING
     }
 
-    # Restart computer if requested
     if ($ForceRestartComputer -and $ExitCode -eq 0) {
-        Write-Host "`nScheduling forced restart for $((Get-Date).AddSeconds(60))."
-
-        # Restart Computer
+        Write-Log "Scheduling forced restart for $((Get-Date).AddSeconds(60))."
         Start-Process shutdown.exe -ArgumentList "/r /t 60" -Wait -NoNewWindow
     }
-
-    exit $ExitCode
 }
+
 end {
-    
-    
-    
+    try {
+        $EndTime = Get-Date
+        $Duration = ($EndTime - $StartTime).TotalSeconds
+        Write-Log "Script execution completed in $Duration seconds"
+    }
+    finally {
+        [System.GC]::Collect()
+        exit $ExitCode
+    }
 }

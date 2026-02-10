@@ -108,7 +108,7 @@ begin {
         $VerifyState = $false
     }
 
-    $ExitCode = 0
+    $script:ExitCode = 0
 }
 
 process {
@@ -140,7 +140,7 @@ process {
                 Write-Log "Site stopped successfully"
             } else {
                 Write-Log "Site did not stop within timeout period" -Level ERROR
-                $ExitCode = 1
+                $script:ExitCode = 1
             }
         }
 
@@ -162,14 +162,14 @@ process {
 
         if ($VerifyState -and $FinalState -ne "Started") {
             Write-Log "Site is not running after restart" -Level ERROR
-            $ExitCode = 1
+            $script:ExitCode = 1
         } else {
             Write-Log "Site restarted successfully"
         }
     }
     catch {
         Write-Log "Failed to restart site: $_" -Level ERROR
-        $ExitCode = 1
+        $script:ExitCode = 1
     }
 }
 
@@ -181,6 +181,6 @@ end {
     }
     finally {
         [System.GC]::Collect()
-        exit $ExitCode
+        exit $script:ExitCode
     }
 }

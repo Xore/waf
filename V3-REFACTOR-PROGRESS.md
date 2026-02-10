@@ -1,12 +1,12 @@
 # WAF V3.0 Refactoring Progress
 
-**Last Updated:** 2026-02-10 12:19 CET
+**Last Updated:** 2026-02-10 18:30 CET
 
 ## Overview
 
 **Total Scripts:** 219  
-**Completed:** 76 (34.7%)  
-**Remaining:** 143
+**Completed:** 78 (35.6%)  
+**Remaining:** 141
 
 ## Completion Status by Category
 
@@ -96,13 +96,16 @@
 - [x] Registry-RenameValue.ps1
 - [x] Registry-SearchRegistry.ps1
 
-### Software (6/23 = 26.1%)
+### Software (8/23 = 34.8%)
 - [x] Software-InstallOffice365.ps1
 - [x] Software-InstallWindowsStoreApp.ps1
 - [x] Software-RemoveCCMClient.ps1
 - [x] Software-UninstallApplication.ps1
 - [x] Software-UninstallDellSupportAssist.ps1
-- [ ] (17 more scripts remaining...)
+- [x] Software-InstallNetFramework35.ps1
+- [x] Software-UpdatePowerShell51.ps1
+- [x] Software-UninstallSiemensNX2412.ps1
+- [ ] (15 more scripts remaining...)
 
 ### System (0/X)
 - [ ] (Scripts not yet inventoried)
@@ -128,14 +131,9 @@ Each completed script includes:
 
 ## Recent Commits
 
-### Batch 72-74 (Software Category)
-1. [Software-RemoveCCMClient.ps1](https://github.com/Xore/waf/commit/ca6080dafdd4ff69840342d0fdc60df59e9438b7)
-2. [Software-UninstallDellSupportAssist.ps1](https://github.com/Xore/waf/commit/e0f249e3be8de2bbbbea0abaa8a7a12f01812f02)
-3. [Software-InstallWindowsStoreApp.ps1](https://github.com/Xore/waf/commit/25e950be5824b58077639aa324268dbf4a1681ad)
-
-### Batch 75-76 (Software Category - Complex Scripts)
-4. [Software-UninstallApplication.ps1](https://github.com/Xore/waf/commit/f39b276d122106a71fd7992a2f092ade5d5fb998)
-5. [Software-InstallOffice365.ps1](https://github.com/Xore/waf/commit/8c6de5c64679a7ae665aa1df35e26735b0bab0a0)
+### Batch 77-78 (Software Category)
+1. [Software-UpdatePowerShell51.ps1](https://github.com/Xore/waf/commit/ecbf23122336e4900a5aaed6fafc5705b2e0afe2) - Refactored to V3.0.0
+2. [Software-UninstallSiemensNX2412.ps1](https://github.com/Xore/waf/commit/c51a2bccca52d086b641c44b3f991f0d855dc4ee) - Converted from batch to PowerShell V3.0.0
 
 ## Notes
 
@@ -145,3 +143,4 @@ Each completed script includes:
 - Proper error handling with structured logging
 - Memory cleanup with garbage collection
 - Helper functions maintained and improved
+- Batch scripts being converted to PowerShell where found

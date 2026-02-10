@@ -53,8 +53,8 @@
     - Integration service failures
     
     Performance Thresholds:
-    - Host CPU usage (Critical: >90%, Warning: >80%)
-    - Host memory pressure (Critical: >95%, Warning: >85%)
+    - Host CPU usage (Critical: >90 percent, Warning: >80 percent)
+    - Host memory pressure (Critical: >95 percent, Warning: >85 percent)
     - Storage latency (Warning: >50ms, Critical: >100ms)
     - Network packet loss detection
     - CSV IOPS and latency
@@ -71,9 +71,9 @@
     Status Determination Logic:
     - Critical events in last 24 hours → CRITICAL
     - Cluster quorum lost → CRITICAL
-    - Host resources >95% → CRITICAL
+    - Host resources >95 percent → CRITICAL
     - Multiple VM heartbeat failures → CRITICAL
-    - CSV space <10% → CRITICAL
+    - CSV space <10 percent → CRITICAL
     - Warning-level events or thresholds → WARNING
     - All checks passed → HEALTHY
     
@@ -88,7 +88,7 @@
 .NOTES
     Script Name:    Hyper-V Health Check 2.ps1
     Author:         Windows Automation Framework
-    Version:        1.0
+    Version:        1.1
     Creation Date:  2026-02-10
     Last Modified:  2026-02-10
     
@@ -110,7 +110,7 @@
         - hypervEventErrors (Integer: critical event count last 24h)
         - hypervClusterQuorumOK (Checkbox: cluster has quorum)
         - hypervCSVHealthy (Checkbox: all CSVs healthy)
-        - hypervCSVLowSpace (Integer: CSVs with <20% free)
+        - hypervCSVLowSpace (Integer: CSVs with <20 percent free)
         - hypervVMsUnhealthy (Integer: VMs with failed heartbeat)
         - hypervReplicationIssues (Integer: VMs with replication problems)
         - hypervStorageLatencyMS (Integer: average storage latency)
@@ -146,28 +146,24 @@ param()
 # CONFIGURATION
 # ============================================================================
 
-$ScriptVersion = "1.0"
+$ScriptVersion = "1.1"
 
-# Logging configuration
 $LogLevel = "INFO"
 $VerbosePreference = 'SilentlyContinue'
 
-# Timeouts and limits
 $DefaultTimeout = 60
-$EventLogHours = 24  # Check events from last 24 hours
+$EventLogHours = 24
 
-# NinjaRMM CLI path
 $NinjaRMMCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
 
-# Health thresholds
 $CPUWarning = 80
 $CPUCritical = 90
 $MemoryWarning = 85
 $MemoryCritical = 95
-$CSVSpaceWarning = 20  # Percent free
-$CSVSpaceCritical = 10  # Percent free
-$StorageLatencyWarning = 50  # Milliseconds
-$StorageLatencyCritical = 100  # Milliseconds
+$CSVSpaceWarning = 20
+$CSVSpaceCritical = 10
+$StorageLatencyWarning = 50
+$StorageLatencyCritical = 100
 
 # ============================================================================
 # INITIALIZATION
@@ -181,7 +177,6 @@ $script:ErrorCount = 0
 $script:WarningCount = 0
 $script:CLIFallbackCount = 0
 
-# Health tracking
 $script:CriticalIssues = @()
 $script:WarningIssues = @()
 $script:InfoItems = @()
@@ -336,21 +331,19 @@ function Get-HostResourceHealth {
     try {
         Write-Log "Checking host resource health..." -Level INFO
         
-        # CPU check
         $CPU = Get-Counter '\Processor(_Total)\% Processor Time' -ErrorAction SilentlyContinue
         if ($CPU) {
             $CPUPercent = [Math]::Round($CPU.CounterSamples[0].CookedValue)
             
             if ($CPUPercent -ge $CPUCritical) {
-                Add-CriticalIssue "Host CPU at $CPUPercent% (Critical threshold: $CPUCritical%)"
+                Add-CriticalIssue "Host CPU at $CPUPercent percent (Critical threshold: $CPUCritical percent)"
             } elseif ($CPUPercent -ge $CPUWarning) {
-                Add-WarningIssue "Host CPU at $CPUPercent% (Warning threshold: $CPUWarning%)"
+                Add-WarningIssue "Host CPU at $CPUPercent percent (Warning threshold: $CPUWarning percent)"
             } else {
-                Add-InfoItem "Host CPU: $CPUPercent%"
+                Add-InfoItem "Host CPU: $CPUPercent percent"
             }
         }
         
-        # Memory check
         $OS = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
         if ($OS) {
             $TotalMemory = $OS.TotalVisibleMemorySize
@@ -359,11 +352,11 @@ function Get-HostResourceHealth {
             $MemoryPercent = [Math]::Round(($UsedMemory / $TotalMemory) * 100)
             
             if ($MemoryPercent -ge $MemoryCritical) {
-                Add-CriticalIssue "Host memory at $MemoryPercent% (Critical threshold: $MemoryCritical%)"
+                Add-CriticalIssue "Host memory at $MemoryPercent percent (Critical threshold: $MemoryCritical percent)"
             } elseif ($MemoryPercent -ge $MemoryWarning) {
-                Add-WarningIssue "Host memory at $MemoryPercent% (Warning threshold: $MemoryWarning%)"
+                Add-WarningIssue "Host memory at $MemoryPercent percent (Warning threshold: $MemoryWarning percent)"
             } else {
-                Add-InfoItem "Host memory: $MemoryPercent%"
+                Add-InfoItem "Host memory: $MemoryPercent percent"
             }
         }
         
@@ -385,9 +378,8 @@ function Get-RecentHyperVEvents {
         $StartTime = (Get-Date).AddHours(-$EventLogHours)
         $EventCount = 0
         
-        # Critical event log sources
         $EventSources = @(
-            @{Name="Microsoft-Windows-Hyper-V-VMMS-Admin"; Levels=@(1,2)},  # Critical, Error
+            @{Name="Microsoft-Windows-Hyper-V-VMMS-Admin"; Levels=@(1,2)},
             @{Name="Microsoft-Windows-Hyper-V-Worker-Admin"; Levels=@(1,2)},
             @{Name="Microsoft-Windows-Hyper-V-Compute-Admin"; Levels=@(1,2)},
             @{Name="Microsoft-Windows-Hyper-V-Config-Admin"; Levels=@(1,2)},
@@ -411,7 +403,6 @@ function Get-RecentHyperVEvents {
                 if ($Events) {
                     $EventCount += $Events.Count
                     
-                    # Check for specific critical events
                     foreach ($Event in $Events) {
                         switch ($Event.Id) {
                             18510 { Add-InfoItem "VM started: $($Event.Message)" }
@@ -472,7 +463,6 @@ function Get-VMHealthStatus {
         $ReplicationIssues = 0
         
         foreach ($VM in $VMs) {
-            # Check heartbeat for running VMs
             if ($VM.State -eq 'Running') {
                 $IntServices = Get-VMIntegrationService -VM $VM -ErrorAction SilentlyContinue
                 $Heartbeat = $IntServices | Where-Object { $_.Name -like "*Heartbeat*" }
@@ -486,7 +476,6 @@ function Get-VMHealthStatus {
                 }
             }
             
-            # Check replication health
             $Replication = Get-VMReplication -VM $VM -ErrorAction SilentlyContinue
             if ($Replication) {
                 if ($Replication.ReplicationHealth -eq 'Critical') {
@@ -530,7 +519,6 @@ function Get-ClusterHealth {
             AvgLatency = 0
         }
         
-        # Check if clustered
         if (-not (Get-Module -ListAvailable -Name FailoverClusters)) {
             Write-Log "Not a cluster member" -Level DEBUG
             return $ClusterHealth
@@ -547,16 +535,13 @@ function Get-ClusterHealth {
         $ClusterHealth.Clustered = $true
         Add-InfoItem "Cluster member: $($Cluster.Name)"
         
-        # Check quorum
         try {
             $Quorum = Get-ClusterQuorum -ErrorAction Stop
             
-            # Check if cluster has quorum by looking at node states
             $Nodes = Get-ClusterNode -ErrorAction Stop
             $UpNodes = @($Nodes | Where-Object { $_.State -eq 'Up' }).Count
             $TotalNodes = $Nodes.Count
             
-            # Simple quorum check - majority of nodes up
             if ($UpNodes -gt ($TotalNodes / 2)) {
                 $ClusterHealth.QuorumOK = $true
                 Add-InfoItem "Cluster has quorum ($UpNodes/$TotalNodes nodes up)"
@@ -565,7 +550,6 @@ function Get-ClusterHealth {
                 Add-CriticalIssue "Cluster quorum lost ($UpNodes/$TotalNodes nodes up)"
             }
             
-            # Check for down nodes
             $DownNodes = $Nodes | Where-Object { $_.State -ne 'Up' }
             foreach ($Node in $DownNodes) {
                 Add-CriticalIssue "Cluster node down: $($Node.Name) (State: $($Node.State))"
@@ -575,20 +559,17 @@ function Get-ClusterHealth {
             Add-WarningIssue "Cluster quorum check failed: $_"
         }
         
-        # Check CSV health
         try {
             $CSVs = Get-ClusterSharedVolume -ErrorAction Stop
             
             foreach ($CSV in $CSVs) {
                 $CSVPath = $CSV.SharedVolumeInfo.FriendlyVolumeName
                 
-                # Check CSV state
                 if ($CSV.State -ne 'Online') {
                     $ClusterHealth.CSVHealthy = $false
                     Add-CriticalIssue "CSV offline: $($CSV.Name) (State: $($CSV.State))"
                 }
                 
-                # Check free space
                 if ($CSVPath) {
                     try {
                         $Volume = Get-Volume -FilePath $CSVPath -ErrorAction SilentlyContinue
@@ -597,12 +578,12 @@ function Get-ClusterHealth {
                             
                             if ($PercentFree -le $CSVSpaceCritical) {
                                 $ClusterHealth.CSVLowSpace++
-                                Add-CriticalIssue "CSV critical space: $($CSV.Name) ($PercentFree% free)"
+                                Add-CriticalIssue "CSV critical space: $($CSV.Name) ($PercentFree percent free)"
                             } elseif ($PercentFree -le $CSVSpaceWarning) {
                                 $ClusterHealth.CSVLowSpace++
-                                Add-WarningIssue "CSV low space: $($CSV.Name) ($PercentFree% free)"
+                                Add-WarningIssue "CSV low space: $($CSV.Name) ($PercentFree percent free)"
                             } else {
-                                Add-InfoItem "CSV $($CSV.Name): $PercentFree% free"
+                                Add-InfoItem "CSV $($CSV.Name): $PercentFree percent free"
                             }
                         }
                     } catch {
@@ -640,16 +621,13 @@ function Get-StorageLatency {
     try {
         Write-Log "Checking storage latency..." -Level INFO
         
-        # Try to get Hyper-V specific disk latency
         $LatencyCounter = Get-Counter '\Hyper-V Virtual Storage Device(*)\Normalized Throughput' -ErrorAction SilentlyContinue
         
         if (-not $LatencyCounter) {
-            # Fallback to physical disk latency
             $LatencyCounter = Get-Counter '\PhysicalDisk(*)\Avg. Disk sec/Transfer' -ErrorAction SilentlyContinue
         }
         
         if ($LatencyCounter) {
-            # Convert to milliseconds
             $AvgLatency = [Math]::Round(($LatencyCounter.CounterSamples | Measure-Object -Property CookedValue -Average).Average * 1000)
             
             if ($AvgLatency -ge $StorageLatencyCritical) {
@@ -675,7 +653,6 @@ function Get-OverallHealthStatus {
     [CmdletBinding()]
     param()
     
-    # Determine overall health based on issue counts
     if ($script:CriticalIssues.Count -gt 0) {
         return "CRITICAL"
     } elseif ($script:WarningIssues.Count -gt 0) {
@@ -713,12 +690,10 @@ function Get-TopIssues {
     
     $AllIssues = @()
     
-    # Add critical issues first
     foreach ($Issue in $script:CriticalIssues | Select-Object -First $Count) {
         $AllIssues += "[CRITICAL] $Issue"
     }
     
-    # Add warning issues if space remains
     $Remaining = $Count - $AllIssues.Count
     if ($Remaining -gt 0) {
         foreach ($Issue in $script:WarningIssues | Select-Object -First $Remaining) {
@@ -742,9 +717,7 @@ try {
     Write-Log "Starting: $ScriptName v$ScriptVersion" -Level INFO
     Write-Log "========================================" -Level INFO
     
-    # Check if Hyper-V is installed
     if (-not (Test-HyperVService)) {
-        # Not a Hyper-V host - set minimal fields and exit
         Set-NinjaField -FieldName "hypervQuickHealth" -Value "UNKNOWN"
         Set-NinjaField -FieldName "hypervHealthSummary" -Value "Hyper-V not installed"
         Set-NinjaField -FieldName "hypervCriticalIssues" -Value 0
@@ -755,25 +728,18 @@ try {
         exit 0
     }
     
-    # Perform health checks
     Write-Log "Performing health checks..." -Level INFO
     
-    # Host resource health
     Get-HostResourceHealth | Out-Null
     
-    # Recent event log issues
     $EventCount = Get-RecentHyperVEvents
     
-    # VM health status
     $VMHealth = Get-VMHealthStatus
     
-    # Cluster health (if clustered)
     $ClusterHealth = Get-ClusterHealth
     
-    # Storage latency
     $StorageLatency = Get-StorageLatency
     
-    # Determine overall status
     $OverallHealth = Get-OverallHealthStatus
     $HealthSummary = Get-HealthSummary
     $TopIssues = Get-TopIssues -Count 5
@@ -791,7 +757,6 @@ try {
     }
     Write-Log "========================================" -Level INFO
     
-    # Update NinjaRMM fields
     Write-Log "Updating NinjaRMM custom fields..." -Level INFO
     
     Set-NinjaField -FieldName "hypervQuickHealth" -Value $OverallHealth
@@ -814,14 +779,12 @@ try {
     Write-Log "Health check failed: $_" -Level ERROR
     Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level ERROR
     
-    # Set error state
     Set-NinjaField -FieldName "hypervQuickHealth" -Value "UNKNOWN"
     Set-NinjaField -FieldName "hypervHealthSummary" -Value "Health check error: $($_.Exception.Message)"
     
     exit 1
     
 } finally {
-    # Calculate execution time - REQUIRED
     $EndTime = Get-Date
     $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
     
@@ -838,7 +801,6 @@ try {
     Write-Log "========================================" -Level INFO
 }
 
-# Exit with appropriate code
 if ($script:ErrorCount -gt 0) {
     exit 1
 } else {

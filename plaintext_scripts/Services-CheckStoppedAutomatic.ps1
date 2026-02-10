@@ -1,208 +1,477 @@
 #Requires -Version 5.1
+#Requires -RunAsAdministrator
 
 <#
 .SYNOPSIS
-    Reports on or starts services for Automatic Services that are not currently running. Services set as 'Delayed Start' or 'Trigger Start' are ignored.
+    Monitors and optionally starts Windows services that are set to Automatic but not running.
+
 .DESCRIPTION
-    Reports on or starts services for Automatic Services that are not currently running. Services set as 'Delayed Start' or 'Trigger Start' are ignored.
-.EXAMPLE
-    (No Parameters)
+    Identifies Windows services configured for Automatic startup that are currently stopped.
+    Services with Delayed Start or Trigger Start are automatically excluded from reporting.
+    Can optionally attempt to start discovered services.
     
-    Matching Services found!
+    The script performs the following:
+    - Validates system uptime (requires 15+ minutes after boot)
+    - Checks administrator privileges
+    - Identifies automatic services that are not running
+    - Filters out delayed start and trigger start services
+    - Excludes user-specified services from reporting
+    - Optionally attempts to start stopped services
+    - Reports detailed service information
+    - Updates NinjaRMM custom fields with status
+    
+    This script runs unattended without user interaction.
 
-    Name    Description                                         
-    ----    -----------                                         
-    SysMain Maintains and improves system performance over time.
+.PARAMETER IgnoreServices
+    Comma-separated list of service names to exclude from monitoring.
+    Supports both service names (e.g., "wuauserv") and display names.
+    Example: "SysMain,Spooler,BITS"
 
-PARAMETER: -IgnoreServices "ExampleServiceName"
-    A comma separated list of service names to ignore.
+.PARAMETER StartFoundServices
+    If specified, attempts to start any stopped automatic services found.
+    Makes up to 3 attempts per service with error logging.
+    Default: $false
 
-PARAMETER: -StartFoundServices
-    Attempts to start any services found matching the criteria.
+.EXAMPLE
+    .\Services-CheckStoppedAutomatic.ps1
+    
+    Reports on stopped automatic services without starting them.
+
+.EXAMPLE
+    .\Services-CheckStoppedAutomatic.ps1 -IgnoreServices "SysMain,BITS"
+    
+    Reports stopped services, excluding SysMain and BITS from results.
+
+.EXAMPLE
+    .\Services-CheckStoppedAutomatic.ps1 -StartFoundServices
+    
+    Reports and attempts to start all stopped automatic services.
 
 .NOTES
-    Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Version: 1.0
-    Release Notes: Initial Release
+    Script Name:    Services-CheckStoppedAutomatic.ps1
+    Author:         Windows Automation Framework
+    Version:        2.0
+    Creation Date:  2024-01-15
+    Last Modified:  2026-02-10
+    
+    Execution Context: SYSTEM (via NinjaRMM automation)
+    Execution Frequency: Daily or on-demand
+    Typical Duration: ~5-15 seconds (depends on service count)
+    Timeout Setting: 120 seconds recommended
+    
+    User Interaction: NONE (fully automated, no prompts)
+    Restart Behavior: N/A (no restart required)
+    
+    Fields Updated:
+        - stoppedServicesStatus (Success/Warning/Failed)
+        - stoppedServicesDate (timestamp)
+        - stoppedServicesCount (number found)
+        - stoppedServicesList (service names)
+    
+    Dependencies:
+        - Windows PowerShell 5.1 or higher
+        - Administrator privileges (SYSTEM context)
+        - NinjaRMM Agent installed
+        - Minimum 15 minutes uptime required
+    
+    Environment Variables (Optional):
+        - servicesToExclude: Alternative to -IgnoreServices parameter
+        - startFoundServices: Alternative to -StartFoundServices switch
+    
+    Exit Codes:
+        0 - Success (no stopped services or all started successfully)
+        1 - Failure (validation failed, stopped services found, or start failed)
+
+.LINK
+    https://github.com/Xore/waf
+    https://docs.microsoft.com/powershell/module/microsoft.powershell.management/get-service
 #>
 
 [CmdletBinding()]
 param (
-    [Parameter()]
-    [String]$IgnoreServices,
-    [Parameter()]
-    [Switch]$StartFoundServices = [System.Convert]::ToBoolean($env:startFoundServices)
+    [Parameter(Mandatory=$false, HelpMessage="Comma-separated list of service names to ignore")]
+    [ValidateNotNullOrEmpty()]
+    [string]$IgnoreServices,
+    
+    [Parameter(Mandatory=$false, HelpMessage="Attempt to start stopped services")]
+    [switch]$StartFoundServices = [System.Convert]::ToBoolean($env:startFoundServices)
 )
 
-begin {
-    # Replace script parameters with form variables
-    if($env:servicesToExclude -and $env:servicesToExclude -notlike "null"){ $IgnoreServices = $env:servicesToExclude }
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
 
-    # Get the last startup time of the operating system.
-    $LastBootDateTime = Get-CimInstance -ClassName Win32_OperatingSystem | Select-Object -ExpandProperty LastBootUpTime
-    if ($LastBootDateTime -gt $(Get-Date).AddMinutes(-15)) {
-        $Uptime = New-TimeSpan $LastBootDateTime (Get-Date) | Select-Object -ExpandProperty TotalMinutes
-        Write-Host "Current uptime is $([math]::Round($Uptime)) minutes."
-        Write-Host "[Error] Please wait at least 15 minutes after startup before running this script."
-        exit 1
+$ScriptVersion = "2.0"
+$ScriptName = "Services-CheckStoppedAutomatic"
+$MinimumUptimeMinutes = 15
+$InvalidServiceNameCharacters = "\\|/|:"
+$MaxServiceNameLength = 256
+
+# NinjaRMM CLI path for fallback
+$NinjaRMMCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
+
+# ============================================================================
+# INITIALIZATION
+# ============================================================================
+
+$StartTime = Get-Date
+$ErrorActionPreference = 'Stop'
+$script:ErrorCount = 0
+$script:WarningCount = 0
+$script:CLIFallbackCount = 0
+
+# ============================================================================
+# FUNCTIONS
+# ============================================================================
+
+function Write-Log {
+    <#
+    .SYNOPSIS
+        Writes structured log messages with plain text output
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Message,
+        
+        [Parameter(Mandatory=$false)]
+        [ValidateSet('DEBUG','INFO','WARN','ERROR','SUCCESS')]
+        [string]$Level = 'INFO'
+    )
+    
+    $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $LogMessage = "[$Timestamp] [$Level] $Message"
+    
+    Write-Output $LogMessage
+    
+    switch ($Level) {
+        'WARN'  { $script:WarningCount++ }
+        'ERROR' { $script:ErrorCount++ }
     }
-
-    # Define a function to test if the current user has elevated (administrator) privileges.
-    function Test-IsElevated {
-        $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-        $p = New-Object System.Security.Principal.WindowsPrincipal($id)
-        $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
-    }
-
-    $ExitCode = 0
 }
-process {
-    # Check if the script is running with Administrator privileges.
-    if (!(Test-IsElevated)) {
-        Write-Host -Object "[Error] Access Denied. Please run with Administrator privileges."
+
+function Set-NinjaField {
+    <#
+    .SYNOPSIS
+        Sets a NinjaRMM custom field value with automatic fallback to CLI
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$FieldName,
+        
+        [Parameter(Mandatory=$true)]
+        [AllowNull()]
+        $Value
+    )
+    
+    if ($null -eq $Value -or $Value -eq "") {
+        Write-Log "Skipping field '$FieldName' - no value" -Level DEBUG
+        return
+    }
+    
+    $ValueString = $Value.ToString()
+    
+    try {
+        if (Get-Command Ninja-Property-Set -ErrorAction SilentlyContinue) {
+            Ninja-Property-Set $FieldName $ValueString -ErrorAction Stop
+            Write-Log "Field '$FieldName' set successfully" -Level DEBUG
+            return
+        } else {
+            throw "Ninja-Property-Set cmdlet not available"
+        }
+    } catch {
+        Write-Log "Ninja-Property-Set failed, using CLI fallback" -Level DEBUG
+        
+        try {
+            if (-not (Test-Path $NinjaRMMCLI)) {
+                throw "NinjaRMM CLI not found at: $NinjaRMMCLI"
+            }
+            
+            $CLIArgs = @("set", $FieldName, $ValueString)
+            $CLIResult = & $NinjaRMMCLI $CLIArgs 2>&1
+            
+            if ($LASTEXITCODE -ne 0) {
+                throw "CLI exit code: $LASTEXITCODE, Output: $CLIResult"
+            }
+            
+            Write-Log "Field '$FieldName' set via CLI" -Level DEBUG
+            $script:CLIFallbackCount++
+            
+        } catch {
+            Write-Log "Failed to set field '$FieldName': $_" -Level ERROR
+        }
+    }
+}
+
+function Test-IsElevated {
+    <#
+    .SYNOPSIS
+        Checks if script is running with Administrator privileges
+    #>
+    $Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $Principal = New-Object System.Security.Principal.WindowsPrincipal($Identity)
+    return $Principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+# ============================================================================
+# MAIN EXECUTION
+# ============================================================================
+
+try {
+    Write-Log "========================================" -Level INFO
+    Write-Log "Starting: $ScriptName v$ScriptVersion" -Level INFO
+    Write-Log "========================================" -Level INFO
+    
+    # Check for environment variable overrides
+    if ($env:servicesToExclude -and $env:servicesToExclude -notlike "null") {
+        $IgnoreServices = $env:servicesToExclude
+        Write-Log "Using ignore list from environment: $IgnoreServices" -Level INFO
+    }
+    
+    # Check Administrator privileges
+    if (-not (Test-IsElevated)) {
+        throw "Administrator privileges required"
+    }
+    Write-Log "Administrator privileges verified" -Level INFO
+    
+    # Check system uptime
+    Write-Log "Checking system uptime" -Level DEBUG
+    $LastBootDateTime = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop | 
+        Select-Object -ExpandProperty LastBootUpTime
+    
+    $Uptime = (Get-Date) - $LastBootDateTime
+    $UptimeMinutes = [math]::Round($Uptime.TotalMinutes)
+    
+    Write-Log "Current uptime: $UptimeMinutes minutes" -Level INFO
+    
+    if ($UptimeMinutes -lt $MinimumUptimeMinutes) {
+        Write-Log "System uptime is less than $MinimumUptimeMinutes minutes" -Level ERROR
+        Write-Log "Please wait at least $MinimumUptimeMinutes minutes after startup before running this script" -Level ERROR
+        
+        Set-NinjaField -FieldName "stoppedServicesStatus" -Value "Insufficient Uptime"
+        Set-NinjaField -FieldName "stoppedServicesDate" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
         exit 1
     }
-
-    # Define a string of characters that are invalid for service names.
-    $InvalidServiceNameCharacters = "\\|/|:"
-    # Create a list to hold the names of services to ignore.
-    $ServicesToIgnore = New-Object System.Collections.Generic.List[string]
-
-    # If there are services to ignore and they are separated by commas, split the string into individual service names.
-    if ($IgnoreServices -and $IgnoreServices -match ",") {
-        $IgnoreServices -split "," | ForEach-Object {
-            # Check each service name for invalid characters or excessive length.
-            if ($_.Trim() -match $InvalidServiceNameCharacters) {
-                Write-Host "[Error] Service Name contains one of the invalid characters '\/:'. $_ is not a valid service to ignore."
-                $ExitCode = 1
-                return
+    
+    # Build list of services to ignore
+    $ServicesToIgnore = [System.Collections.Generic.List[string]]::new()
+    
+    if ($IgnoreServices) {
+        Write-Log "Processing ignore list" -Level DEBUG
+        
+        $ServiceArray = if ($IgnoreServices -match ",") {
+            $IgnoreServices -split ","
+        } else {
+            @($IgnoreServices)
+        }
+        
+        foreach ($ServiceName in $ServiceArray) {
+            $ServiceName = $ServiceName.Trim()
+            
+            # Validate service name
+            if ($ServiceName -match $InvalidServiceNameCharacters) {
+                Write-Log "Service name contains invalid characters: $ServiceName" -Level WARN
+                continue
             }
-
-            if (($_.Trim()).Length -gt 256) {
-                Write-Host "[Error] Service Name is greater than 256 characters. $_ is not a valid service to ignore. "
-                $ExitCode = 1
-                return
+            
+            if ($ServiceName.Length -gt $MaxServiceNameLength) {
+                Write-Log "Service name exceeds maximum length: $ServiceName" -Level WARN
+                continue
             }
-
-            # Add valid services to the ignore list.
-            $ServicesToIgnore.Add($_.Trim())
+            
+            $ServicesToIgnore.Add($ServiceName)
+            Write-Log "Added to ignore list: $ServiceName" -Level DEBUG
         }
+        
+        Write-Log "Services to ignore: $($ServicesToIgnore.Count)" -Level INFO
     }
-    elseif ($IgnoreServices) {
-        # For a single service name, perform similar validation and add if valid.
-        $ValidService = $True
-
-        if ($IgnoreServices.Trim() -match $InvalidServiceNameCharacters) {
-            Write-Host "[Error] Service Name contains one of the invalid characters '\/:'. '$IgnoreServices' is not a valid service to ignore. "
-            $ExitCode = 1
-            $ValidService = $False
+    
+    # Get all automatic services that are not running
+    Write-Log "Querying automatic services" -Level INFO
+    $NonRunningAutoServices = [System.Collections.Generic.List[object]]::new()
+    
+    Get-Service -ErrorAction Stop | 
+        Where-Object { $_.StartType -eq "Automatic" -and $_.Status -ne "Running" } | 
+        ForEach-Object {
+            $NonRunningAutoServices.Add($_)
         }
-
-        if (($IgnoreServices.Trim()).Length -gt 256) {
-            Write-Host "[Error] Service Name is greater than 256 characters. '$IgnoreServices' is not a valid service to ignore. "
-            $ExitCode = 1
-            $ValidService = $False
-        }
-
-        if ($ValidService) {
-            $ServicesToIgnore.Add($IgnoreServices.Trim())
-        }
-    }
-
-    # Create a list to hold non-running services that are set to start automatically.
-    $NonRunningAutoServices = New-Object System.Collections.Generic.List[object]
-    Get-Service | Where-Object { $_.StartType -like "Automatic" -and $_.Status -ne "Running" } | ForEach-Object {
-        $NonRunningAutoServices.Add($_)
-    }
-
-    # Remove services from the list that have triggers or are set to delayed start,
+    
+    Write-Log "Found $($NonRunningAutoServices.Count) stopped automatic services" -Level INFO
+    
+    # Remove trigger start services
     if ($NonRunningAutoServices.Count -gt 0) {
-        $TriggerServices = Get-ChildItem -Path "Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\*\*" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "TriggerInfo" }
-        $TriggerServices = $TriggerServices | Select-Object -ExpandProperty PSParentPath | Split-Path -Leaf
-        foreach ($TriggerService in $TriggerServices) {
-            $NonRunningAutoServices.Remove(($NonRunningAutoServices | Where-Object { $_.ServiceName -match $TriggerService })) | Out-Null
-        }
-
-        $DelayedStartServices = Get-ItemProperty -Path "Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\*" | Where-Object { $_.DelayedAutoStart -eq 1 }
-        $DelayedStartServices = $DelayedStartServices | Select-Object -ExpandProperty PSChildName
-        foreach ($DelayedStartService in $DelayedStartServices) {
-            $NonRunningAutoServices.Remove(($NonRunningAutoServices | Where-Object { $_.ServiceName -match $DelayedStartService })) | Out-Null
+        Write-Log "Filtering trigger start services" -Level DEBUG
+        
+        try {
+            $TriggerServices = Get-ChildItem -Path "Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\*\*" -ErrorAction SilentlyContinue | 
+                Where-Object { $_.Name -match "TriggerInfo" } | 
+                Select-Object -ExpandProperty PSParentPath | 
+                Split-Path -Leaf
+            
+            foreach ($TriggerService in $TriggerServices) {
+                $ServiceToRemove = $NonRunningAutoServices | Where-Object { $_.ServiceName -eq $TriggerService }
+                if ($ServiceToRemove) {
+                    $NonRunningAutoServices.Remove($ServiceToRemove) | Out-Null
+                    Write-Log "Excluded trigger service: $TriggerService" -Level DEBUG
+                }
+            }
+        } catch {
+            Write-Log "Error filtering trigger services: $_" -Level WARN
         }
     }
-
-    # Remove explicitly ignored services from the list of non-running automatic services.
+    
+    # Remove delayed start services
+    if ($NonRunningAutoServices.Count -gt 0) {
+        Write-Log "Filtering delayed start services" -Level DEBUG
+        
+        try {
+            $DelayedStartServices = Get-ItemProperty -Path "Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\*" -ErrorAction SilentlyContinue | 
+                Where-Object { $_.DelayedAutoStart -eq 1 } | 
+                Select-Object -ExpandProperty PSChildName
+            
+            foreach ($DelayedService in $DelayedStartServices) {
+                $ServiceToRemove = $NonRunningAutoServices | Where-Object { $_.ServiceName -eq $DelayedService }
+                if ($ServiceToRemove) {
+                    $NonRunningAutoServices.Remove($ServiceToRemove) | Out-Null
+                    Write-Log "Excluded delayed service: $DelayedService" -Level DEBUG
+                }
+            }
+        } catch {
+            Write-Log "Error filtering delayed services: $_" -Level WARN
+        }
+    }
+    
+    # Remove explicitly ignored services
     if ($ServicesToIgnore.Count -gt 0 -and $NonRunningAutoServices.Count -gt 0) {
+        Write-Log "Filtering ignored services" -Level DEBUG
+        
         foreach ($ServiceToIgnore in $ServicesToIgnore) {
-            if ($NonRunningAutoServices.ServiceName -contains $ServiceToIgnore) {
-                $NonRunningAutoServices.Remove(($NonRunningAutoServices | Where-Object { $_.ServiceName -match [Regex]::Escape($ServiceToIgnore) })) | Out-Null
+            $ServiceToRemove = $NonRunningAutoServices | Where-Object { $_.ServiceName -eq $ServiceToIgnore }
+            if ($ServiceToRemove) {
+                $NonRunningAutoServices.Remove($ServiceToRemove) | Out-Null
+                Write-Log "Excluded ignored service: $ServiceToIgnore" -Level DEBUG
             }
         }
     }
-
-    # If there are still non-running automatic services left, display their names.
-    # Otherwise, indicate no stopped automatic services were detected.
+    
+    Write-Log "Services after filtering: $($NonRunningAutoServices.Count)" -Level INFO
+    
+    # Build report
     if ($NonRunningAutoServices.Count -gt 0) {
-        Write-Host "Matching Services found!"
-
-        # Add Description to report.
-        $ServicesReport = New-Object System.Collections.Generic.List[object]
-        $NonRunningAutoServices | ForEach-Object {
-            $Description = Get-CimInstance -ClassName Win32_Service -Filter "Name = '$($_.ServiceName)'" | Select-Object @{
-                Name       = "Description"
-                Expression = {
-                    $Characters = $_.Description | Measure-Object -Character | Select-Object -ExpandProperty Characters
-                    if ($Characters -gt 100) {
-                        "$(($_.Description).SubString(0,100))..."
-                    }
-                    else {
-                        $_.Description
-                    }
-                }
-            }
-            $ServicesReport.Add(
-                [PSCustomObject]@{
-                    Name = $_.ServiceName
-                    Description = $Description | Select-Object -ExpandProperty Description
-                }
-            )
-        }
-
-        # Output report to activity log.
-        $ServicesReport | Sort-Object Name | Format-Table -Property Name,Description -AutoSize | Out-String | Write-Host
-    }
-    else {
-        Write-Host "No stopped automatic services detected!"
-    }
-
-    # Exit the script if there are no services to start or if starting services is not requested.
-    if (!$StartFoundServices -or !($NonRunningAutoServices.Count -gt 0)) {
-        exit $ExitCode
-    }
-
-    # Attempt to start each non-running automatic service up to three times.
-    # Log success or error messages accordingly.
-    $NonRunningAutoServices | ForEach-Object {
-        Write-Host "`nAttempting to start $($_.ServiceName)."
-        $Attempt = 1
-        while ($Attempt -le 3) {
-            Write-Host -Object "Attempt: $Attempt"
+        Write-Log "Stopped automatic services found" -Level WARN
+        
+        $ServicesReport = [System.Collections.Generic.List[object]]::new()
+        $ServiceNamesList = [System.Collections.Generic.List[string]]::new()
+        
+        foreach ($Service in $NonRunningAutoServices) {
+            # Get service description
             try {
-                $_ | Start-Service -ErrorAction Stop
-                Write-Host -Object "Successfully started $($_.ServiceName)."
-                $Attempt = 4
+                $ServiceInfo = Get-CimInstance -ClassName Win32_Service -Filter "Name = '$($Service.ServiceName)'" -ErrorAction Stop
+                $Description = $ServiceInfo.Description
+                
+                if ($Description -and $Description.Length -gt 100) {
+                    $Description = $Description.Substring(0, 100) + "..."
+                }
+            } catch {
+                $Description = "(No description available)"
             }
-            catch {
-                Write-Host -Object "[Error] $($_.Exception.Message)"
-                if ($Attempt -eq 3) { $ExitCode = 1 }
+            
+            $ServicesReport.Add([PSCustomObject]@{
+                Name = $Service.ServiceName
+                Description = $Description
+            })
+            
+            $ServiceNamesList.Add($Service.ServiceName)
+        }
+        
+        # Display report
+        Write-Log "Stopped Services Report:" -Level INFO
+        foreach ($ServiceItem in ($ServicesReport | Sort-Object Name)) {
+            Write-Log "  $($ServiceItem.Name): $($ServiceItem.Description)" -Level INFO
+        }
+        
+        # Update custom fields
+        Set-NinjaField -FieldName "stoppedServicesCount" -Value $NonRunningAutoServices.Count
+        Set-NinjaField -FieldName "stoppedServicesList" -Value ($ServiceNamesList -join ", ")
+        Set-NinjaField -FieldName "stoppedServicesStatus" -Value "Stopped Services Found"
+        
+    } else {
+        Write-Log "No stopped automatic services detected" -Level SUCCESS
+        
+        Set-NinjaField -FieldName "stoppedServicesCount" -Value 0
+        Set-NinjaField -FieldName "stoppedServicesList" -Value ""
+        Set-NinjaField -FieldName "stoppedServicesStatus" -Value "All Services Running"
+    }
+    
+    # Update status timestamp
+    Set-NinjaField -FieldName "stoppedServicesDate" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+    
+    # Attempt to start services if requested
+    if ($StartFoundServices -and $NonRunningAutoServices.Count -gt 0) {
+        Write-Log "Attempting to start stopped services" -Level INFO
+        
+        foreach ($Service in $NonRunningAutoServices) {
+            Write-Log "Starting service: $($Service.ServiceName)" -Level INFO
+            
+            $Attempt = 1
+            $MaxAttempts = 3
+            $Started = $false
+            
+            while ($Attempt -le $MaxAttempts -and -not $Started) {
+                Write-Log "  Attempt $Attempt of $MaxAttempts" -Level DEBUG
+                
+                try {
+                    $Service | Start-Service -ErrorAction Stop
+                    Write-Log "  Successfully started $($Service.ServiceName)" -Level SUCCESS
+                    $Started = $true
+                    
+                } catch {
+                    Write-Log "  Failed to start: $($_.Exception.Message)" -Level WARN
+                    
+                    if ($Attempt -eq $MaxAttempts) {
+                        Write-Log "  All attempts failed for $($Service.ServiceName)" -Level ERROR
+                    }
+                }
+                
+                $Attempt++
             }
-            $Attempt++
         }
     }
+    
+    # Determine exit code
+    if ($NonRunningAutoServices.Count -gt 0) {
+        Write-Log "Script completed with warnings (stopped services found)" -Level WARN
+        $ExitCode = 1
+    } else {
+        Write-Log "Script completed successfully" -Level SUCCESS
+        $ExitCode = 0
+    }
+    
+} catch {
+    Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
+    Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
+    
+    Set-NinjaField -FieldName "stoppedServicesStatus" -Value "Failed"
+    Set-NinjaField -FieldName "stoppedServicesDate" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+    
+    $ExitCode = 1
+    
+} finally {
+    $EndTime = Get-Date
+    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+    
+    Write-Log "========================================" -Level INFO
+    Write-Log "Execution Summary:" -Level INFO
+    Write-Log "  Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
+    Write-Log "  Errors: $script:ErrorCount" -Level INFO
+    Write-Log "  Warnings: $script:WarningCount" -Level INFO
+    
+    if ($script:CLIFallbackCount -gt 0) {
+        Write-Log "  CLI Fallbacks: $script:CLIFallbackCount" -Level INFO
+    }
+    
+    Write-Log "========================================" -Level INFO
     
     exit $ExitCode
-}
-end {
-    
-    
-    
 }

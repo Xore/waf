@@ -16,20 +16,32 @@
     Name of a custom field to save the Exchange version information.
 
 .EXAMPLE
-    -SaveToCustomField "ExchangeVersion"
-
-    [Info] Detecting Exchange Server installation...
+    .\Exchange-VersionCheck.ps1
+    
+    Detecting Exchange Server installation...
     Exchange Server Detected: Exchange Server 2019
     Version: 15.2.1118.7
-    Build: CU11
-    [Info] Version saved to custom field 'ExchangeVersion'
+
+.EXAMPLE
+    .\Exchange-VersionCheck.ps1 -SaveToCustomField "ExchangeVersion"
+    
+    Detecting Exchange Server installation...
+    Exchange Server Detected: Exchange Server 2019
+    Version: 15.2.1118.7
+    Version saved to custom field 'ExchangeVersion'
 
 .OUTPUTS
-    None
+    None. Version information is written to the console and optionally to a custom field.
 
 .NOTES
-    Minimum OS Architecture Supported: Windows Server 2012 R2
-    Release notes: Initial release for WAF v3.0
+    File Name      : Exchange-VersionCheck.ps1
+    Prerequisite   : PowerShell 5.1 or higher
+    Minimum OS     : Windows Server 2012 R2
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: Upgraded to V3 standards with Write-Log function and execution tracking
+    - 1.0: Initial release
     
 .COMPONENT
     Registry - Exchange installation information
@@ -47,12 +59,27 @@
 
 [CmdletBinding()]
 param(
+    [Parameter()]
     [string]$SaveToCustomField
 )
 
 begin {
-    if ($env:saveToCustomField -and $env:saveToCustomField -notlike "null") {
-        $SaveToCustomField = $env:saveToCustomField
+    $ErrorActionPreference = 'Stop'
+    $ProgressPreference = 'SilentlyContinue'
+    $StartTime = Get-Date
+    
+    Set-StrictMode -Version Latest
+
+    function Write-Log {
+        param([string]$Message, [string]$Level = 'INFO')
+        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $logMessage = "[$timestamp] [$Level] $Message"
+        
+        switch ($Level) {
+            'ERROR' { Write-Error $logMessage }
+            'WARNING' { Write-Warning $logMessage }
+            default { Write-Output $logMessage }
+        }
     }
 
     function Set-NinjaProperty {
@@ -63,11 +90,21 @@ begin {
             [Parameter(Mandatory = $True, ValueFromPipeline = $True)]
             $Value
         )
-        $NinjaValue = $Value
-        $CustomField = $NinjaValue | Ninja-Property-Set-Piped -Name $Name 2>&1
-        if ($CustomField.Exception) {
-            throw $CustomField
+        
+        try {
+            $CustomField = $Value | Ninja-Property-Set-Piped -Name $Name 2>&1
+            if ($CustomField.Exception) {
+                throw $CustomField
+            }
         }
+        catch {
+            Write-Log "Failed to set custom field: $_" -Level ERROR
+            throw
+        }
+    }
+
+    if ($env:saveToCustomField -and $env:saveToCustomField -notlike "null") {
+        $SaveToCustomField = $env:saveToCustomField
     }
 
     $ExitCode = 0
@@ -75,7 +112,7 @@ begin {
 
 process {
     try {
-        Write-Host "[Info] Detecting Exchange Server installation..."
+        Write-Log "Detecting Exchange Server installation..."
         
         $ExchangeKey = "HKLM:\SOFTWARE\Microsoft\ExchangeServer\v15\Setup"
         
@@ -96,33 +133,40 @@ process {
                 default { "Exchange Server (Unknown Version)" }
             }
 
-            Write-Host "Exchange Server Detected: $ProductName"
-            Write-Host "Version: $FullVersion"
+            Write-Log "Exchange Server Detected: $ProductName"
+            Write-Log "Version: $FullVersion"
             
             $Output = "$ProductName - Version: $FullVersion"
 
             if ($SaveToCustomField) {
                 try {
                     $Output | Set-NinjaProperty -Name $SaveToCustomField
-                    Write-Host "[Info] Version saved to custom field '$SaveToCustomField'"
+                    Write-Log "Version saved to custom field '$SaveToCustomField'"
                 }
                 catch {
-                    Write-Host "[Error] Failed to save to custom field: $_"
+                    Write-Log "Failed to save to custom field: $_" -Level ERROR
                     $ExitCode = 1
                 }
             }
         }
         else {
-            Write-Host "[Info] Exchange Server not installed on this system"
+            Write-Log "Exchange Server not installed on this system"
         }
     }
     catch {
-        Write-Host "[Error] Failed to detect Exchange version: $_"
+        Write-Log "Failed to detect Exchange version: $_" -Level ERROR
         $ExitCode = 1
     }
-
-    exit $ExitCode
 }
 
 end {
+    try {
+        $EndTime = Get-Date
+        $Duration = ($EndTime - $StartTime).TotalSeconds
+        Write-Log "Script execution completed in $Duration seconds"
+    }
+    finally {
+        [System.GC]::Collect()
+        exit $ExitCode
+    }
 }

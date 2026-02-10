@@ -21,28 +21,31 @@
     Name of a custom field to save the Office version information.
 
 .EXAMPLE
-    No Parameters
+    .\Office-GetVersion.ps1
 
-    [Info] Detecting Microsoft Office installation...
-    Office Version: Microsoft 365 Apps for Enterprise
-    Build: 16.0.14332.20447
-    Update Channel: Monthly Enterprise Channel
-    Installation Type: Click-to-Run
+    [2026-02-10 01:52:15] [INFO] Detecting Microsoft Office installation...
+    [2026-02-10 01:52:15] [INFO] Office Version: Microsoft 365 Apps for Enterprise
+    [2026-02-10 01:52:15] [INFO] Build: 16.0.14332.20447
+    [2026-02-10 01:52:15] [INFO] Update Channel: Monthly Enterprise Channel
+    [2026-02-10 01:52:15] [INFO] Installation Type: Click-to-Run
 
 .EXAMPLE
-    -SaveToCustomField "OfficeVersion"
+    .\Office-GetVersion.ps1 -SaveToCustomField "OfficeVersion"
 
-    [Info] Detecting Microsoft Office installation...
-    Office Version: Office Professional Plus 2019
-    Build: 16.0.10392.20029
-    [Info] Results saved to custom field 'OfficeVersion'
+    [2026-02-10 01:52:15] [INFO] Detecting Microsoft Office installation...
+    [2026-02-10 01:52:15] [INFO] Office Version: Office Professional Plus 2019
+    [2026-02-10 01:52:15] [INFO] Build: 16.0.10392.20029
+    [2026-02-10 01:52:15] [SUCCESS] Results saved to custom field 'OfficeVersion'
 
 .OUTPUTS
-    None
+    System.Int32
+    Exit code: 0 for success, 1 for failure
 
 .NOTES
     Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Release notes: Initial release for WAF v3.0
+    Release notes:
+    (v3.0) 2026-02-10 - Upgraded to V3 standards: Write-Log function, execution tracking, enhanced error handling
+    (v2.0) 2025-12-01 - Initial release for WAF v2.0
     
 .COMPONENT
     Registry - Windows Registry queries
@@ -63,178 +66,274 @@
 
 [CmdletBinding()]
 param(
+    [Parameter(Mandatory = $false)]
     [string]$SaveToCustomField
 )
 
 begin {
-    if ($env:saveToCustomField -and $env:saveToCustomField -notlike "null") {
-        $SaveToCustomField = $env:saveToCustomField
+    $ErrorActionPreference = 'Stop'
+    $ProgressPreference = 'SilentlyContinue'
+    Set-StrictMode -Version Latest
+    
+    $startTime = Get-Date
+    $exitCode = 0
+
+    function Write-Log {
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$Message,
+            
+            [Parameter(Mandatory = $false)]
+            [ValidateSet('INFO', 'SUCCESS', 'WARNING', 'ERROR', 'DEBUG')]
+            [string]$Level = 'INFO'
+        )
+        
+        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $logMessage = "[$timestamp] [$Level] $Message"
+        
+        switch ($Level) {
+            'ERROR'   { Write-Error $logMessage }
+            'WARNING' { Write-Warning $logMessage }
+            default   { Write-Host $logMessage }
+        }
     }
 
-    function Set-NinjaProperty {
+    function Set-NinjaField {
         [CmdletBinding()]
-        Param(
-            [Parameter(Mandatory = $True)]
-            [String]$Name,
-            [Parameter(Mandatory = $True, ValueFromPipeline = $True)]
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$FieldName,
+            
+            [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+            [AllowEmptyString()]
+            [AllowNull()]
             $Value
         )
-        $NinjaValue = $Value
-        $CustomField = $NinjaValue | Ninja-Property-Set-Piped -Name $Name 2>&1
-        if ($CustomField.Exception) {
-            throw $CustomField
+        
+        process {
+            try {
+                Write-Log "Setting custom field '$FieldName' to: $Value" -Level DEBUG
+                $result = $Value | Ninja-Property-Set-Piped -Name $FieldName 2>&1
+                
+                if ($result.Exception) {
+                    throw $result.Exception
+                }
+                
+                Write-Log "Successfully set custom field '$FieldName'" -Level DEBUG
+                return $true
+            }
+            catch {
+                Write-Log "Primary method failed, attempting CLI fallback for field '$FieldName'" -Level DEBUG
+                
+                try {
+                    $cliPath = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
+                    
+                    if (Test-Path $cliPath) {
+                        $process = Start-Process -FilePath $cliPath -ArgumentList "set", $FieldName, $Value -NoNewWindow -Wait -PassThru
+                        
+                        if ($process.ExitCode -eq 0) {
+                            Write-Log "Successfully set custom field '$FieldName' via CLI" -Level DEBUG
+                            return $true
+                        }
+                        else {
+                            throw "CLI process exited with code $($process.ExitCode)"
+                        }
+                    }
+                    else {
+                        throw "NinjaRMM CLI not found at $cliPath"
+                    }
+                }
+                catch {
+                    Write-Log "Failed to set custom field '$FieldName': $($_.Exception.Message)" -Level ERROR
+                    return $false
+                }
+            }
         }
     }
 
     function Get-OfficeVersion {
-        $OfficeInfo = @{
-            Version = "Not Installed"
-            Build = ""
-            Channel = ""
+        [CmdletBinding()]
+        param()
+        
+        $officeInfo = @{
+            Version     = "Not Installed"
+            Build       = ""
+            Channel     = ""
             InstallType = ""
         }
 
-        $C2RPath = "HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration"
-        $C2R64Path = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\ClickToRun\Configuration"
+        $c2rPath = "HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration"
+        $c2r64Path = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\ClickToRun\Configuration"
         
-        $C2RExists = Test-Path $C2RPath
-        $C2R64Exists = Test-Path $C2R64Path
+        $c2rExists = Test-Path -Path $c2rPath -ErrorAction SilentlyContinue
+        $c2r64Exists = Test-Path -Path $c2r64Path -ErrorAction SilentlyContinue
 
-        if ($C2RExists -or $C2R64Exists) {
-            $ConfigPath = if ($C2RExists) { $C2RPath } else { $C2R64Path }
+        if ($c2rExists -or $c2r64Exists) {
+            $configPath = if ($c2rExists) { $c2rPath } else { $c2r64Path }
+            Write-Log "Found Click-to-Run installation at: $configPath" -Level DEBUG
             
             try {
-                $VersionInfo = Get-ItemProperty -Path $ConfigPath -ErrorAction SilentlyContinue
+                $versionInfo = Get-ItemProperty -Path $configPath -ErrorAction SilentlyContinue
                 
-                if ($VersionInfo.VersionToReport) {
-                    $OfficeInfo.Build = $VersionInfo.VersionToReport
+                if ($versionInfo.VersionToReport) {
+                    $officeInfo.Build = $versionInfo.VersionToReport
                     
-                    $MajorVersion = $VersionInfo.VersionToReport.Split('.')[0]
-                    switch ($MajorVersion) {
+                    $majorVersion = $versionInfo.VersionToReport.Split('.')[0]
+                    switch ($majorVersion) {
                         "16" {
-                            $BuildNumber = [int]$VersionInfo.VersionToReport.Split('.')[2]
-                            if ($BuildNumber -ge 13000) {
-                                $OfficeInfo.Version = "Microsoft 365 Apps"
-                            } elseif ($BuildNumber -ge 10000) {
-                                $OfficeInfo.Version = "Office 2019"
-                            } else {
-                                $OfficeInfo.Version = "Office 2016"
+                            $buildNumber = [int]$versionInfo.VersionToReport.Split('.')[2]
+                            if ($buildNumber -ge 13000) {
+                                $officeInfo.Version = "Microsoft 365 Apps"
+                            }
+                            elseif ($buildNumber -ge 10000) {
+                                $officeInfo.Version = "Office 2019"
+                            }
+                            else {
+                                $officeInfo.Version = "Office 2016"
                             }
                         }
-                        "15" { $OfficeInfo.Version = "Office 2013" }
-                        default { $OfficeInfo.Version = "Office (Build $MajorVersion)" }
+                        "15" { $officeInfo.Version = "Office 2013" }
+                        default { $officeInfo.Version = "Office (Build $majorVersion)" }
                     }
                 }
                 
-                if ($VersionInfo.ProductReleaseIds) {
-                    $ProductId = $VersionInfo.ProductReleaseIds
-                    if ($ProductId -match "O365") {
-                        $OfficeInfo.Version = "Microsoft 365 Apps for Enterprise"
-                    } elseif ($ProductId -match "ProPlus") {
-                        $OfficeInfo.Version = "Office Professional Plus $($OfficeInfo.Version -replace 'Office ')"
-                    } elseif ($ProductId -match "Business") {
-                        $OfficeInfo.Version = "Microsoft 365 Apps for Business"
+                if ($versionInfo.ProductReleaseIds) {
+                    $productId = $versionInfo.ProductReleaseIds
+                    if ($productId -match "O365") {
+                        $officeInfo.Version = "Microsoft 365 Apps for Enterprise"
+                    }
+                    elseif ($productId -match "ProPlus") {
+                        $officeInfo.Version = "Office Professional Plus $($officeInfo.Version -replace 'Office ')"
+                    }
+                    elseif ($productId -match "Business") {
+                        $officeInfo.Version = "Microsoft 365 Apps for Business"
                     }
                 }
                 
-                if ($VersionInfo.UpdateChannel) {
-                    $Channel = $VersionInfo.UpdateChannel
-                    switch -Regex ($Channel) {
-                        "Current" { $OfficeInfo.Channel = "Current Channel" }
-                        "Monthly" { $OfficeInfo.Channel = "Monthly Enterprise Channel" }
-                        "Broad" { $OfficeInfo.Channel = "Semi-Annual Enterprise Channel" }
-                        "Targeted" { $OfficeInfo.Channel = "Semi-Annual Enterprise Channel (Preview)" }
-                        "Deferred" { $OfficeInfo.Channel = "Semi-Annual Enterprise Channel" }
-                        default { $OfficeInfo.Channel = "Unknown Channel" }
+                if ($versionInfo.UpdateChannel) {
+                    $channel = $versionInfo.UpdateChannel
+                    switch -Regex ($channel) {
+                        "Current"  { $officeInfo.Channel = "Current Channel" }
+                        "Monthly"  { $officeInfo.Channel = "Monthly Enterprise Channel" }
+                        "Broad"    { $officeInfo.Channel = "Semi-Annual Enterprise Channel" }
+                        "Targeted" { $officeInfo.Channel = "Semi-Annual Enterprise Channel (Preview)" }
+                        "Deferred" { $officeInfo.Channel = "Semi-Annual Enterprise Channel" }
+                        default    { $officeInfo.Channel = "Unknown Channel ($channel)" }
                     }
                 }
                 
-                $OfficeInfo.InstallType = "Click-to-Run"
-            } catch {
-                Write-Host "[Error] Failed to read Click-to-Run registry: $_"
+                $officeInfo.InstallType = "Click-to-Run"
+            }
+            catch {
+                Write-Log "Failed to read Click-to-Run registry: $($_.Exception.Message)" -Level WARNING
             }
         }
         
-        if ($OfficeInfo.Version -eq "Not Installed") {
-            $MSIPaths = @(
+        if ($officeInfo.Version -eq "Not Installed") {
+            Write-Log "Click-to-Run installation not found, checking for MSI installation" -Level DEBUG
+            
+            $msiPaths = @(
                 "HKLM:\SOFTWARE\Microsoft\Office\16.0\Common\InstallRoot",
                 "HKLM:\SOFTWARE\Microsoft\Office\15.0\Common\InstallRoot",
                 "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\16.0\Common\InstallRoot",
                 "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\15.0\Common\InstallRoot"
             )
             
-            foreach ($Path in $MSIPaths) {
-                if (Test-Path $Path) {
+            foreach ($path in $msiPaths) {
+                if (Test-Path -Path $path -ErrorAction SilentlyContinue) {
                     try {
-                        $InstallRoot = Get-ItemProperty -Path $Path -ErrorAction SilentlyContinue
-                        if ($InstallRoot.Path) {
-                            $Version = $Path -replace '.*Office\\([0-9.]+)\\.*', '$1'
-                            switch ($Version) {
-                                "16.0" { $OfficeInfo.Version = "Office 2016" }
-                                "15.0" { $OfficeInfo.Version = "Office 2013" }
+                        $installRoot = Get-ItemProperty -Path $path -ErrorAction SilentlyContinue
+                        if ($installRoot.Path) {
+                            Write-Log "Found MSI installation at: $path" -Level DEBUG
+                            
+                            $version = $path -replace '.*Office\\([0-9.]+)\\.*', '$1'
+                            switch ($version) {
+                                "16.0" { $officeInfo.Version = "Office 2016" }
+                                "15.0" { $officeInfo.Version = "Office 2013" }
                             }
-                            $OfficeInfo.InstallType = "MSI"
+                            $officeInfo.InstallType = "MSI"
                             break
                         }
-                    } catch {
+                    }
+                    catch {
+                        Write-Log "Failed to read MSI path $path : $($_.Exception.Message)" -Level DEBUG
                         continue
                     }
                 }
             }
         }
 
-        return $OfficeInfo
+        return $officeInfo
     }
 
-    $ExitCode = 0
+    if ($env:saveToCustomField -and $env:saveToCustomField -notlike "null") {
+        $SaveToCustomField = $env:saveToCustomField
+        Write-Log "Custom field parameter from environment: $SaveToCustomField" -Level DEBUG
+    }
 }
 
 process {
     try {
-        Write-Host "[Info] Detecting Microsoft Office installation..."
+        Write-Log "Detecting Microsoft Office installation..."
         
-        $OfficeInfo = Get-OfficeVersion
+        $officeInfo = Get-OfficeVersion
 
-        if ($OfficeInfo.Version -eq "Not Installed") {
-            Write-Host "[Info] Microsoft Office is not installed on this system"
-            exit 0
+        if ($officeInfo.Version -eq "Not Installed") {
+            Write-Log "Microsoft Office is not installed on this system"
+            $exitCode = 0
         }
-
-        Write-Host "Office Version: $($OfficeInfo.Version)"
-        $Report = "Version: $($OfficeInfo.Version)"
-        
-        if ($OfficeInfo.Build) {
-            Write-Host "Build: $($OfficeInfo.Build)"
-            $Report += " | Build: $($OfficeInfo.Build)"
-        }
-        
-        if ($OfficeInfo.Channel) {
-            Write-Host "Update Channel: $($OfficeInfo.Channel)"
-            $Report += " | Channel: $($OfficeInfo.Channel)"
-        }
-        
-        if ($OfficeInfo.InstallType) {
-            Write-Host "Installation Type: $($OfficeInfo.InstallType)"
-            $Report += " | Type: $($OfficeInfo.InstallType)"
-        }
-
-        if ($SaveToCustomField) {
-            try {
-                $Report | Set-NinjaProperty -Name $SaveToCustomField
-                Write-Host "[Info] Results saved to custom field '$SaveToCustomField'"
-            } catch {
-                Write-Host "[Error] Failed to save to custom field: $_"
-                $ExitCode = 1
+        else {
+            Write-Log "Office Version: $($officeInfo.Version)"
+            $report = "Version: $($officeInfo.Version)"
+            
+            if ($officeInfo.Build) {
+                Write-Log "Build: $($officeInfo.Build)"
+                $report += " | Build: $($officeInfo.Build)"
             }
+            
+            if ($officeInfo.Channel) {
+                Write-Log "Update Channel: $($officeInfo.Channel)"
+                $report += " | Channel: $($officeInfo.Channel)"
+            }
+            
+            if ($officeInfo.InstallType) {
+                Write-Log "Installation Type: $($officeInfo.InstallType)"
+                $report += " | Type: $($officeInfo.InstallType)"
+            }
+
+            if ($SaveToCustomField) {
+                Write-Log "Attempting to save results to custom field: $SaveToCustomField" -Level DEBUG
+                
+                $success = $report | Set-NinjaField -FieldName $SaveToCustomField
+                
+                if ($success) {
+                    Write-Log "Results saved to custom field '$SaveToCustomField'" -Level SUCCESS
+                }
+                else {
+                    Write-Log "Failed to save to custom field '$SaveToCustomField'" -Level WARNING
+                    $exitCode = 1
+                }
+            }
+            
+            $exitCode = 0
         }
     }
     catch {
-        Write-Host "[Error] Failed to detect Office version: $_"
-        $ExitCode = 1
+        Write-Log "Failed to detect Office version: $($_.Exception.Message)" -Level ERROR
+        Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
+        $exitCode = 1
     }
-
-    exit $ExitCode
 }
 
 end {
+}
+
+finally {
+    $duration = (Get-Date) - $startTime
+    Write-Log "Script execution completed in $($duration.TotalSeconds) seconds" -Level DEBUG
+    
+    [System.GC]::Collect()
+    [System.GC]::WaitForPendingFinalizers()
+    
+    exit $exitCode
 }

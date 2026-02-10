@@ -23,6 +23,8 @@
     Unexpected shutdowns can indicate power failures, crashes, or forced
     shutdowns. Planned reboots show Windows Update installs, user-initiated
     reboots, and maintenance operations.
+    
+    This script runs unattended without user interaction.
 
 .PARAMETER TextCustomField
     Name of NinjaRMM text custom field to store latest reboot reason.
@@ -56,16 +58,19 @@
     
     Saves to both fields and retrieves up to 20 events.
 
+.OUTPUTS
+    None. Reboot information is written to console and optionally to NinjaRMM custom fields.
+
 .NOTES
     Script Name:    System-LastRebootReason.ps1
     Author:         Windows Automation Framework
-    Version:        3.0
+    Version:        3.0.0
     Creation Date:  2024-01-15
-    Last Modified:  2026-02-09
+    Last Modified:  2026-02-10
     
-    Execution Context: Administrator (required for event log access)
+    Execution Context: Administrator (required)
     Execution Frequency: Daily or after reboot
-    Typical Duration: ~3-5 seconds
+    Typical Duration: 3-5 seconds
     Timeout Setting: 60 seconds recommended
     
     User Interaction: NONE (fully automated, no prompts)
@@ -77,9 +82,10 @@
     
     Dependencies:
         - Windows PowerShell 5.1 or higher
-        - Administrator privileges
+        - Administrator privileges (required)
         - System event log access
-        - Windows 10 or Server 2016 minimum
+        - Windows 10, Windows Server 2016 or higher
+        - NinjaRMM Agent (if using custom fields)
     
     Event IDs Monitored:
         - 6008: Unexpected shutdown (crash, power loss)
@@ -115,7 +121,7 @@ param (
 # CONFIGURATION
 # ============================================================================
 
-$ScriptVersion = "3.0"
+$ScriptVersion = "3.0.0"
 $ScriptName = "System-LastRebootReason"
 
 # Event IDs to monitor
@@ -131,9 +137,12 @@ $NinjaRMMCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
 
 $StartTime = Get-Date
 $ErrorActionPreference = 'Stop'
+$script:ExitCode = 0
 $script:ErrorCount = 0
 $script:WarningCount = 0
 $script:CLIFallbackCount = 0
+
+Set-StrictMode -Version Latest
 
 # ============================================================================
 # FUNCTIONS
@@ -157,8 +166,10 @@ function Write-Log {
     $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
     $LogMessage = "[$Timestamp] [$Level] $Message"
     
+    # Plain text output only - no colors
     Write-Output $LogMessage
     
+    # Track counts
     switch ($Level) {
         'WARN'  { $script:WarningCount++ }
         'ERROR' { $script:ErrorCount++ }
@@ -205,6 +216,7 @@ function Set-NinjaField {
         $ValueString = $ValueString.Substring(0, $Limit - 3) + "..."
     }
     
+    # Method 1: Try Ninja-Property-Set cmdlet
     try {
         if (Get-Command Ninja-Property-Set -ErrorAction SilentlyContinue) {
             Ninja-Property-Set $FieldName $ValueString -ErrorAction Stop
@@ -216,6 +228,7 @@ function Set-NinjaField {
     } catch {
         Write-Log "Ninja-Property-Set failed, using CLI fallback" -Level DEBUG
         
+        # Method 2: Try ninjarmm-cli.exe
         try {
             if (-not (Test-Path $NinjaRMMCLI)) {
                 throw "NinjaRMM CLI not found at: $NinjaRMMCLI"
@@ -240,7 +253,7 @@ function Set-NinjaField {
 function Test-IsElevated {
     <#
     .SYNOPSIS
-        Checks if script is running with Administrator privileges
+        Checks if script is running with administrator privileges
     #>
     $Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
     $Principal = New-Object System.Security.Principal.WindowsPrincipal($Identity)
@@ -367,8 +380,10 @@ try {
     
     # Check administrator privileges
     if (-not (Test-IsElevated)) {
-        throw "Administrator privileges required. Please run as Administrator."
+        Write-Log "ERROR: This script requires administrator privileges" -Level ERROR
+        throw "Access Denied"
     }
+    
     Write-Log "Administrator privileges confirmed" -Level SUCCESS
     
     # Retrieve reboot events
@@ -472,28 +487,32 @@ try {
     
     Write-Log "" -Level INFO
     Write-Log "Reboot tracking completed: $EventCount event(s) processed" -Level SUCCESS
-    
-    exit 0
+    $script:ExitCode = 0
     
 } catch {
     Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
     Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
-    
-    exit 1
+    $script:ExitCode = 1
     
 } finally {
     $EndTime = Get-Date
     $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
     
+    Write-Log "" -Level INFO
     Write-Log "========================================" -Level INFO
     Write-Log "Execution Summary:" -Level INFO
     Write-Log "  Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
     Write-Log "  Errors: $script:ErrorCount" -Level INFO
     Write-Log "  Warnings: $script:WarningCount" -Level INFO
-    
     if ($script:CLIFallbackCount -gt 0) {
         Write-Log "  CLI Fallbacks: $script:CLIFallbackCount" -Level INFO
     }
-    
+    Write-Log "  Exit Code: $script:ExitCode" -Level INFO
     Write-Log "========================================" -Level INFO
+    
+    # Cleanup
+    [System.GC]::Collect()
+    [System.GC]::WaitForPendingFinalizers()
+    
+    exit $script:ExitCode
 }

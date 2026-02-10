@@ -53,7 +53,7 @@
 
 .NOTES
     Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Release notes: Initial release for WAF v3.0
+    Release notes: v3.0.0 - Upgraded to V3.0.0 standards (script-scoped exit code)
     
 .COMPONENT
     ADSI - Active Directory Service Interfaces
@@ -104,7 +104,7 @@ begin {
         }
     }
 
-    $ExitCode = 0
+    $script:ExitCode = 0
     $WhitelistArray = @()
     
     if ($WhitelistedAccounts) {
@@ -182,7 +182,7 @@ process {
         if ($WhitelistArray.Count -gt 0 -and $UnauthorizedCount -gt 0) {
             Write-Host "[Alert] Found $UnauthorizedCount unauthorized administrator account(s)"
             if ($AlertOnUnauthorized) {
-                $ExitCode = 1
+                $script:ExitCode = 1
             }
         } elseif ($WhitelistArray.Count -gt 0 -and $UnauthorizedCount -eq 0) {
             Write-Host "[Info] All administrator accounts are whitelisted"
@@ -194,16 +194,16 @@ process {
                 Write-Host "[Info] Results saved to custom field '$SaveToCustomField'"
             } catch {
                 Write-Host "[Error] Failed to save to custom field: $_"
-                $ExitCode = 1
+                $script:ExitCode = 1
             }
         }
     }
     catch {
         Write-Host "[Error] Failed to monitor local administrators: $_"
-        $ExitCode = 1
+        $script:ExitCode = 1
     }
 
-    exit $ExitCode
+    exit $script:ExitCode
 }
 
 end {

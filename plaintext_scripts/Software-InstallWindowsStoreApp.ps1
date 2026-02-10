@@ -1,4 +1,5 @@
 #Requires -Version 5.1
+#Requires -RunAsAdministrator
 
 <#
 .SYNOPSIS
@@ -65,51 +66,7 @@
     - PowerToys: Microsoft.PowerToys or XP89DCGQ3K6VLD
     - Xbox Game Bar: Microsoft.XboxGamingOverlay
     
-    Winget Installation Behavior:
-    - Downloads app from Microsoft Store servers
-    - Installs to user or system context based on app manifest
-    - Registers app with Windows Apps & Features
-    - Creates Start Menu entries and shortcuts
-    - Respects app update policies
-    
-    Advantages of Winget vs Manual Installation:
-    - Automated silent installation
-    - Version management and updates
-    - Scriptable and repeatable deployments
-    - No user interaction required
-    - Consistent installation across multiple systems
-    - Audit trail via exit codes and logs
-    
-    Limitations and Considerations:
-    - Requires App Installer to be installed
-    - Internet connectivity required (downloads from Microsoft servers)
-    - Some apps may require user account (Microsoft Account)
-    - Interactive flag may show progress UI despite silent intent
-    - Microsoft Store service must be enabled
-    
-    Troubleshooting:
-    
-    1. Winget Not Found:
-       - Install App Installer from Microsoft Store
-       - Download from GitHub: https://github.com/microsoft/winget-cli/releases
-       - Verify PATH includes: C:\Program Files\WindowsApps\Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe
-    
-    2. Installation Fails:
-       - Check internet connectivity
-       - Verify Microsoft Store service is running
-       - Check Windows Update service status
-       - Review winget logs: %LOCALAPPDATA%\Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\DiagOutputDir
-    
-    3. Package Not Found:
-       - Verify PackageID is correct
-       - Check if app is available in your region
-       - Try alternative package ID format
-       - Search using: winget search "app name" --source msstore
-    
-    4. Access Denied:
-       - Run as Administrator for system-wide installations
-       - Check Group Policy restrictions on Microsoft Store
-       - Verify Windows license activation status
+    This script runs unattended without user interaction.
 
 .PARAMETER PackageID
     The Microsoft Store package identifier for the application to install.
@@ -123,12 +80,6 @@
     .\Software-InstallWindowsStoreApp.ps1 -PackageID "9WZDNCRFJ3Q2"
     
     Installs Microsoft Whiteboard from Microsoft Store.
-    
-    Output:
-    Verifying winget availability...
-    winget is available
-    Installing package: 9WZDNCRFJ3Q2
-    Application installed successfully: 9WZDNCRFJ3Q2
 
 .EXAMPLE
     .\Software-InstallWindowsStoreApp.ps1 -PackageID "Microsoft.WindowsTerminal"
@@ -142,42 +93,45 @@
     Uses environment variable to specify package ID for Windows Terminal.
 
 .NOTES
-    Script Name:    Software-InstallWindowsStoreApp.ps1
-    Author:         Windows Automation Framework
-    Version:        3.0
-    Creation Date:  2024-01-15
-    Last Modified:  2026-02-10
+    File Name      : Software-InstallWindowsStoreApp.ps1
+    Prerequisite   : PowerShell 5.1 or higher, Administrator privileges
+    Minimum OS     : Windows 10 1809+, Windows Server 2019+
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: Complete V3 standards with enhanced logging and NinjaRMM integration
+    - 3.0: Enhanced documentation and error handling
+    - 1.0: Initial release
     
-    Minimum OS: Windows 10 1809+, Windows Server 2019+
-    
-    Execution Context: User or SYSTEM
+    Execution Context: SYSTEM (via NinjaRMM automation)
     Execution Frequency: As needed (software deployment)
     Typical Duration: 30-120 seconds (depends on app size and network speed)
     Timeout Setting: 300 seconds recommended
     
     User Interaction: May show installation progress UI
-    Restart Behavior: Not required (unless app requires it)
+    Restart Behavior: N/A (no system restart required unless app requires it)
     
-    NinjaRMM Fields Updated: None
+    Fields Updated:
+        - wingetAppInstallStatus (Success/Failed)
+        - wingetAppInstallDate (timestamp)
+        - wingetLastPackageID (package installed)
     
     Dependencies:
+        - Windows PowerShell 5.1 or higher
+        - Administrator privileges (SYSTEM context)
+        - NinjaRMM Agent installed
         - Windows Package Manager (winget) installed
         - App Installer from Microsoft Store
         - Internet connectivity (Microsoft Store servers)
-        - Microsoft Store service enabled
     
-    Exit Codes:
-        0 - Application installed successfully
-        1 - Missing package ID, winget not found, or installation failed
+    Environment Variables:
+        - packageid: Override parameter via environment variable
 
 .LINK
     https://github.com/Xore/waf
     
 .LINK
     https://learn.microsoft.com/en-us/windows/package-manager/winget/
-    
-.LINK
-    https://learn.microsoft.com/en-us/windows/package-manager/winget/install
 #>
 
 [CmdletBinding()]
@@ -187,102 +141,240 @@ param(
 )
 
 begin {
-    $ErrorActionPreference = 'Stop'
-    $ProgressPreference = 'SilentlyContinue'
     Set-StrictMode -Version Latest
     
-    $ScriptVersion = "3.0"
+    $ScriptVersion = "3.0.0"
     $ScriptName = "Software-InstallWindowsStoreApp"
-    $StartTime = Get-Date
+    $NinjaRMMCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
     
+    $StartTime = Get-Date
+    $ErrorActionPreference = 'Stop'
+    $ProgressPreference = 'SilentlyContinue'
+    $script:ErrorCount = 0
+    $script:WarningCount = 0
+    $script:CLIFallbackCount = 0
+
     function Write-Log {
+        [CmdletBinding()]
         param(
             [Parameter(Mandatory=$true)]
             [string]$Message,
-            
             [Parameter(Mandatory=$false)]
-            [ValidateSet('INFO', 'WARNING', 'ERROR')]
+            [ValidateSet('DEBUG','INFO','WARN','ERROR','SUCCESS')]
             [string]$Level = 'INFO'
         )
         
-        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-        $logMessage = "[$timestamp] [$Level] $Message"
+        $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $LogMessage = "[$Timestamp] [$Level] $Message"
+        Write-Output $LogMessage
         
         switch ($Level) {
-            'ERROR'   { Write-Error $logMessage }
-            'WARNING' { Write-Warning $logMessage }
-            default   { Write-Host $logMessage }
+            'WARN'  { $script:WarningCount++ }
+            'ERROR' { $script:ErrorCount++ }
         }
     }
-    
-    Write-Log "Starting $ScriptName v$ScriptVersion"
-    
-    # Check environment variable override
-    if ($env:packageid -and $env:packageid -notlike "null") {
-        $PackageID = $env:packageid
-        Write-Log "Using PackageID from environment variable: $PackageID"
+
+    function Set-NinjaField {
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory=$true)]
+            [string]$FieldName,
+            [Parameter(Mandatory=$true)]
+            [AllowNull()]
+            $Value
+        )
+        
+        if ($null -eq $Value -or $Value -eq "") {
+            Write-Log "Skipping field '$FieldName' - no value" -Level DEBUG
+            return
+        }
+        
+        $ValueString = $Value.ToString()
+        
+        try {
+            if (Get-Command Ninja-Property-Set -ErrorAction SilentlyContinue) {
+                Ninja-Property-Set $FieldName $ValueString -ErrorAction Stop
+                Write-Log "Field '$FieldName' set successfully" -Level DEBUG
+                return
+            } else {
+                throw "Ninja-Property-Set cmdlet not available"
+            }
+        } catch {
+            Write-Log "Ninja-Property-Set failed, using CLI fallback" -Level DEBUG
+            
+            try {
+                if (-not (Test-Path $NinjaRMMCLI)) {
+                    throw "NinjaRMM CLI not found at: $NinjaRMMCLI"
+                }
+                
+                $CLIArgs = @("set", $FieldName, $ValueString)
+                $CLIResult = & $NinjaRMMCLI $CLIArgs 2>&1
+                
+                if ($LASTEXITCODE -ne 0) {
+                    throw "CLI exit code: $LASTEXITCODE, Output: $CLIResult"
+                }
+                
+                Write-Log "Field '$FieldName' set via CLI" -Level DEBUG
+                $script:CLIFallbackCount++
+                
+            } catch {
+                Write-Log "Failed to set field '$FieldName': $_" -Level ERROR
+            }
+        }
     }
-    
-    # Validate PackageID is provided
-    if (-not $PackageID) {
-        Write-Log "Package ID is required. Please specify a Microsoft Store package ID." "ERROR"
-        Write-Log "Example package IDs:" "INFO"
-        Write-Log "  - 9WZDNCRFJ3Q2 (Microsoft Whiteboard)" "INFO"
-        Write-Log "  - 9N0DX20HK701 (Windows Terminal)" "INFO"
-        Write-Log "  - Microsoft.WindowsTerminal (Windows Terminal - alternate format)" "INFO"
-        exit 1
+
+    function Test-IsElevated {
+        $Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        $Principal = New-Object System.Security.Principal.WindowsPrincipal($Identity)
+        return $Principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
     }
 }
 
 process {
     try {
-        Write-Log "Verifying winget availability..."
+        Write-Log "========================================" -Level INFO
+        Write-Log "Starting: $ScriptName v$ScriptVersion" -Level INFO
+        Write-Log "========================================" -Level INFO
+        
+        if (-not (Test-IsElevated)) {
+            throw "Administrator privileges required"
+        }
+        Write-Log "Administrator privileges verified" -Level INFO
+        
+        # Check environment variable override
+        if ($env:packageid -and $env:packageid -notlike "null") {
+            $PackageID = $env:packageid
+            Write-Log "Using PackageID from environment variable: $PackageID" -Level INFO
+        }
+        
+        # Validate PackageID is provided
+        if (-not $PackageID) {
+            Write-Log "Package ID is required" -Level ERROR
+            Write-Log "Example package IDs:" -Level INFO
+            Write-Log "  - 9WZDNCRFJ3Q2 (Microsoft Whiteboard)" -Level INFO
+            Write-Log "  - 9N0DX20HK701 (Windows Terminal)" -Level INFO
+            Write-Log "  - Microsoft.WindowsTerminal (Windows Terminal)" -Level INFO
+            throw "Missing required parameter: PackageID"
+        }
+        
+        Write-Log "Target package: $PackageID" -Level INFO
+        
+        Write-Log "Verifying winget availability" -Level INFO
         
         $wingetCmd = Get-Command winget -ErrorAction SilentlyContinue
         if (-not $wingetCmd) {
-            Write-Log "winget is not installed or not available in PATH." "ERROR"
-            Write-Log "Please install App Installer from Microsoft Store or download from GitHub." "ERROR"
-            exit 1
+            throw "winget is not installed or not available in PATH. Please install App Installer from Microsoft Store."
         }
         
-        Write-Log "winget is available at: $($wingetCmd.Source)"
+        Write-Log "winget found at: $($wingetCmd.Source)" -Level SUCCESS
         
-        Write-Log "Installing package: $PackageID"
-        Write-Log "Source: Microsoft Store (msstore)"
-        Write-Log "Installation may take 30-120 seconds depending on app size and network speed..."
+        # Get winget version
+        try {
+            $wingetVersion = (winget --version) -replace '[^0-9.]', ''
+            Write-Log "winget version: $wingetVersion" -Level INFO
+        } catch {
+            Write-Log "Could not determine winget version" -Level WARN
+        }
+        
+        Write-Log "Starting installation from Microsoft Store" -Level INFO
+        Write-Log "Installation may take 30-120 seconds depending on app size" -Level INFO
         
         # Execute winget installation
-        winget install -e -i --id=$PackageID --source=msstore --accept-package-agreements --accept-source-agreements
+        $wingetArgs = @(
+            "install",
+            "-e",
+            "-i",
+            "--id=$PackageID",
+            "--source=msstore",
+            "--accept-package-agreements",
+            "--accept-source-agreements"
+        )
+        
+        Write-Log "Executing: winget $($wingetArgs -join ' ')" -Level DEBUG
+        
+        & winget @wingetArgs
+        
+        $wingetExitCode = $LASTEXITCODE
         
         # Check winget exit code
-        if ($LASTEXITCODE -ne 0) {
-            Write-Log "winget installation failed with exit code $LASTEXITCODE" "ERROR"
+        if ($wingetExitCode -ne 0) {
+            $errorMessage = "winget installation failed with exit code $wingetExitCode"
             
             # Provide helpful error messages for common exit codes
-            switch ($LASTEXITCODE) {
-                -1978335189 { Write-Log "No applicable installer found for this package" "ERROR" }
-                -1978335211 { Write-Log "Package is already installed" "WARNING" }
-                -1978335222 { Write-Log "User cancelled installation" "WARNING" }
-                -1978335225 { Write-Log "Missing dependency required for installation" "ERROR" }
-                default { Write-Log "Check winget documentation for exit code details" "ERROR" }
+            switch ($wingetExitCode) {
+                -1978335189 { 
+                    $errorMessage += ": No applicable installer found for this package"
+                    Write-Log $errorMessage -Level ERROR
+                }
+                -1978335211 { 
+                    Write-Log "Package is already installed" -Level WARN
+                    Write-Log "Installation considered successful (already present)" -Level SUCCESS
+                    
+                    Set-NinjaField -FieldName "wingetAppInstallStatus" -Value "Already Installed"
+                    Set-NinjaField -FieldName "wingetAppInstallDate" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+                    Set-NinjaField -FieldName "wingetLastPackageID" -Value $PackageID
+                    
+                    $ExitCode = 0
+                    return
+                }
+                -1978335222 { 
+                    $errorMessage += ": User cancelled installation"
+                    Write-Log $errorMessage -Level WARN
+                }
+                -1978335225 { 
+                    $errorMessage += ": Missing dependency required for installation"
+                    Write-Log $errorMessage -Level ERROR
+                }
+                default { 
+                    Write-Log $errorMessage -Level ERROR
+                    Write-Log "Check winget documentation for exit code $wingetExitCode" -Level INFO
+                }
             }
             
-            exit 1
+            throw $errorMessage
         }
         
-        Write-Log "Application installed successfully: $PackageID"
-        exit 0
-    }
-    catch {
-        Write-Log "Application installation failed: $($_.Exception.Message)" "ERROR"
-        exit 1
+        Write-Log "Application installed successfully: $PackageID" -Level SUCCESS
+        
+        Set-NinjaField -FieldName "wingetAppInstallStatus" -Value "Success"
+        Set-NinjaField -FieldName "wingetAppInstallDate" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+        Set-NinjaField -FieldName "wingetLastPackageID" -Value $PackageID
+        
+        $ExitCode = 0
+        
+    } catch {
+        Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
+        Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
+        
+        Set-NinjaField -FieldName "wingetAppInstallStatus" -Value "Failed"
+        Set-NinjaField -FieldName "wingetAppInstallDate" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+        if ($PackageID) {
+            Set-NinjaField -FieldName "wingetLastPackageID" -Value $PackageID
+        }
+        
+        $ExitCode = 1
     }
 }
 
 end {
-    if ($StartTime) {
-        $executionTime = (Get-Date) - $StartTime
-        Write-Log "Script execution time: $($executionTime.TotalSeconds) seconds"
+    try {
+        $EndTime = Get-Date
+        $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+        
+        Write-Log "========================================" -Level INFO
+        Write-Log "Execution Summary:" -Level INFO
+        Write-Log "  Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
+        Write-Log "  Errors: $script:ErrorCount" -Level INFO
+        Write-Log "  Warnings: $script:WarningCount" -Level INFO
+        
+        if ($script:CLIFallbackCount -gt 0) {
+            Write-Log "  CLI Fallbacks: $script:CLIFallbackCount" -Level INFO
+        }
+        
+        Write-Log "========================================" -Level INFO
     }
-    [System.GC]::Collect()
+    finally {
+        [System.GC]::Collect()
+        exit $ExitCode
+    }
 }

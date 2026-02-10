@@ -36,7 +36,7 @@
     Version        : 3.0.0
     Author         : WAF Team
     Change Log:
-    - 3.0.0: Upgraded to V3 standards with Write-Log function and execution tracking
+    - 3.0.0: Upgraded to V3.0.0 standards (script-scoped exit code)
     - 1.0: Initial release
     
     Requirements:
@@ -54,7 +54,7 @@ begin {
     $ErrorActionPreference = 'Stop'
     $ProgressPreference = 'SilentlyContinue'
     $StartTime = Get-Date
-    $ExitCode = 0
+    $script:ExitCode = 0
     
     Set-StrictMode -Version Latest
 
@@ -132,13 +132,13 @@ process {
     try {
         if (-not (Test-IsElevated)) {
             Write-Log "Access Denied. Please run with Administrator privileges." -Level ERROR
-            $ExitCode = 1
+            $script:ExitCode = 1
             return
         }
 
         if (-not (Test-IsVM)) {
             Write-Log "Host is not a virtual machine." -Level ERROR
-            $ExitCode = 1
+            $script:ExitCode = 1
             return
         }
 
@@ -146,7 +146,7 @@ process {
 
         if (-not (Test-Path $regPath)) {
             Write-Log "Registry key cannot be found. This either means that $env:computername is not a Hyper-V guest, or the 'Data Exchange' integration is disabled in the VM settings." -Level ERROR
-            $ExitCode = 1
+            $script:ExitCode = 1
             return
         }
 
@@ -154,7 +154,7 @@ process {
 
         if ([string]::IsNullOrWhiteSpace($HyperVHost)) {
             Write-Log "Registry key exists but the value is blank." -Level ERROR
-            $ExitCode = 1
+            $script:ExitCode = 1
             return
         }
 
@@ -167,13 +167,13 @@ process {
             }
             catch {
                 Write-Log "Error setting custom field: $_" -Level ERROR
-                $ExitCode = 1
+                $script:ExitCode = 1
             }
         }
     }
     catch {
         Write-Log "An unexpected error occurred: $_" -Level ERROR
-        $ExitCode = 1
+        $script:ExitCode = 1
     }
 }
 
@@ -185,6 +185,6 @@ end {
     }
     finally {
         [System.GC]::Collect()
-        exit $ExitCode
+        exit $script:ExitCode
     }
 }

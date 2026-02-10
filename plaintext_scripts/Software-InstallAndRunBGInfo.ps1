@@ -1,279 +1,386 @@
-#Requires -Version 2.0
+#Requires -Version 5.1
+#Requires -RunAsAdministrator
 
 <#
 .SYNOPSIS
-    Downloads, installs and sets up BGInfo to run for all users.
+    Downloads, installs and configures BGInfo to run automatically for all users.
+
 .DESCRIPTION
-    Downloads, installs and sets up BGInfo to run for all users.
-    Uses the default configuration if no .bgi file path or URL is specified.
+    Downloads BGInfo from Sysinternals, installs it to System32\SysInternals, and
+    configures it to run at system startup for all users. Supports custom BGI configuration
+    files from local paths or URLs.
+    
+    The script performs the following:
+    - Validates administrator privileges
+    - Downloads BGInfo.exe from Microsoft Sysinternals
+    - Creates startup shortcut for all users
+    - Optionally downloads and applies custom BGI configuration
+    - Updates NinjaRMM custom fields with installation status
+    
+    Note: Already logged-in users must logout/login to see BGInfo updates.
+    This script runs unattended without user interaction.
 
-    Note: Users that are already logged in will need to logout and login to have BGInfo update their desktop background.
+.PARAMETER Config
+    Optional path or URL to a BGI configuration file.
+    Can be a local file path or HTTP/HTTPS URL.
+    If not specified, uses BGInfo default configuration.
+    Examples: "C:\Config\bginfo.bgi", "https://example.com/config.bgi"
 
 .EXAMPLE
-    (No Parameters)
-    ## EXAMPLE OUTPUT WITHOUT PARAMS ##
-    Create Directory: C:\WINDOWS\System32\SysInternals
-    Downloading https://live.sysinternals.com/Bginfo.exe
-    Created Shortcut: C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup\BGInfo.lnk
+    .\Software-InstallAndRunBGInfo.ps1
+    
+    Installs BGInfo with default configuration.
 
 .EXAMPLE
-    -Config C:\BGInfo\config.bgi
-    Specifies the BGInfo configuration file to use.
+    .\Software-InstallAndRunBGInfo.ps1 -Config "C:\BGInfo\custom.bgi"
+    
+    Installs BGInfo with custom local configuration file.
 
-PARAMETER: -Config C:\BGInfo\config.bgi
-    ## EXAMPLE OUTPUT WITHOUT PARAMS ##
-    Create Directory: C:\WINDOWS\System32\SysInternals
-    Downloading https://live.sysinternals.com/Bginfo.exe
-    Created Shortcut: C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup\BGInfo.lnk
-.OUTPUTS
-    None
+.EXAMPLE
+    .\Software-InstallAndRunBGInfo.ps1 -Config "https://example.com/bginfo.bgi"
+    
+    Installs BGInfo and downloads configuration from URL.
+
 .NOTES
-    Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Version: 1.1
-    Release Notes: Calculated Name Update
+    File Name      : Software-InstallAndRunBGInfo.ps1
+    Prerequisite   : PowerShell 5.1 or higher, Administrator privileges
+    Minimum OS     : Windows 10, Windows Server 2016
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: Complete V3 standards implementation
+    - 1.1: Calculated Name Update
+    - 1.0: Initial release
+    
+    Execution Context: SYSTEM (via NinjaRMM automation)
+    Execution Frequency: On-demand or initial deployment
+    Typical Duration: 5-15 seconds
+    Timeout Setting: 60 seconds recommended
+    
+    User Interaction: None (fully automated, no prompts)
+    Restart Behavior: N/A (no system restart required)
+    
+    Fields Updated:
+        - bginfoInstallStatus (Success/Failed)
+        - bginfoInstallDate (timestamp)
+        - bginfoConfigPath (configuration file path)
+    
+    Dependencies:
+        - Windows PowerShell 5.1 or higher
+        - Administrator privileges (SYSTEM context)
+        - NinjaRMM Agent installed
+        - Internet access to live.sysinternals.com
+    
+    Environment Variables (Optional):
+        - configFilePathOrUrlLink: Alternative to -Config parameter
+
+.LINK
+    https://github.com/Xore/waf
+    https://docs.microsoft.com/sysinternals/downloads/bginfo
 #>
 
 [CmdletBinding()]
 param (
-    [Parameter()]
+    [Parameter(Mandatory=$false, HelpMessage="Path or URL to BGI configuration file")]
     [string]$Config
 )
 
 begin {
-    if ($env:configFilePathOrUrlLink -and $env:configFilePathOrUrlLink -notlike "null") { $Config = $env:configFilePathOrUrlLink }
+    Set-StrictMode -Version Latest
+    
+    $ScriptVersion = "3.0.0"
+    $ScriptName = "Software-InstallAndRunBGInfo"
+    $NinjaRMMCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
+    
+    $StartTime = Get-Date
+    $ErrorActionPreference = 'Stop'
+    $script:ErrorCount = 0
+    $script:WarningCount = 0
+    $script:CLIFallbackCount = 0
+
+    function Write-Log {
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory=$true)]
+            [string]$Message,
+            [Parameter(Mandatory=$false)]
+            [ValidateSet('DEBUG','INFO','WARN','ERROR','SUCCESS')]
+            [string]$Level = 'INFO'
+        )
+        
+        $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $LogMessage = "[$Timestamp] [$Level] $Message"
+        Write-Output $LogMessage
+        
+        switch ($Level) {
+            'WARN'  { $script:WarningCount++ }
+            'ERROR' { $script:ErrorCount++ }
+        }
+    }
+
+    function Set-NinjaField {
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory=$true)]
+            [string]$FieldName,
+            [Parameter(Mandatory=$true)]
+            [AllowNull()]
+            $Value
+        )
+        
+        if ($null -eq $Value -or $Value -eq "") {
+            Write-Log "Skipping field '$FieldName' - no value" -Level DEBUG
+            return
+        }
+        
+        $ValueString = $Value.ToString()
+        
+        try {
+            if (Get-Command Ninja-Property-Set -ErrorAction SilentlyContinue) {
+                Ninja-Property-Set $FieldName $ValueString -ErrorAction Stop
+                Write-Log "Field '$FieldName' set successfully" -Level DEBUG
+                return
+            } else {
+                throw "Ninja-Property-Set cmdlet not available"
+            }
+        } catch {
+            Write-Log "Ninja-Property-Set failed, using CLI fallback" -Level DEBUG
+            
+            try {
+                if (-not (Test-Path $NinjaRMMCLI)) {
+                    throw "NinjaRMM CLI not found at: $NinjaRMMCLI"
+                }
+                
+                $CLIArgs = @("set", $FieldName, $ValueString)
+                $CLIResult = & $NinjaRMMCLI $CLIArgs 2>&1
+                
+                if ($LASTEXITCODE -ne 0) {
+                    throw "CLI exit code: $LASTEXITCODE, Output: $CLIResult"
+                }
+                
+                Write-Log "Field '$FieldName' set via CLI" -Level DEBUG
+                $script:CLIFallbackCount++
+                
+            } catch {
+                Write-Log "Failed to set field '$FieldName': $_" -Level ERROR
+            }
+        }
+    }
+
     function Test-IsElevated {
-        $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-        $p = New-Object System.Security.Principal.WindowsPrincipal($id)
-        $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+        $Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        $Principal = New-Object System.Security.Principal.WindowsPrincipal($Identity)
+        return $Principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+    }
+
+    function Invoke-Download {
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory=$true)]
+            [string]$URL,
+            [Parameter(Mandatory=$true)]
+            [string]$Path,
+            [Parameter(Mandatory=$false)]
+            [int]$Attempts = 3
+        )
+        
+        Write-Log "Downloading from: $URL" -Level INFO
+        Write-Log "  Destination: $Path" -Level DEBUG
+        
+        $SupportedTLS = [enum]::GetValues('Net.SecurityProtocolType')
+        if (($SupportedTLS -contains 'Tls13') -and ($SupportedTLS -contains 'Tls12')) {
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls13 -bor [System.Net.SecurityProtocolType]::Tls12
+        } elseif ($SupportedTLS -contains 'Tls12') {
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+        }
+        
+        $AttemptCounter = 1
+        While ($AttemptCounter -le $Attempts) {
+            Write-Log "  Download attempt $AttemptCounter of $Attempts" -Level DEBUG
+            
+            try {
+                $WebRequestArgs = @{
+                    Uri                = $URL
+                    OutFile            = $Path
+                    MaximumRedirection = 10
+                    UseBasicParsing    = $true
+                    ErrorAction        = 'Stop'
+                }
+                
+                Invoke-WebRequest @WebRequestArgs
+                
+                if (Test-Path -Path $Path -ErrorAction SilentlyContinue) {
+                    Write-Log "  Download successful" -Level SUCCESS
+                    return
+                }
+            } catch {
+                Write-Log "  Download attempt $AttemptCounter failed: $($_.Exception.Message)" -Level WARN
+                
+                if (Test-Path -Path $Path -ErrorAction SilentlyContinue) {
+                    Remove-Item $Path -Force -ErrorAction SilentlyContinue
+                }
+            }
+            
+            $AttemptCounter++
+            
+            if ($AttemptCounter -le $Attempts) {
+                Start-Sleep -Seconds 2
+            }
+        }
+        
+        throw "Failed to download file after $Attempts attempts"
     }
 
     function New-Shortcut {
         [CmdletBinding()]
         param(
-            [Parameter()]
-            [String]$Arguments,
-            [Parameter()]
-            [String]$IconPath,
-            [Parameter(ValueFromPipeline = $True)]
-            [String]$Path,
-            [Parameter()]
-            [String]$Target,
-            [Parameter()]
-            [String]$WorkingDir
+            [Parameter(Mandatory=$true)]
+            [string]$Path,
+            [Parameter(Mandatory=$true)]
+            [string]$Target,
+            [Parameter(Mandatory=$false)]
+            [string]$Arguments,
+            [Parameter(Mandatory=$false)]
+            [string]$WorkingDir
         )
-        process {
-            Write-Host "Creating Shortcut at $Path"
-            $ShellObject = New-Object -ComObject ("WScript.Shell")
-            $Shortcut = $ShellObject.CreateShortcut($Path)
-            $Shortcut.TargetPath = $Target
-            if ($WorkingDir) { $Shortcut.WorkingDirectory = $WorkingDir }
-            if ($Arguments) { $ShortCut.Arguments = $Arguments }
-            if ($IconPath) { $Shortcut.IconLocation = $IconPath }
-            $Shortcut.Save()
-
-            if (!(Test-Path $Path -ErrorAction SilentlyContinue)) {
-                Write-Error "Unable to create Shortcut at $Path"
-                exit 1
-            }
-        }
-    }
-    # Utility function for downloading files.
-    function Invoke-Download {
-        param(
-            [Parameter()]
-            [String]$URL,
-            [Parameter()]
-            [String]$Path,
-            [Parameter()]
-            [int]$Attempts = 3,
-            [Parameter()]
-            [Switch]$SkipSleep
-        )
-        Write-Host "URL given, Downloading the file..."
-
-        $SupportedTLSversions = [enum]::GetValues('Net.SecurityProtocolType')
-        if ( ($SupportedTLSversions -contains 'Tls13') -and ($SupportedTLSversions -contains 'Tls12') ) {
-            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol::Tls13 -bor [System.Net.SecurityProtocolType]::Tls12
-        }
-        elseif ( $SupportedTLSversions -contains 'Tls12' ) {
-            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
-        }
-        else {
-            # Not everything requires TLS 1.2, but we'll try anyway.
-            Write-Warning "TLS 1.2 and or TLS 1.3 are not supported on this system. This download may fail!"
-            if ($PSVersionTable.PSVersion.Major -lt 3) {
-                Write-Warning "PowerShell 2 / .NET 2.0 doesn't support TLS 1.2."
-            }
-        }
-
-        $i = 1
-        While ($i -le $Attempts) {
-            # Some cloud services have rate-limiting
-            if (-not ($SkipSleep)) {
-                $SleepTime = Get-Random -Minimum 3 -Maximum 15
-                Write-Host "Waiting for $SleepTime seconds."
-                Start-Sleep -Seconds $SleepTime
-            }
         
-            if ($i -ne 1) { Write-Host "" }
-            Write-Host "Download Attempt $i"
-
-            try {
-                # Invoke-WebRequest is preferred because it supports links that redirect, e.g., https://t.ly
-                if ($PSVersionTable.PSVersion.Major -lt 4) {
-                    # Downloads the file
-                    $WebClient = New-Object System.Net.WebClient
-                    $WebClient.DownloadFile($URL, $Path)
-                }
-                else {
-                    # Standard options
-                    $WebRequestArgs = @{
-                        Uri                = $URL
-                        OutFile            = $Path
-                        MaximumRedirection = 10
-                        UseBasicParsing    = $true
-                    }
-
-                    # Downloads the file
-                    Invoke-WebRequest @WebRequestArgs
-                }
-
-                $File = Test-Path -Path $Path -ErrorAction SilentlyContinue
-            }
-            catch {
-                Write-Warning "An error has occurred while downloading!"
-                Write-Warning $_.Exception.Message
-
-                if (Test-Path -Path $Path -ErrorAction SilentlyContinue) {
-                    Remove-Item $Path -Force -Confirm:$false -ErrorAction SilentlyContinue
-                }
-
-                $File = $False
-            }
-
-            if ($File) {
-                $i = $Attempts
-            }
-            else {
-                Write-Warning "File failed to download."
-                Write-Host ""
-            }
-
-            $i++
+        Write-Log "Creating shortcut: $Path" -Level DEBUG
+        
+        $ShellObject = New-Object -ComObject "WScript.Shell"
+        $Shortcut = $ShellObject.CreateShortcut($Path)
+        $Shortcut.TargetPath = $Target
+        
+        if ($WorkingDir) { $Shortcut.WorkingDirectory = $WorkingDir }
+        if ($Arguments) { $Shortcut.Arguments = $Arguments }
+        
+        $Shortcut.Save()
+        
+        if (-not (Test-Path $Path -ErrorAction SilentlyContinue)) {
+            throw "Failed to create shortcut at: $Path"
         }
-
-        if (-not (Test-Path $Path)) {
-            throw "Failed to download file!"
-        }
-        else {
-            Write-Host "Download Successful!"
-        }
-    }
-
-    function Install-SysInternalsTool {
-        [CmdletBinding()]
-        param()
-        # Target directory is %WinDir%C:\Windows\System32\SysInternals
-        $TargetDir = Join-Path -Path $env:WinDir -ChildPath "System32\SysInternals"
-
-        # Tools to be downloaded
-        $Tools = @(
-            [PSCustomObject]@{
-                Name     = "Bginfo"
-                FileName = "Bginfo.exe"
-                URL      = "https://live.sysinternals.com/Bginfo.exe"
-            }
-        )
-
-        # Create Directory
-        if (-not $(Test-Path $TargetDir -ErrorAction SilentlyContinue)) {
-            Write-Host "Create Directory: $TargetDir"
-            New-Item -ItemType Directory -Path $TargetDir -Force -ErrorAction SilentlyContinue
-        }
-
-        # Download tools to target directory
-        try {
-            foreach ($Tool in $Tools) {
-                $FilePath = Join-Path $TargetDir $Tool.FileName
-                Write-Host "Downloading $($Tool.Name) to $FilePath"
-                Invoke-Download -URL $Tool.URL -Path $FilePath
-            }
-        }
-        catch {
-            throw $_
-        }
-    }
-    function Register-BGInfoStartup {
-        [CmdletBinding()]
-        param(
-            [Parameter()][string]$Config
-        )
-        $ExePath = Join-Path -Path $env:WinDir -ChildPath "System32\SysInternals\BGInfo.exe"
-        if (-not $(Test-Path -Path $ExePath -ErrorAction SilentlyContinue)) {
-            throw "BGInfo.exe is not found at $ExePath"
-        }
-
-        # Register Startup command for All User
-        try {
-            $StartupPath = Join-Path -Path $env:ProgramData -ChildPath "Microsoft\Windows\Start Menu\Programs\StartUp\StartupBGInfo.lnk"
-            
-            if ($(Test-Path -Path $StartupPath -ErrorAction SilentlyContinue)) {
-                Remove-Item -Path $StartupPath -ErrorAction SilentlyContinue
-            }
-            if ($Config -and $(Test-Path -Path $Config -ErrorAction SilentlyContinue)) {
-                New-Shortcut -Path $StartupPath -Arguments "/iq `"$Config`" /accepteula /timer:0 /silent" -Target $ExePath
-            }
-            else {
-                New-Shortcut -Path $StartupPath -Arguments "/accepteula /timer:0 /silent" -Target $ExePath
-            }
-
-            Write-Host "Created Startup: $StartupPath"
-        }
-        catch {
-            throw "Unable to create shortcut for BGInfo.exe"
-        }
+        
+        Write-Log "Shortcut created successfully" -Level SUCCESS
     }
 }
+
 process {
-    if (-not (Test-IsElevated)) {
-        Write-Error -Message "Access Denied. Please run with Administrator privileges."
-        exit 1
-    }
-
     try {
-        Install-SysInternalsTool
-
+        Write-Log "========================================" -Level INFO
+        Write-Log "Starting: $ScriptName v$ScriptVersion" -Level INFO
+        Write-Log "========================================" -Level INFO
+        
+        if ($env:configFilePathOrUrlLink -and $env:configFilePathOrUrlLink -notlike "null") {
+            $Config = $env:configFilePathOrUrlLink
+            Write-Log "Using config from environment: $Config" -Level INFO
+        }
+        
+        if (-not (Test-IsElevated)) {
+            throw "Administrator privileges required"
+        }
+        Write-Log "Administrator privileges verified" -Level INFO
+        
+        $TargetDir = Join-Path -Path $env:WinDir -ChildPath "System32\SysInternals"
+        $BGInfoExe = Join-Path -Path $TargetDir -ChildPath "BGInfo.exe"
+        
+        if (-not (Test-Path $TargetDir -ErrorAction SilentlyContinue)) {
+            Write-Log "Creating directory: $TargetDir" -Level INFO
+            New-Item -ItemType Directory -Path $TargetDir -Force -ErrorAction Stop | Out-Null
+        }
+        
+        Write-Log "Downloading BGInfo from Sysinternals" -Level INFO
+        Invoke-Download -URL "https://live.sysinternals.com/Bginfo.exe" -Path $BGInfoExe -Attempts 3
+        
+        if (-not (Test-Path $BGInfoExe -ErrorAction SilentlyContinue)) {
+            throw "BGInfo.exe not found after download: $BGInfoExe"
+        }
+        
+        Write-Log "BGInfo installed to: $BGInfoExe" -Level SUCCESS
+        
+        $ConfigPath = $null
         if ($Config) {
-            if (-not $(Test-Path -Path $Config -ErrorAction SilentlyContinue)) {
+            Write-Log "Processing configuration: $Config" -Level INFO
+            
+            if (Test-Path -Path $Config -ErrorAction SilentlyContinue) {
+                $ConfigPath = $Config
+                Write-Log "Using local config file" -Level INFO
+            } else {
                 try {
-                    if (-not (Test-Path -Path "$Env:PROGRAMDATA\SysInternals" -ErrorAction SilentlyContinue)) {
-                        New-Item -ItemType Directory -Path "$Env:PROGRAMDATA\SysInternals" -Force
+                    $ConfigDir = Join-Path -Path $env:PROGRAMDATA -ChildPath "SysInternals"
+                    if (-not (Test-Path -Path $ConfigDir -ErrorAction SilentlyContinue)) {
+                        New-Item -ItemType Directory -Path $ConfigDir -Force -ErrorAction Stop | Out-Null
                     }
-                    Invoke-Download -URL $Config -Path $(Join-Path -Path $env:PROGRAMDATA -ChildPath "SysInternals\bginfoConfig.bgi")
-                    $Config = $(Join-Path -Path $env:PROGRAMDATA -ChildPath "SysInternals\bginfoConfig.bgi")
-                }
-                catch {
-                    Write-Error "Failed to download from provided Url or that the Path to the specified file does not exist."
-                    Write-Error $_
-                    exit 1
+                    
+                    $ConfigPath = Join-Path -Path $ConfigDir -ChildPath "bginfoConfig.bgi"
+                    Write-Log "Downloading config from URL" -Level INFO
+                    Invoke-Download -URL $Config -Path $ConfigPath -Attempts 3
+                    
+                } catch {
+                    Write-Log "Failed to download config: $($_.Exception.Message)" -Level ERROR
+                    throw "Failed to download or access configuration file"
                 }
             }
-            Register-BGInfoStartup -Config $Config
         }
-        else {
-            Register-BGInfoStartup
+        
+        $StartupPath = Join-Path -Path $env:ProgramData -ChildPath "Microsoft\Windows\Start Menu\Programs\StartUp\StartupBGInfo.lnk"
+        
+        if (Test-Path -Path $StartupPath -ErrorAction SilentlyContinue) {
+            Write-Log "Removing existing startup shortcut" -Level DEBUG
+            Remove-Item -Path $StartupPath -Force -ErrorAction SilentlyContinue
         }
+        
+        if ($ConfigPath) {
+            $Arguments = "/iq `"$ConfigPath`" /accepteula /timer:0 /silent"
+            Write-Log "Creating startup shortcut with custom config" -Level INFO
+        } else {
+            $Arguments = "/accepteula /timer:0 /silent"
+            Write-Log "Creating startup shortcut with default config" -Level INFO
+        }
+        
+        New-Shortcut -Path $StartupPath -Target $BGInfoExe -Arguments $Arguments
+        
+        Write-Log "Startup shortcut created: $StartupPath" -Level SUCCESS
+        
+        Set-NinjaField -FieldName "bginfoInstallStatus" -Value "Success"
+        Set-NinjaField -FieldName "bginfoInstallDate" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+        if ($ConfigPath) {
+            Set-NinjaField -FieldName "bginfoConfigPath" -Value $ConfigPath
+        }
+        
+        Write-Log "BGInfo installed and configured successfully" -Level SUCCESS
+        Write-Log "Users must logout/login to see BGInfo on desktop" -Level INFO
+        
+        $ExitCode = 0
+        
+    } catch {
+        Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
+        Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
+        
+        Set-NinjaField -FieldName "bginfoInstallStatus" -Value "Failed"
+        Set-NinjaField -FieldName "bginfoInstallDate" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+        
+        $ExitCode = 1
     }
-    catch {
-        Write-Error $_
-        exit 1
-    }
-
-    Write-Host "Successfully installed and set up bginfo. Bginfo will start the next time the end user logs in or restarts."
-    exit 0
 }
+
 end {
-    
-    
-    
+    try {
+        $EndTime = Get-Date
+        $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+        
+        Write-Log "========================================" -Level INFO
+        Write-Log "Execution Summary:" -Level INFO
+        Write-Log "  Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
+        Write-Log "  Errors: $script:ErrorCount" -Level INFO
+        Write-Log "  Warnings: $script:WarningCount" -Level INFO
+        
+        if ($script:CLIFallbackCount -gt 0) {
+            Write-Log "  CLI Fallbacks: $script:CLIFallbackCount" -Level INFO
+        }
+        
+        Write-Log "========================================" -Level INFO
+    }
+    finally {
+        [System.GC]::Collect()
+        exit $ExitCode
+    }
 }

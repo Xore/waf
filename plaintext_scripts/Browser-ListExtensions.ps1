@@ -44,7 +44,7 @@
     Version        : 3.0.0
     Author         : WAF Team
     Change Log:
-    - 3.0.0: Upgraded to V3 format with enhanced error handling and structure
+    - 3.0.0: Upgraded to V3.0.0 standards (script-scoped exit code, proper cleanup)
     - 1.1: Added extension version, signed-in account detection, improved error handling
     - 1.0: Initial version
 #>
@@ -628,20 +628,20 @@ begin {
         $MultilineCustomField = $MultilineCustomField.Trim()
     }
 
-    $ExitCode = 0
+    $script:ExitCode = 0
 
     if ($WysiwygCustomField -match '[^0-9A-Z]') {
         Write-Log 'WYSIWYG Custom Field Name contains invalid characters. Must be uppercase A-Z and 0-9 only' -Level ERROR
         Write-Log 'https://ninjarmm.zendesk.com/hc/en-us/articles/360060920631-Custom-Field-Setup' -Level ERROR
         $WysiwygCustomField = $null
-        $ExitCode = 1
+        $script:ExitCode = 1
     }
 
     if ($MultilineCustomField -match '[^0-9A-Z]') {
         Write-Log 'Multiline Custom Field Name contains invalid characters. Must be uppercase A-Z and 0-9 only' -Level ERROR
         Write-Log 'https://ninjarmm.zendesk.com/hc/en-us/articles/360060920631-Custom-Field-Setup' -Level ERROR
         $MultilineCustomField = $null
-        $ExitCode = 1
+        $script:ExitCode = 1
     }
 
     if ($MultilineCustomField -and $WysiwygCustomField -and $MultilineCustomField -eq $WysiwygCustomField) {
@@ -672,7 +672,7 @@ process {
                 }
                 catch {
                     Write-Log "Error loading registry hive for $($UserProfile.Name)" -Level WARNING
-                    $ExitCode = 1
+                    $script:ExitCode = 1
                     continue
                 }
             }
@@ -698,7 +698,7 @@ process {
                 }
                 catch {
                     Write-Log "Error unloading registry hive for $($UserProfile.Name)" -Level WARNING
-                    $ExitCode = 1
+                    $script:ExitCode = 1
                 }
             }
         }
@@ -731,7 +731,7 @@ process {
 
         if ($BrowserExtensions.Count -eq 0) {
             Write-Log 'No browser extensions were found'
-            exit $ExitCode
+            exit $script:ExitCode
         }
 
         Write-Log 'Browser extensions were detected'
@@ -813,7 +813,7 @@ $(if ($FirefoxList) { $FirefoxList -join "`n" } else { 'No extensions found.' })
             }
             catch {
                 Write-Log "Error setting '$MultilineCustomField': $_" -Level ERROR
-                $ExitCode = 1
+                $script:ExitCode = 1
             }
         }
 
@@ -864,7 +864,7 @@ $(if ($FirefoxList) { $FirefoxList -join "`n" } else { 'No extensions found.' })
             }
             catch {
                 Write-Log "Error setting '$WysiwygCustomField': $_" -Level ERROR
-                $ExitCode = 1
+                $script:ExitCode = 1
             }
         }
 
@@ -886,7 +886,7 @@ $(if ($FirefoxList) { $FirefoxList -join "`n" } else { 'No extensions found.' })
             ($BrowserExtensions | Format-List | Out-String).Trim() | Write-Host
         }
 
-        exit $ExitCode
+        exit $script:ExitCode
     }
     catch {
         Write-Log "Script failed: $_" -Level ERROR
@@ -895,5 +895,5 @@ $(if ($FirefoxList) { $FirefoxList -join "`n" } else { 'No extensions found.' })
 }
 
 end {
-    [GC]::Collect()
+    [System.GC]::Collect()
 }

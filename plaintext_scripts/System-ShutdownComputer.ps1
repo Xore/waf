@@ -35,7 +35,7 @@
 
 .NOTES
     Minimum OS Architecture Supported: Windows 10, Windows Server 2012 R2
-    Release notes: Initial release for WAF v3.0
+    Release notes: V3.0.0 - Upgraded to script-scoped exit code handling
     User interaction: None - executes unattended shutdown
     Restart behavior: System will shut down after timeout period
     Typical duration: < 1 second to schedule, then waits for timeout
@@ -77,7 +77,7 @@ begin {
         exit 1
     }
     
-    $ExitCode = 0
+    $script:ExitCode = 0
 }
 
 process {
@@ -107,7 +107,7 @@ process {
         if (Test-Path -Path $ShutdownErrorLog -ErrorAction SilentlyContinue) {
             Get-Content -Path $ShutdownErrorLog -ErrorAction SilentlyContinue | ForEach-Object { 
                 Write-Host "[Error] $_"
-                $ExitCode = 1
+                $script:ExitCode = 1
             }
             Remove-Item -Path $ShutdownErrorLog -Force -Confirm:$false -ErrorAction SilentlyContinue
         }
@@ -116,16 +116,16 @@ process {
             $ShutdownTime = (Get-Date).AddSeconds($Timeout)
             Write-Host "[Info] Shutdown scheduled successfully for $($ShutdownTime.ToString('MM/dd/yyyy HH:mm:ss'))"
             Write-Host "[Info] System will shut down in $Timeout seconds"
-            $ExitCode = 0
+            $script:ExitCode = 0
         }
         else {
             Write-Host "[Error] Failed to schedule shutdown (Exit code: $($ShutdownProcess.ExitCode))"
-            $ExitCode = 1
+            $script:ExitCode = 1
         }
     }
     catch {
         Write-Host "[Error] Shutdown scheduling failed: $_"
-        $ExitCode = 1
+        $script:ExitCode = 1
     }
 
     exit $ExitCode

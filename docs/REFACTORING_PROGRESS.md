@@ -5,8 +5,8 @@ This document tracks the progress of upgrading WAF scripts to V3.0.0 standards.
 ## Current Status
 
 **Date:** 2026-02-10  
-**Progress:** 14 scripts upgraded to V3.0.0  
-**Remaining:** ~63 scripts with $ExitCode pattern identified
+**Progress:** 15 scripts upgraded to V3.0.0  
+**Remaining:** ~62 scripts with $ExitCode pattern identified
 
 ## Upgrade Standards
 
@@ -17,6 +17,7 @@ All scripts are being upgraded to comply with:
 - Begin/Process/End block structure
 - Consistent code formatting and documentation
 - Proper cleanup in end blocks using [System.GC]::Collect()
+- COM object cleanup with Marshal.ReleaseComObject where applicable
 
 ## Completed Scripts
 
@@ -80,10 +81,15 @@ All scripts are being upgraded to comply with:
     - Changes: Replaced `$ExitCode` with `$script:ExitCode`
     - Note: Security-critical script for SMBv1 management
 
-## Pending Scripts (63 remaining)
+### Batch 6 (2026-02-10 20:08 CET)
+14. **Shortcuts-CreateDesktopEXE.ps1**
+    - Commit: [65dcbd0](https://github.com/Xore/waf/commit/65dcbd0559c267c0d3b754fbfddd03a3aa066d24)
+    - Changes: Replaced `$ExitCode` with `$script:ExitCode`, proper cleanup
+    - Note: Complex script with icon conversion and COM object handling
+
+## Pending Scripts (62 remaining)
 
 Scripts identified for upgrade:
-- Shortcuts-CreateDesktopEXE.ps1
 - MalwareBytes-UpdateDefinitions.ps1
 - Software-InstallOffice365.ps1
 - Software-InstallNetFramework35.ps1
@@ -91,7 +97,27 @@ Scripts identified for upgrade:
 - Cepros-UpdateCDBServerURL.ps1
 - Windows-EnableBitLocker.ps1
 - Printer-InstallNetworkPrinter.ps1
-- ... and 55 more scripts
+- BitDefender-UpdateDefinitions.ps1
+- Registry-SetValue.ps1
+- ... and 53 more scripts
+
+## Refactoring Patterns Applied
+
+### Exit Code Handling
+- Changed `$ExitCode = 0` to `$script:ExitCode = 0` in begin blocks
+- Changed all `$ExitCode = 1` to `$script:ExitCode = 1` throughout scripts
+- Changed `exit $ExitCode` to `exit $script:ExitCode` in process/end blocks
+
+### Resource Cleanup
+- Added `[System.GC]::Collect()` to end blocks where missing
+- Ensured COM object cleanup with Marshal.ReleaseComObject
+- Added proper disposal of graphics objects
+
+### Code Quality
+- Maintained all original functionality
+- Improved error handling consistency
+- Preserved existing Write-Log implementations
+- Kept Begin/Process/End block structure intact
 
 ## Notes
 

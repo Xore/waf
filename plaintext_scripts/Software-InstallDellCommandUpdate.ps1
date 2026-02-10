@@ -30,6 +30,8 @@
     
     The script configures DCU to automatically download and install updates while suspending
     BitLocker during updates and preventing automatic reboots.
+    
+    This script runs unattended without user interaction.
 
 .PARAMETER Reboot
     If specified, schedules a system reboot 60 seconds after script completion to apply updates.
@@ -52,7 +54,7 @@
     Version        : 3.0.0
     Author         : WAF Team
     Change Log:
-    - 3.0.0: Complete V3 standards with enhanced logging and statistics
+    - 3.0.0: Complete V3 standards with NinjaRMM field updates
     - 3.0: Added comprehensive installation automation
     - 1.0: Initial release
     
@@ -64,10 +66,16 @@
     User Interaction: None (silent installation)
     Restart Behavior: Optional via -Reboot parameter
     
-    Fields Updated: None
+    Fields Updated:
+        - dellCommandUpdateVersion (DCU version installed)
+        - dellCommandUpdateStatus (Success/Failed)
+        - dellCommandUpdateDate (timestamp)
+        - dotNetDesktopRuntimeVersion (version installed)
     
     Dependencies:
+        - Windows PowerShell 5.1 or higher
         - Administrator privileges (mandatory)
+        - NinjaRMM Agent installed
         - Internet connectivity (to download DCU and .NET Runtime)
         - Dell system (script exits gracefully on non-Dell hardware)
         - 2+ GB free disk space
@@ -93,9 +101,12 @@ begin {
     
     $ScriptVersion = "3.0.0"
     $ScriptName = "Software-InstallDellCommandUpdate"
+    $NinjaRMMCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
+    
     $StartTime = Get-Date
     $script:ErrorCount = 0
     $script:WarningCount = 0
+    $script:CLIFallbackCount = 0
     
     function Write-Log {
         [CmdletBinding()]
@@ -114,6 +125,55 @@ begin {
         switch ($Level) {
             'WARN'  { $script:WarningCount++ }
             'ERROR' { $script:ErrorCount++ }
+        }
+    }
+    
+    function Set-NinjaField {
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory=$true)]
+            [string]$FieldName,
+            [Parameter(Mandatory=$true)]
+            [AllowNull()]
+            $Value
+        )
+        
+        if ($null -eq $Value -or $Value -eq "") {
+            Write-Log "Skipping field '$FieldName' - no value" -Level DEBUG
+            return
+        }
+        
+        $ValueString = $Value.ToString()
+        
+        try {
+            if (Get-Command Ninja-Property-Set -ErrorAction SilentlyContinue) {
+                Ninja-Property-Set $FieldName $ValueString -ErrorAction Stop
+                Write-Log "Field '$FieldName' set successfully" -Level DEBUG
+                return
+            } else {
+                throw "Ninja-Property-Set cmdlet not available"
+            }
+        } catch {
+            Write-Log "Ninja-Property-Set failed, using CLI fallback" -Level DEBUG
+            
+            try {
+                if (-not (Test-Path $NinjaRMMCLI)) {
+                    throw "NinjaRMM CLI not found at: $NinjaRMMCLI"
+                }
+                
+                $CLIArgs = @("set", $FieldName, $ValueString)
+                $CLIResult = & $NinjaRMMCLI $CLIArgs 2>&1
+                
+                if ($LASTEXITCODE -ne 0) {
+                    throw "CLI exit code: $LASTEXITCODE, Output: $CLIResult"
+                }
+                
+                Write-Log "Field '$FieldName' set via CLI" -Level DEBUG
+                $script:CLIFallbackCount++
+                
+            } catch {
+                Write-Log "Failed to set field '$FieldName': $_" -Level ERROR
+            }
         }
     }
     
@@ -296,6 +356,7 @@ begin {
             $CurrentVersion = Get-InstalledApps -DisplayName 'Dell Command | Update'
             if ($CurrentVersion -match $LatestDellCommandUpdate.Version) {
                 Write-Log "Successfully installed $($CurrentVersion.DisplayName) [$($CurrentVersion.DisplayVersion)]" -Level SUCCESS
+                Set-NinjaField -FieldName "dellCommandUpdateVersion" -Value $CurrentVersion.DisplayVersion
                 Remove-Item $Installer -Force -ErrorAction Ignore 
             }
             else {
@@ -306,6 +367,9 @@ begin {
         }
         else { 
             Write-Log "Dell Command Update installation/upgrade not needed" -Level INFO
+            if ($CurrentVersion.DisplayVersion) {
+                Set-NinjaField -FieldName "dellCommandUpdateVersion" -Value $CurrentVersion.DisplayVersion
+            }
         }
     }
     
@@ -371,6 +435,7 @@ begin {
             if ($CurrentVersion -is [system.array]) { $CurrentVersion = $CurrentVersion[0] }
             if ($CurrentVersion -match $LatestDotNet.Version) {
                 Write-Log "Successfully installed .NET 8.0 Desktop Runtime [$CurrentVersion]" -Level SUCCESS
+                Set-NinjaField -FieldName "dotNetDesktopRuntimeVersion" -Value $CurrentVersion
                 Remove-Item $Installer -Force -ErrorAction Ignore 
             }
             else {
@@ -384,6 +449,9 @@ begin {
         }
         else { 
             Write-Log ".NET 8.0 Desktop Runtime installation/upgrade not needed" -Level INFO
+            if ($CurrentVersion) {
+                Set-NinjaField -FieldName "dotNetDesktopRuntimeVersion" -Value $CurrentVersion
+            }
         }
     }
     
@@ -440,6 +508,9 @@ process {
         Write-Log "Applying available updates..." -Level INFO
         Invoke-DellCommandUpdate
         
+        Set-NinjaField -FieldName "dellCommandUpdateStatus" -Value "Success"
+        Set-NinjaField -FieldName "dellCommandUpdateDate" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+        
         if ($Reboot) {
             Write-Log "Reboot specified - scheduling restart in 60 seconds" -Level WARN
             Start-Process -Wait -NoNewWindow -FilePath 'shutdown.exe' -ArgumentList '/r /f /t 60 /c "This system will restart in 60 seconds to install driver and firmware updates. Please save and close your work." /d p:4:1'
@@ -453,6 +524,10 @@ process {
     catch {
         Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
         Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
+        
+        Set-NinjaField -FieldName "dellCommandUpdateStatus" -Value "Failed"
+        Set-NinjaField -FieldName "dellCommandUpdateDate" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+        
         $ExitCode = 1
     }
 }
@@ -465,8 +540,14 @@ end {
         Write-Log "========================================" -Level INFO
         Write-Log "Execution Summary:" -Level INFO
         Write-Log "  Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
+        Write-Log "  Duration: $([Math]::Round($ExecutionTime / 60, 2)) minutes" -Level INFO
         Write-Log "  Errors: $script:ErrorCount" -Level INFO
         Write-Log "  Warnings: $script:WarningCount" -Level INFO
+        
+        if ($script:CLIFallbackCount -gt 0) {
+            Write-Log "  CLI Fallbacks: $script:CLIFallbackCount" -Level INFO
+        }
+        
         Write-Log "========================================" -Level INFO
     }
     finally {

@@ -69,7 +69,7 @@ begin {
     $ErrorActionPreference = 'Stop'
     $ProgressPreference = 'SilentlyContinue'
     $StartTime = Get-Date
-    $ExitCode = 0
+    $script:ExitCode = 0
     
     Set-StrictMode -Version Latest
 
@@ -82,7 +82,7 @@ begin {
         $LogMessage = "[$Timestamp] [$Level] $Message"
         
         switch ($Level) {
-            'ERROR' { Write-Error $LogMessage }
+            'ERROR' { Write-Error $LogMessage; $script:ExitCode = 1 }
             'WARNING' { Write-Warning $LogMessage }
             'SUCCESS' { Write-Output $LogMessage }
             default { Write-Output $LogMessage }
@@ -144,13 +144,13 @@ process {
     try {
         if (-not (Test-IsElevated)) {
             Write-Log "Access Denied. Please run with Administrator privileges." -Level ERROR
-            $ExitCode = 1
+            $script:ExitCode = 1
             return
         }
 
         if (-not $IsWorkstation) {
             Write-Log "System is a Domain Controller or Server. This script only works on workstations." -Level ERROR
-            $ExitCode = 1
+            $script:ExitCode = 1
             return
         }
 
@@ -204,12 +204,12 @@ process {
         }
         else {
             Write-Log "Enable or Disable parameter was not specified" -Level ERROR
-            $ExitCode = 1
+            $script:ExitCode = 1
         }
     }
     catch {
         Write-Log "An unexpected error occurred: $_" -Level ERROR
-        $ExitCode = 1
+        $script:ExitCode = 1
     }
 }
 
@@ -221,6 +221,6 @@ end {
     }
     finally {
         [System.GC]::Collect()
-        exit $ExitCode
+        exit $script:ExitCode
     }
 }

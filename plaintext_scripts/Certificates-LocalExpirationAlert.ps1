@@ -1,133 +1,196 @@
+#Requires -Version 5.1
+
 <#
 .SYNOPSIS
-    Alerts when a local certificate will expire in a configurable number of days. Can optionally ignore self-signed certificates, certificates that have been expired for a long time and certificates that were only valid for an extremely short time frame.
+    Alerts when local certificates will expire within a configurable timeframe.
+
 .DESCRIPTION
-    Alerts when a local certificate will expire in a configurable number of days. 
-    Can optionally ignore self-signed certificates, certificates that have been expired for a long time 
-    and certificates that were only valid for an extremely short time frame.
-.EXAMPLE
-    (No Parameters)
+    This script scans all local certificate stores and alerts when certificates will expire 
+    within the specified number of days. It can optionally ignore self-signed certificates, 
+    certificates that have been expired for a long time, and certificates that were only 
+    valid for an extremely short time frame.
     
-    Checking for certificates that were valid before 10/10/2023 09:07:23 and will expire before 11/11/2023 09:07:23.
-    No Certificates were found with an expiration date before 11/11/2023 09:07:23 and after 07/13/2023 09:07:23.
+    This helps administrators proactively manage certificate renewals and avoid service 
+    disruptions caused by expired certificates.
 
-PARAMETER: -DaysUntilExpiration "ReplaceWithNumber"
-    Alerts if a certificate is set to expire within the specified number of days.
+.PARAMETER ExpirationFromCustomField
+    Name of custom field to retrieve expiration days threshold from.
+    Default: certExpirationAlertDays
+
+.PARAMETER DaysUntilExpiration
+    Number of days threshold for expiration warning. Default: 30 days
+
+.PARAMETER MustBeValidBefore
+    Only alert on certificates older than X days. Default: 2 days
+    This silences alerts about certificates only valid for 24 hours.
+
+.PARAMETER Cutoff
+    Don't alert on certificates expired for longer than X days. Default: 91 days
+
+.PARAMETER IgnoreSelfSignedCerts
+    Ignore certificates where subject and issuer are identical.
+
 .EXAMPLE
-    -DaysUntilExpiration "366"
+    .\Certificates-LocalExpirationAlert.ps1
     
-    Checking for certificates that were valid before 10/10/2023 09:08:14 and will expire before 10/12/2024 09:08:14.
+    Checking for certificates expiring within 30 days...
+    No certificates found expiring within threshold
 
-    WARNING: Expired Certificates found!
-
-    ### Expired Certificates ###
-
-    SerialNumber                     HasPrivateKey ExpirationDate        Subject
-    ------------                     ------------- --------------        -------
-    0AA60783EBB5076EBC2D12DA9B04C290         False 6/10/2024 4:59:59 PM  CN=Insecure.Com LLC, O=Insecure.Com...
-    619DCC976458E38D471DC3DCE3603C2C          True 3/29/2024 10:19:00 AM CN=KYLE-SRV22-TEST.test.lan
-    0AA60783EBB5076EBC2D12DA9B04C290         False 6/10/2024 4:59:59 PM  CN=Insecure.Com LLC, O=Insecure.Com...
-    7D5FC733E3A8CF9344CDDFC0AB01CCB9          True 4/9/2024 9:53:53 AM   CN=KYLE-SRV22-TEST.test.lan
-    4EDC0A79D6CD5A8D4D1E3705BC20C206          True 4/9/2024 9:58:06 AM   CN=KYLLE-SRV22-TEST.test.lan
-
-PARAMETER: -MustBeValidBefore "ReplaceWithNumber"
-    Only alert on certificates that are older than X days. This is primarily to silence alerts about certificates that were only valid for 24 hours in their entire lifetime.
-
-PARAMETER: -Cutoff "ReplaceWithNumber"
-    Don't alert on certificates that have been expired for longer than X days (default is 91 days).
-
-PARAMETER: -IgnoreSelfSignedCerts
-    Ignore certificates where the subject of the certificate and the issuer of the certificate are identical.
+.EXAMPLE
+    .\Certificates-LocalExpirationAlert.ps1 -DaysUntilExpiration 366 -IgnoreSelfSignedCerts
+    
+    Checks for certificates expiring within 1 year, ignoring self-signed certs
 
 .OUTPUTS
-    None
+    None. Status information is written to the console.
+
 .NOTES
-    Minimum OS Architecture Supported: Windows 7, Server 2008
-    Version: 1.0
-    Release Notes: Initial Release
+    File Name      : Certificates-LocalExpirationAlert.ps1
+    Prerequisite   : PowerShell 5.1 or higher
+    Minimum OS     : Windows 10, Windows Server 2016
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: Upgraded to V3 standards with Write-Log function and execution tracking
+    - 1.0: Initial release
+    
+.LINK
+    https://learn.microsoft.com/en-us/powershell/module/pki/
 #>
 
 [CmdletBinding()]
 param (
     [Parameter()]
     [String]$ExpirationFromCustomField = "certExpirationAlertDays",
+    
     [Parameter()]
     [int]$DaysUntilExpiration = 30,
+    
     [Parameter()]
     [int]$MustBeValidBefore = 2,
+    
     [Parameter()]
     [int]$Cutoff = 91,
+    
     [Parameter()]
-    [Switch]$IgnoreSelfSignedCerts = [System.Convert]::ToBoolean($env:ignoreSelfSignedCerts)
+    [Switch]$IgnoreSelfSignedCerts
 )
+
 begin {
-    # Retrieve script variables from the dynamic script form.
-    if ($env:expirationFromCustomFieldName -and $env:expirationFromCustomFieldName -notlike "null") { $ExpirationFromCustomField = $env:expirationFromCustomFieldName }
-    if ($env:daysUntilExpiration -and $env:daysUntilExpiration -notlike "null") { $DaysUntilExpiration = $env:daysUntilExpiration }
-    if ($env:certificateMustBeOlderThanXDays -and $env:certificateMustBeOlderThanXDays -notlike "null") { $MustBeValidBefore = $env:certificateMustBeOlderThanXDays }
-    if ($env:skipCertsExpiredForMoreThanXDays -and $env:skipCertsExpiredForMoreThanXDays -notlike "null") { $Cutoff = $env:skipCertsExpiredForMoreThanXDays }
+    $ErrorActionPreference = 'Stop'
+    $ProgressPreference = 'SilentlyContinue'
+    $StartTime = Get-Date
+    
+    Set-StrictMode -Version Latest
+
+    function Write-Log {
+        param([string]$Message, [string]$Level = 'INFO')
+        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $logMessage = "[$timestamp] [$Level] $Message"
+        
+        switch ($Level) {
+            'ERROR' { Write-Error $logMessage }
+            'WARNING' { Write-Warning $logMessage }
+            default { Write-Output $logMessage }
+        }
+    }
 
     function Test-IsElevated {
-        $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-        $p = New-Object System.Security.Principal.WindowsPrincipal($id)
-        $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+        <#
+        .SYNOPSIS
+            Tests if script is running with administrator privileges.
+        #>
+        $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+        return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     }
 
-    $CustomField = Ninja-Property-Get -Name $ExpirationFromCustomField 2>$Null
-    if ($CustomField -and $DaysUntilExpiration -eq 30 -and (Test-IsElevated) -and $PSVersionTable.PSVersion.Major -gt 2) {
-        Write-Host "Retrieved value of $CustomField days from Custom Field $ExpirationFromCustomField. Using it for expiration value."
-        $DaysUntilExpiration = $CustomField
+    if ($env:expirationFromCustomFieldName -and $env:expirationFromCustomFieldName -notlike "null") { 
+        $ExpirationFromCustomField = $env:expirationFromCustomFieldName 
     }
-    elseif (-not (Test-IsElevated) -or $PSVersionTable.PSVersion.Major -le 2) {
-        Write-Warning "Skipping CustomField retrieval due to either incompatible PowerShell version or lack of elevation."
+    if ($env:daysUntilExpiration -and $env:daysUntilExpiration -notlike "null") { 
+        $DaysUntilExpiration = $env:daysUntilExpiration 
     }
+    if ($env:certificateMustBeOlderThanXDays -and $env:certificateMustBeOlderThanXDays -notlike "null") { 
+        $MustBeValidBefore = $env:certificateMustBeOlderThanXDays 
+    }
+    if ($env:skipCertsExpiredForMoreThanXDays -and $env:skipCertsExpiredForMoreThanXDays -notlike "null") { 
+        $Cutoff = $env:skipCertsExpiredForMoreThanXDays 
+    }
+    if ($env:ignoreSelfSignedCerts -and $env:ignoreSelfSignedCerts -notlike "null") {
+        $IgnoreSelfSignedCerts = [System.Convert]::ToBoolean($env:ignoreSelfSignedCerts)
+    }
+
+    try {
+        $CustomField = Ninja-Property-Get -Name $ExpirationFromCustomField 2>$null
+        if ($CustomField -and $DaysUntilExpiration -eq 30 -and (Test-IsElevated)) {
+            Write-Log "Retrieved value of $CustomField days from Custom Field $ExpirationFromCustomField"
+            $DaysUntilExpiration = $CustomField
+        }
+    }
+    catch {
+        Write-Log "Unable to retrieve custom field value: $_" -Level WARNING
+    }
+
+    $ExitCode = 0
 }
+
 process {
-    # Calculate expiration and cutoff dates.
-    $ExpirationDate = (Get-Date "11:59pm").AddDays($DaysUntilExpiration)
-    $CutoffDate = (Get-Date "12am").AddDays(-$Cutoff)
-    $MustBeValidBeforeDate = (Get-Date "12am").AddDays(-$MustBeValidBefore)
+    try {
+        $ExpirationDate = (Get-Date "11:59pm").AddDays($DaysUntilExpiration)
+        $CutoffDate = (Get-Date "12am").AddDays(-$Cutoff)
+        $MustBeValidBeforeDate = (Get-Date "12am").AddDays(-$MustBeValidBefore)
 
-    # Retrieve all certificates.
-    $Certificates = Get-ChildItem -Path "Cert:\" -Recurse
-
-    Write-Host "Checking for certificates that were valid before $MustBeValidBeforeDate and will expire before $ExpirationDate."
-    
-    # Filter down to certificates that are expired in our desired date range
-    $ExpiredCertificates = $Certificates | Where-Object { $_.NotAfter -le $ExpirationDate -and $_.NotAfter -gt $CutoffDate -and $_.NotBefore -lt $MustBeValidBeforeDate }
-
-    # If we're asked to ignore self signed certs we'll filter them out
-    if ($IgnoreSelfSignedCerts -and $ExpiredCertificates) {
-        Write-Host "Removing Self-Signed certificates from list."
-        $ExpiredCertificates = $ExpiredCertificates | Where-Object { $_.Subject -ne $_.Issuer }
-    }
-
-    if ($ExpiredCertificates) {
-        Write-Host ""
-        Write-Warning "Expired Certificates found!"
-        Write-Host ""
-
-        $Report = $ExpiredCertificates | ForEach-Object {
-            # Subject can be a long property, we'll truncate it to maintain readability
-            New-Object PSObject -Property @{
-                SerialNumber   = $_.SerialNumber
-                HasPrivateKey  = $_.HasPrivateKey
-                ExpirationDate = $_.NotAfter
-                Subject        = if ($_.Subject.Length -gt 35) { $_.Subject.Substring(0, 35) + "..." }else { $_.Subject }
-            }
+        Write-Log "Checking for certificates valid before $MustBeValidBeforeDate and expiring before $ExpirationDate"
+        
+        $Certificates = Get-ChildItem -Path "Cert:\" -Recurse -ErrorAction SilentlyContinue
+        
+        $ExpiredCertificates = $Certificates | Where-Object { 
+            $_.NotAfter -le $ExpirationDate -and 
+            $_.NotAfter -gt $CutoffDate -and 
+            $_.NotBefore -lt $MustBeValidBeforeDate 
         }
 
-        Write-Host "### Expired Certificates ###"
-        $Report | Format-Table -AutoSize | Out-String | Write-Host
+        if ($IgnoreSelfSignedCerts -and $ExpiredCertificates) {
+            Write-Log "Removing self-signed certificates from list"
+            $ExpiredCertificates = $ExpiredCertificates | Where-Object { $_.Subject -ne $_.Issuer }
+        }
 
-        exit 1
+        if ($ExpiredCertificates) {
+            Write-Log "Expired certificates found!" -Level WARNING
+
+            $Report = $ExpiredCertificates | ForEach-Object {
+                [PSCustomObject]@{
+                    SerialNumber   = $_.SerialNumber
+                    HasPrivateKey  = $_.HasPrivateKey
+                    ExpirationDate = $_.NotAfter
+                    Subject        = if ($_.Subject.Length -gt 35) { $_.Subject.Substring(0, 35) + "..." } else { $_.Subject }
+                }
+            }
+
+            Write-Log "Expired Certificates:"
+            $Report | Format-Table -AutoSize | Out-String | Write-Log
+
+            $ExitCode = 1
+        }
+        else {
+            Write-Log "No certificates found expiring before $ExpirationDate and after $CutoffDate"
+        }
     }
-    else {
-        Write-Host "No Certificates were found with an expiration date before $ExpirationDate and after $CutoffDate."
+    catch {
+        Write-Log "Failed to check certificate expiration: $_" -Level ERROR
+        $ExitCode = 1
     }
 }
+
 end {
-    
-    
-    
+    try {
+        $EndTime = Get-Date
+        $Duration = ($EndTime - $StartTime).TotalSeconds
+        Write-Log "Script execution completed in $Duration seconds"
+    }
+    finally {
+        [System.GC]::Collect()
+        exit $ExitCode
+    }
 }

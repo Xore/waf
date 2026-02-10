@@ -37,7 +37,7 @@ LICENSE:
     Version        : 3.0.0
     Author         : WAF Team
     Change Log:
-    - 3.0.0: Upgraded to V3 standards with Write-Log function and execution tracking
+    - 3.0.0: Upgraded to V3.0.0 standards (script-scoped exit code)
     - 1.0: Initial release
 #>
 
@@ -58,7 +58,7 @@ param (
 )
 
 begin {
-    $ErrorActionPreference = 'Continue'  # Must be Continue for this script's error handling
+    $ErrorActionPreference = 'Continue'
     $ProgressPreference = 'SilentlyContinue'
     $StartTime = Get-Date
     
@@ -136,13 +136,13 @@ begin {
 
             if ($ExtensionToAdd -match '[\\/:*?"<>\|]') {
                 Write-Log "The extension '$ExtensionToAdd' contains invalid characters: '\/:*?`"<>|'" -Level ERROR
-                $ExitCode = 1
+                $script:ExitCode = 1
                 return
             }
 
             if (!(Test-Path -Path "Registry::HKEY_CLASSES_ROOT\$ExtensionToAdd" -ErrorAction SilentlyContinue)) {
                 Write-Log "'$ExtensionToAdd' is invalid; it was not found in HKEY_CLASSES_ROOT." -Level ERROR
-                $ExitCode = 1
+                $script:ExitCode = 1
                 return
             }
 
@@ -453,7 +453,7 @@ begin {
         return $id.Name -like "NT AUTHORITY*" -or $id.IsSystem
     }
 
-    if (!$ExitCode) { $ExitCode = 0 }
+    $script:ExitCode = 0
 }
 
 process {
@@ -470,7 +470,7 @@ process {
         }
         else {
             Write-Log "The User Choice Protection Driver service does not exist." -Level ERROR
-            $ExitCode = 1
+            $script:ExitCode = 1
         }
 
         Write-Log "Disabling the User Choice Protection scheduled task."
@@ -486,10 +486,10 @@ process {
         }
         else {
             Write-Log "The 'UCPD velocity' scheduled task was not found." -Level ERROR
-            $ExitCode = 1
+            $script:ExitCode = 1
         }
 
-        if ($RestartExplorer -and $ExitCode -eq 0) {
+        if ($RestartExplorer -and $script:ExitCode -eq 0) {
             Write-Log "Restarting Explorer.exe as requested."
             Get-Process explorer -ErrorAction SilentlyContinue | Stop-Process -Force
             Start-Sleep -Seconds 1
@@ -498,15 +498,15 @@ process {
             }
         }
 
-        if ($ForceRestartComputer -and $ExitCode -eq 0) {
+        if ($ForceRestartComputer -and $script:ExitCode -eq 0) {
             Write-Log "Scheduling forced restart for $((Get-Date).AddSeconds(60))."
             Start-Process shutdown.exe -ArgumentList "/r /t 60" -Wait -NoNewWindow
         }
-        elseif ($ExitCode -eq 0) {
+        elseif ($script:ExitCode -eq 0) {
             Write-Log "In order for the User Protection Driver updates to take immediate effect, you may need to restart the computer." -Level WARNING
         }
 
-        exit $ExitCode
+        exit $script:ExitCode
     }
 
     if ($Action -eq "Enable User Choice Protection Driver") {
@@ -517,7 +517,7 @@ process {
         }
         else {
             Write-Log "The User Choice Protection Driver service does not exist." -Level ERROR
-            $ExitCode = 1
+            $script:ExitCode = 1
         }
 
         Write-Log "Enabling the User Choice Protection scheduled task."
@@ -533,10 +533,10 @@ process {
         }
         else {
             Write-Log "The 'UCPD velocity' scheduled task was not found." -Level ERROR
-            $ExitCode = 1
+            $script:ExitCode = 1
         }
 
-        if ($RestartExplorer -and $ExitCode -eq 0) {
+        if ($RestartExplorer -and $script:ExitCode -eq 0) {
             Write-Log "Restarting Explorer.exe as requested."
             Get-Process explorer -ErrorAction SilentlyContinue | Stop-Process -Force
             Start-Sleep -Seconds 1
@@ -545,15 +545,15 @@ process {
             }
         }
 
-        if ($ForceRestartComputer -and $ExitCode -eq 0) {
+        if ($ForceRestartComputer -and $script:ExitCode -eq 0) {
             Write-Log "Scheduling forced restart for $((Get-Date).AddSeconds(60))."
             Start-Process shutdown.exe -ArgumentList "/r /t 60" -Wait -NoNewWindow
         }
-        elseif ($ExitCode -eq 0) {
+        elseif ($script:ExitCode -eq 0) {
             Write-Log "In order for the User Protection Driver updates to take immediate effect, you may need to restart the computer." -Level WARNING
         }
 
-        exit $ExitCode
+        exit $script:ExitCode
     }
 
     Write-Log "Checking that '$ApplicationName' is installed."
@@ -632,7 +632,7 @@ process {
         }
     }
 
-    if ($RestartExplorer -and $ExitCode -eq 0) {
+    if ($RestartExplorer -and $script:ExitCode -eq 0) {
         Write-Log "Restarting Explorer.exe as requested."
         Get-Process explorer -ErrorAction SilentlyContinue | Stop-Process -Force
         Start-Sleep -Seconds 1
@@ -640,11 +640,11 @@ process {
             Start-Process explorer.exe
         }
     }
-    elseif (!$ForceRestartComputer -and $ExitCode -eq 0) {
+    elseif (!$ForceRestartComputer -and $script:ExitCode -eq 0) {
         Write-Log "In order for the thumbnails to update immediately, you may need to restart Explorer." -Level WARNING
     }
 
-    if ($ForceRestartComputer -and $ExitCode -eq 0) {
+    if ($ForceRestartComputer -and $script:ExitCode -eq 0) {
         Write-Log "Scheduling forced restart for $((Get-Date).AddSeconds(60))."
         Start-Process shutdown.exe -ArgumentList "/r /t 60" -Wait -NoNewWindow
     }
@@ -658,6 +658,6 @@ end {
     }
     finally {
         [System.GC]::Collect()
-        exit $ExitCode
+        exit $script:ExitCode
     }
 }

@@ -125,7 +125,7 @@ function Write-Log {
     }
 }
 
-function Set-NinjaRMMField {
+function Set-NinjaField {
     param(
         [string]$FieldName,
         [AllowNull()]
@@ -589,11 +589,15 @@ try {
     Write-Log "$ScriptName v$ScriptVersion"
     Write-Log "========================================"
     
+    # Error tracking (MANDATORY)
+    $ErrorsEncountered = 0
+    $ErrorDetails = @()
+    
     # Check Hyper-V
     $HyperVService = Get-Service -Name vmms -ErrorAction SilentlyContinue
     if (-not $HyperVService -or $HyperVService.Status -ne 'Running') {
         Write-Log "Hyper-V service not running" -Level ERROR
-        Set-NinjaRMMField -FieldName "$($FieldPrefix)Status" -Value "NOT_AVAILABLE"
+        Set-NinjaField -FieldName "$($FieldPrefix)Status" -Value "NOT_AVAILABLE"
         exit 1
     }
     
@@ -658,26 +662,22 @@ try {
     # Update fields
     Write-Log "Updating NinjaRMM custom fields..."
     
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)VMsNoBackup7d" -Value $NoBackup7d
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)VMsNoBackup14d" -Value $NoBackup14d
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)VMsNoBackup30d" -Value $NoBackup30d
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)SuccessRate7d" -Value $BackupStats7d.SuccessRate
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)SuccessRate30d" -Value $BackupStats30d.SuccessRate
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)LastFailedVMs" -Value ($RecentFailures -join "; ")
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)VMsWithCheckpoints" -Value $VMsWithCheckpoints
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)OldestCheckpointDays" -Value $OldestCheckpointDays
-    Set-NinjaRMMField -FieldName "$($CompliancePrefix)IntegrationServices" -Value $OutdatedIS
-    Set-NinjaRMMField -FieldName "$($CompliancePrefix)SecureBoot" -Value $NoSecureBoot
-    Set-NinjaRMMField -FieldName "$($CompliancePrefix)TPM" -Value $NoTPM
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)Report" -Value $BackupReport
-    Set-NinjaRMMField -FieldName "$($CompliancePrefix)Report" -Value $ComplianceReport
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)Status" -Value $Status.Backup
-    Set-NinjaRMMField -FieldName "$($CompliancePrefix)Status" -Value $Status.Compliance
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)LastScan" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
-    
-    # Calculate execution time
-    $ExecutionEndTime = Get-Date
-    $ExecutionDuration = ($ExecutionEndTime - $ExecutionStartTime).TotalSeconds
+    Set-NinjaField -FieldName "$($FieldPrefix)VMsNoBackup7d" -Value $NoBackup7d
+    Set-NinjaField -FieldName "$($FieldPrefix)VMsNoBackup14d" -Value $NoBackup14d
+    Set-NinjaField -FieldName "$($FieldPrefix)VMsNoBackup30d" -Value $NoBackup30d
+    Set-NinjaField -FieldName "$($FieldPrefix)SuccessRate7d" -Value $BackupStats7d.SuccessRate
+    Set-NinjaField -FieldName "$($FieldPrefix)SuccessRate30d" -Value $BackupStats30d.SuccessRate
+    Set-NinjaField -FieldName "$($FieldPrefix)LastFailedVMs" -Value ($RecentFailures -join "; ")
+    Set-NinjaField -FieldName "$($FieldPrefix)VMsWithCheckpoints" -Value $VMsWithCheckpoints
+    Set-NinjaField -FieldName "$($FieldPrefix)OldestCheckpointDays" -Value $OldestCheckpointDays
+    Set-NinjaField -FieldName "$($CompliancePrefix)IntegrationServices" -Value $OutdatedIS
+    Set-NinjaField -FieldName "$($CompliancePrefix)SecureBoot" -Value $NoSecureBoot
+    Set-NinjaField -FieldName "$($CompliancePrefix)TPM" -Value $NoTPM
+    Set-NinjaField -FieldName "$($FieldPrefix)Report" -Value $BackupReport
+    Set-NinjaField -FieldName "$($CompliancePrefix)Report" -Value $ComplianceReport
+    Set-NinjaField -FieldName "$($FieldPrefix)Status" -Value $Status.Backup
+    Set-NinjaField -FieldName "$($CompliancePrefix)Status" -Value $Status.Compliance
+    Set-NinjaField -FieldName "$($FieldPrefix)LastScan" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
     
     Write-Log "========================================"
     Write-Log "Backup & Compliance Summary:"
@@ -687,7 +687,6 @@ try {
     Write-Log "  Success Rate (7d): $($BackupStats7d.SuccessRate)%"
     Write-Log "  VMs with Checkpoints: $VMsWithCheckpoints (oldest: $OldestCheckpointDays days)"
     Write-Log "  Outdated Integration Services: $OutdatedIS"
-    Write-Log "  Execution Time: $([Math]::Round($ExecutionDuration, 2)) seconds"
     Write-Log "========================================"
     Write-Log "Script completed successfully"
     
@@ -697,12 +696,21 @@ try {
     Write-Log "Unexpected error: $($_.Exception.Message)" -Level ERROR
     Write-Log "Stack Trace: $($_.ScriptStackTrace)" -Level ERROR
     
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)Status" -Value "ERROR"
-    Set-NinjaRMMField -FieldName "$($CompliancePrefix)Status" -Value "ERROR"
+    $ErrorsEncountered++
+    $ErrorDetails += $_.Exception.Message
     
+    Set-NinjaField -FieldName "$($FieldPrefix)Status" -Value "ERROR"
+    Set-NinjaField -FieldName "$($CompliancePrefix)Status" -Value "ERROR"
+    
+    exit 99
+} finally {
+    # Calculate execution time (MANDATORY)
     $ExecutionEndTime = Get-Date
     $ExecutionDuration = ($ExecutionEndTime - $ExecutionStartTime).TotalSeconds
     Write-Log "Execution Time: $([Math]::Round($ExecutionDuration, 2)) seconds"
     
-    exit 99
+    if ($ErrorsEncountered -gt 0) {
+        Write-Log "Errors Encountered: $ErrorsEncountered"
+        Write-Log "Error Summary: $($ErrorDetails -join '; ')"
+    }
 }

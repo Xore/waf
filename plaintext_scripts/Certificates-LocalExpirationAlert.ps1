@@ -51,7 +51,7 @@
     Version        : 3.0.0
     Author         : WAF Team
     Change Log:
-    - 3.0.0: Upgraded to V3 standards with Write-Log function and execution tracking
+    - 3.0.0: Upgraded to V3.0.0 standards (script-scoped exit code)
     - 1.0: Initial release
     
 .LINK
@@ -132,7 +132,7 @@ begin {
         Write-Log "Unable to retrieve custom field value: $_" -Level WARNING
     }
 
-    $ExitCode = 0
+    $script:ExitCode = 0
 }
 
 process {
@@ -171,7 +171,7 @@ process {
             Write-Log "Expired Certificates:"
             $Report | Format-Table -AutoSize | Out-String | Write-Log
 
-            $ExitCode = 1
+            $script:ExitCode = 1
         }
         else {
             Write-Log "No certificates found expiring before $ExpirationDate and after $CutoffDate"
@@ -179,7 +179,7 @@ process {
     }
     catch {
         Write-Log "Failed to check certificate expiration: $_" -Level ERROR
-        $ExitCode = 1
+        $script:ExitCode = 1
     }
 }
 
@@ -191,6 +191,6 @@ end {
     }
     finally {
         [System.GC]::Collect()
-        exit $ExitCode
+        exit $script:ExitCode
     }
 }

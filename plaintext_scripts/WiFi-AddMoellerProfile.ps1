@@ -1,6 +1,46 @@
-# PowerShell-Skript zur Erstellung des WLAN-Profils für "PLATZHALTER-NETZWERK" mit EAP-TLS (Computer-Authentifizierung)
+#Requires -Version 5.1
+Set-StrictMode -Version Latest
 
-$ProfileXML = @"
+<#
+.SYNOPSIS
+    Adds Moeller WiFi profile.
+.DESCRIPTION
+    Creates and adds a WiFi profile for Moeller-Wifi network with WPA3 Enterprise authentication.
+    Uses EAP-TLS with computer authentication.
+.EXAMPLE
+    No parameters needed
+    Adds Moeller WiFi profile to the system.
+.OUTPUTS
+    None
+.NOTES
+    Minimum OS Architecture Supported: Windows 10
+    Release Notes: Refactored to V3.0 standards with Write-Log function
+#>
+
+[CmdletBinding()]
+param ()
+
+begin {
+    $StartTime = Get-Date
+
+    function Write-Log {
+        param(
+            [string]$Message,
+            [ValidateSet('Info', 'Warning', 'Error')]
+            [string]$Level = 'Info'
+        )
+        $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $Output = "[$Timestamp] [$Level] $Message"
+        Write-Host $Output
+    }
+
+    function Test-IsElevated {
+        $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        $p = New-Object System.Security.Principal.WindowsPrincipal($id)
+        $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+    }
+
+    $ProfileXML = @"
 <?xml version="1.0"?>
 <WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
 	<name>Moeller-Wifi</name>
@@ -38,15 +78,48 @@ $ProfileXML = @"
 	</MacRandomization>
 </WLANProfile>
 "@
+}
 
-# Profil als XML-Datei speichern
-$ProfilePath = "$env:TEMP\$ProfileName.xml"
-$ProfileXML | Out-File -Encoding UTF8 $ProfilePath
+process {
+    if (-not (Test-IsElevated)) {
+        Write-Log "Access Denied. Please run with Administrator privileges." -Level Error
+        exit 1
+    }
 
-# WLAN-Profil hinzufügen
-netsh wlan add profile filename="$ProfilePath" user=all
+    try {
+        $ProfileName = "Moeller-Wifi"
+        $ProfilePath = "$env:TEMP\$ProfileName.xml"
 
-# Optional: Profil als GPO-Startskript verteilen
-# Kopiere das Skript in SYSVOL und verknüpfe es als Computerrichtlinien-Startskript
+        Write-Log "Creating WiFi profile XML file: $ProfilePath"
+        $ProfileXML | Out-File -Encoding UTF8 $ProfilePath -Force
 
-Write-Output "WLAN-Profil erfolgreich erstellt und hinzugefügt."
+        Write-Log "Adding WiFi profile to system..."
+        $Result = netsh wlan add profile filename="$ProfilePath" user=all 2>&1
+
+        if ($LASTEXITCODE -eq 0) {
+            Write-Log "WiFi profile added successfully"
+        }
+        else {
+            Write-Log "Failed to add WiFi profile: $Result" -Level Error
+            exit 1
+        }
+
+        Write-Log "Cleaning up temporary profile file"
+        Remove-Item -Path $ProfilePath -Force -ErrorAction SilentlyContinue
+    }
+    catch {
+        Write-Log "Failed to add WiFi profile: $_" -Level Error
+        exit 1
+    }
+}
+
+end {
+    $EndTime = Get-Date
+    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+    Write-Log "Script execution completed in $ExecutionTime seconds"
+    
+    [System.GC]::Collect()
+    [System.GC]::WaitForPendingFinalizers()
+    
+    exit 0
+}

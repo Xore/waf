@@ -1,109 +1,122 @@
+#Requires -Version 5.1
+Set-StrictMode -Version Latest
+
 <#
 .SYNOPSIS
-    Clears all Microsoft Teams cache for the current user (Classic and New Teams)
+    Clears Microsoft Teams cache.
 .DESCRIPTION
-    This script stops Teams processes and clears all cache directories for both
-    Classic Teams and New Teams to resolve performance and sync issues.
+    Clears all Microsoft Teams cache for the current user including Classic and New Teams.
+    Stops Teams processes and clears all cache directories.
+.EXAMPLE
+    No parameters needed
+    Clears Microsoft Teams cache.
+.OUTPUTS
+    None
 .NOTES
-    Author: MoellerGroup IT
-    Version: 1.1
+    Minimum OS Architecture Supported: Windows 10
+    Release Notes: Refactored to V3.0 standards with Write-Log function
 #>
 
-Write-Output "Microsoft Teams Cache Cleaner"
-Write-Output "=============================="
-Write-Output ""
-Write-Output "Stopping Teams processes..."
+[CmdletBinding()]
+param ()
 
-# Stop all Teams processes
-try {
-    # Stop Classic Teams
-    Get-Process -Name "Teams" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    
-    # Stop New Teams (ms-teams)
-    Get-Process -Name "ms-teams" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    
-    # Additional Teams related processes
-    Get-Process -Name "TeamsMeetingAddin" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    Get-Process -Name "TeamsWebView" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    
-    Write-Output "Teams processes stopped successfully"
-    
-    # Wait a moment to ensure processes are fully terminated
-    Start-Sleep -Seconds 2
+begin {
+    $StartTime = Get-Date
+
+    function Write-Log {
+        param(
+            [string]$Message,
+            [ValidateSet('Info', 'Warning', 'Error')]
+            [string]$Level = 'Info'
+        )
+        $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $Output = "[$Timestamp] [$Level] $Message"
+        Write-Host $Output
+    }
+
+    $ClassicTeamsPaths = @(
+        "$env:APPDATA\Microsoft\Teams\Application Cache\Cache"
+        "$env:APPDATA\Microsoft\Teams\blob_storage"
+        "$env:APPDATA\Microsoft\Teams\Cache"
+        "$env:APPDATA\Microsoft\Teams\databases"
+        "$env:APPDATA\Microsoft\Teams\GPUCache"
+        "$env:APPDATA\Microsoft\Teams\IndexedDB"
+        "$env:APPDATA\Microsoft\Teams\Local Storage"
+        "$env:APPDATA\Microsoft\Teams\tmp"
+        "$env:APPDATA\Microsoft\Teams\Code Cache"
+        "$env:APPDATA\Microsoft\Teams\Service Worker\CacheStorage"
+        "$env:APPDATA\Microsoft\Teams\Service Worker\ScriptCache"
+    )
+
+    $NewTeamsPaths = @(
+        "$env:LOCALAPPDATA\Packages\MSTeams_8wekyb3d8bbwe\LocalCache"
+        "$env:LOCALAPPDATA\Packages\MSTeams_8wekyb3d8bbwe\AC\INetCache"
+        "$env:LOCALAPPDATA\Packages\MSTeams_8wekyb3d8bbwe\AC\INetCookies"
+        "$env:LOCALAPPDATA\Packages\MSTeams_8wekyb3d8bbwe\AC\INetHistory"
+        "$env:LOCALAPPDATA\Packages\MSTeams_8wekyb3d8bbwe\TempState"
+        "$env:LOCALAPPDATA\Packages\MSTeams_8wekyb3d8bbwe\LocalState\Microsoft\Teams\Cache"
+        "$env:LOCALAPPDATA\Packages\MSTeams_8wekyb3d8bbwe\LocalState\Microsoft\Teams\Logs"
+    )
+
+    $AdditionalPaths = @(
+        "$env:TEMP\teams"
+        "$env:LOCALAPPDATA\Microsoft\Teams"
+    )
+
+    $AllPaths = $ClassicTeamsPaths + $NewTeamsPaths + $AdditionalPaths
 }
-catch {
-    Write-Output "Warning: Could not stop all Teams processes - $_"
-}
 
-# Define cache paths for Classic Teams
-$classicTeamsPaths = @(
-    "$env:APPDATA\Microsoft\Teams\Application Cache\Cache"
-    "$env:APPDATA\Microsoft\Teams\blob_storage"
-    "$env:APPDATA\Microsoft\Teams\Cache"
-    "$env:APPDATA\Microsoft\Teams\databases"
-    "$env:APPDATA\Microsoft\Teams\GPUCache"
-    "$env:APPDATA\Microsoft\Teams\IndexedDB"
-    "$env:APPDATA\Microsoft\Teams\Local Storage"
-    "$env:APPDATA\Microsoft\Teams\tmp"
-    "$env:APPDATA\Microsoft\Teams\Code Cache"
-    "$env:APPDATA\Microsoft\Teams\Service Worker\CacheStorage"
-    "$env:APPDATA\Microsoft\Teams\Service Worker\ScriptCache"
-)
+process {
+    Write-Log "Microsoft Teams Cache Cleaner"
+    Write-Log "Stopping Teams processes..."
 
-# Define cache paths for New Teams
-$newTeamsPaths = @(
-    "$env:LOCALAPPDATA\Packages\MSTeams_8wekyb3d8bbwe\LocalCache"
-    "$env:LOCALAPPDATA\Packages\MSTeams_8wekyb3d8bbwe\AC\INetCache"
-    "$env:LOCALAPPDATA\Packages\MSTeams_8wekyb3d8bbwe\AC\INetCookies"
-    "$env:LOCALAPPDATA\Packages\MSTeams_8wekyb3d8bbwe\AC\INetHistory"
-    "$env:LOCALAPPDATA\Packages\MSTeams_8wekyb3d8bbwe\TempState"
-    "$env:LOCALAPPDATA\Packages\MSTeams_8wekyb3d8bbwe\LocalState\Microsoft\Teams\Cache"
-    "$env:LOCALAPPDATA\Packages\MSTeams_8wekyb3d8bbwe\LocalState\Microsoft\Teams\Logs"
-)
+    try {
+        Get-Process -Name "Teams" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        Get-Process -Name "ms-teams" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        Get-Process -Name "TeamsMeetingAddin" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        Get-Process -Name "TeamsWebView" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        
+        Write-Log "Teams processes stopped successfully"
+        Start-Sleep -Seconds 2
+    }
+    catch {
+        Write-Log "Could not stop all Teams processes: $_" -Level Warning
+    }
 
-# Additional cache locations
-$additionalPaths = @(
-    "$env:TEMP\teams"
-    "$env:LOCALAPPDATA\Microsoft\Teams"
-)
+    Write-Log "Clearing cache directories..."
 
-# Combine all paths
-$allPaths = $classicTeamsPaths + $newTeamsPaths + $additionalPaths
+    $ClearedCount = 0
+    $ErrorCount = 0
 
-Write-Output ""
-Write-Output "Clearing cache directories..."
-Write-Output ""
-
-$clearedCount = 0
-$errorCount = 0
-
-foreach ($path in $allPaths) {
-    if (Test-Path $path) {
-        try {
-            Remove-Item -Path $path -Recurse -Force -ErrorAction Stop
-            Write-Output "Cleared: $path"
-            $clearedCount++
-        }
-        catch {
-            Write-Output "Failed to clear: $path - $_"
-            $errorCount++
+    foreach ($Path in $AllPaths) {
+        if (Test-Path $Path) {
+            try {
+                Remove-Item -Path $Path -Recurse -Force -ErrorAction Stop
+                Write-Log "Cleared: $Path"
+                $ClearedCount++
+            }
+            catch {
+                Write-Log "Failed to clear: $Path - $_" -Level Warning
+                $ErrorCount++
+            }
         }
     }
-    else {
-        Write-Output "Not found: $path"
+
+    Write-Log "Cache directories cleared: $ClearedCount"
+    if ($ErrorCount -gt 0) {
+        Write-Log "Errors encountered: $ErrorCount" -Level Warning
     }
+
+    Write-Log "Teams cache cleanup completed. Please restart Microsoft Teams manually"
 }
 
-
-# Summary
-Write-Output ""
-Write-Output "Summary"
-Write-Output "======="
-Write-Output "Cache directories cleared: $clearedCount"
-if ($errorCount -gt 0) {
-    Write-Output "Errors encountered: $errorCount"
+end {
+    $EndTime = Get-Date
+    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+    Write-Log "Script execution completed in $ExecutionTime seconds"
+    
+    [System.GC]::Collect()
+    [System.GC]::WaitForPendingFinalizers()
+    
+    exit 0
 }
-
-Write-Output ""
-Write-Output "Teams cache cleanup completed"
-Write-Output "Please restart Microsoft Teams manually"

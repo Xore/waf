@@ -31,7 +31,7 @@
     Version        : 3.0.0
     Author         : WAF Team
     Change Log:
-    - 3.0.0: Converted from batch to PowerShell with V3 standards
+    - 3.0.0: Upgraded to V3.0.0 standards (script-scoped exit code)
     - 1.0: Initial batch script version
     
     Execution Context: SYSTEM (via NinjaRMM automation)
@@ -175,6 +175,8 @@ begin {
         
         return $false
     }
+    
+    $script:ExitCode = 0
 }
 
 process {
@@ -207,7 +209,7 @@ process {
             Set-NinjaField -FieldName "siemensNX2412Status" -Value "Not Found"
             Set-NinjaField -FieldName "siemensNX2412UninstallDate" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
             
-            $ExitCode = 0
+            $script:ExitCode = 0
         } else {
             Write-Log "Siemens NX 2412 found - starting uninstallation" -Level INFO
             Write-Log "Product GUID: $ProductGuid" -Level DEBUG
@@ -258,7 +260,7 @@ process {
                 Set-NinjaField -FieldName "siemensNX2412Status" -Value "Uninstalled"
                 Set-NinjaField -FieldName "siemensNX2412UninstallDate" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
                 
-                $ExitCode = 0
+                $script:ExitCode = 0
                 
             } else {
                 throw "MSI uninstaller failed with exit code: $MsiExitCode"
@@ -272,7 +274,7 @@ process {
         Set-NinjaField -FieldName "siemensNX2412Status" -Value "Failed"
         Set-NinjaField -FieldName "siemensNX2412UninstallDate" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
         
-        $ExitCode = 1
+        $script:ExitCode = 1
     }
 }
 
@@ -295,6 +297,6 @@ end {
     }
     finally {
         [System.GC]::Collect()
-        exit $ExitCode
+        exit $script:ExitCode
     }
 }

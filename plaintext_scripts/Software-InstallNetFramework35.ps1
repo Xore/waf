@@ -35,7 +35,7 @@
     Version        : 3.0.0
     Author         : WAF Team
     Change Log:
-    - 3.0.0: Complete V3 standards implementation
+    - 3.0.0: Upgraded to V3.0.0 standards (script-scoped exit code)
     - 1.0: Initial single-line version
     
     Execution Context: SYSTEM (via NinjaRMM automation)
@@ -164,6 +164,8 @@ begin {
             return $false
         }
     }
+
+    $script:ExitCode = 0
 }
 
 process {
@@ -186,7 +188,7 @@ process {
             Set-NinjaField -FieldName "netFramework35Status" -Value "Already Installed"
             Set-NinjaField -FieldName "netFramework35InstallDate" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
             
-            $ExitCode = 0
+            $script:ExitCode = 0
         } else {
             Write-Log ".NET Framework 3.5 is not installed - starting installation" -Level INFO
             Write-Log "This may take several minutes..." -Level INFO
@@ -223,7 +225,7 @@ process {
                             Write-Log "Reboot may be required to complete installation" -Level WARN
                         }
                         
-                        $ExitCode = 0
+                        $script:ExitCode = 0
                     } else {
                         throw "Installation reported success but feature is not enabled"
                     }
@@ -245,7 +247,7 @@ process {
         Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
         Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
         
-        $ExitCode = 1
+        $script:ExitCode = 1
     }
 }
 
@@ -268,6 +270,6 @@ end {
     }
     finally {
         [System.GC]::Collect()
-        exit $ExitCode
+        exit $script:ExitCode
     }
 }

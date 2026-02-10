@@ -1,4 +1,5 @@
 #Requires -Version 5.1
+Set-StrictMode -Version Latest
 
 <#
 .SYNOPSIS
@@ -38,8 +39,7 @@
     None
 .NOTES
     Minimum OS Architecture Supported: Windows 10
-    Version: 1.1
-    Release Notes: Renamed script and added Script Variable support
+    Release Notes: Refactored to V3.0 standards with Write-Log function
 #>
 
 [CmdletBinding()]
@@ -53,6 +53,19 @@ param (
 )
 
 begin {
+    $StartTime = Get-Date
+
+    function Write-Log {
+        param(
+            [string]$Message,
+            [ValidateSet('Info', 'Warning', 'Error')]
+            [string]$Level = 'Info'
+        )
+        $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $Output = "[$Timestamp] [$Level] $Message"
+        Write-Host $Output
+    }
+
     function Test-IsElevated {
         $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
         $p = New-Object System.Security.Principal.WindowsPrincipal($id)
@@ -62,7 +75,7 @@ begin {
     function Get-WifiBand {
         param ($RadioType, $Channel)
         @(
-            [PSCustomObject]@{ # Wi-Fi 2.4GHz
+            [PSCustomObject]@{
                 RadioType = "802.11b", "802.11g", "802.11n", "802.11ax", "802.11be"
                 Band      = "2.4GHz"
                 Channels  = 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14
@@ -77,14 +90,14 @@ begin {
                 Band      = "4.9-5.0GHz"
                 Channels  = 7, 8, 9, 11, 12, 16, 183, 184, 185, 187, 188, 189, 192, 193, 194, 195, 196
             }
-            [PSCustomObject]@{ # Wi-Fi 5GHz
+            [PSCustomObject]@{
                 RadioType = "802.11a", "802.11h", "802.11n", "802.11ac", "802.11ax", "802.11be"
                 Band      = "5.0GHz"
                 Channels  = 7, 8, 9, 11, 12, 16, 34, 36, 40, 42, 44, 48, 50, 52, 54, 56, 58, 60, 62, 100, 102,
                 104, 106, 108, 110, 112, 114, 116, 118, 120, 122, 124, 126, 128, 132, 134, 136, 138, 140, 142,
                 144, 149, 151, 153, 155, 157, 159, 161, 165, 193, 184, 185, 187, 188, 189, 192, 196
             }
-            [PSCustomObject]@{ # Wi‑Fi 6E
+            [PSCustomObject]@{
                 RadioType = "802.11ax", "802.11be"
                 Band      = "6.0GHz"
                 Channels  = 1, 2, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35, 37, 39, 41, 43,
@@ -99,7 +112,7 @@ begin {
                 Band      = "5.9GHz"
                 Channels  = 172, 174, 176, 178, 180, 182, 184
             }
-            [PSCustomObject]@{ # WiGig
+            [PSCustomObject]@{
                 RadioType = "802.11ad", "802.11aj", "802.11ay"
                 Band      = "60GHz"
                 Channels  = 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18,
@@ -242,7 +255,6 @@ begin {
             Software = "Off"
         }
         if ($NetShOutput -imatch " connected") {
-            # If we are connected to a AP then hardware and software radio status are On
             $RadioStatus.Hardware = "On"
             $RadioStatus.Software = "On"
             return $RadioStatus
@@ -265,6 +277,7 @@ begin {
             return $false
         }
     }
+
     function Set-NinjaProperty {
         [CmdletBinding()]
         Param(
@@ -281,17 +294,13 @@ begin {
         if ($Characters -ge 10000) {
             throw [System.ArgumentOutOfRangeException]::New("Character limit exceeded, value is greater than 10,000 characters.")
         }
-        # If we're requested to set the field value for a Ninja document we'll specify it here.
         $DocumentationParams = @{}
         if ($DocumentName) { $DocumentationParams["DocumentName"] = $DocumentName }
-        # This is a list of valid fields that can be set. If no type is given, it will be assumed that the input doesn't need to be changed.
         $ValidFields = "Attachment", "Checkbox", "Date", "Date or Date Time", "Decimal", "Dropdown", "Email", "Integer", "IP Address", "MultiLine", "MultiSelect", "Phone", "Secure", "Text", "Time", "URL", "WYSIWYG"
-        if ($Type -and $ValidFields -notcontains $Type) { Write-Warning "$Type is an invalid type! Please check here for valid types. https://ninjarmm.zendesk.com/hc/en-us/articles/16973443979789-Command-Line-Interface-CLI-Supported-Fields-and-Functionality" }
-        # The field below requires additional information to be set
+        if ($Type -and $ValidFields -notcontains $Type) { Write-Log "$Type is an invalid type! Please check here for valid types. https://ninjarmm.zendesk.com/hc/en-us/articles/16973443979789-Command-Line-Interface-CLI-Supported-Fields-and-Functionality" -Level Warning }
         $NeedsOptions = "Dropdown"
         if ($DocumentName) {
             if ($NeedsOptions -contains $Type) {
-                # We'll redirect the error output to the success stream to make it easier to error out if nothing was found or something else went wrong.
                 $NinjaPropertyOptions = Ninja-Property-Docs-Options -AttributeName $Name @DocumentationParams 2>&1
             }
         }
@@ -300,22 +309,17 @@ begin {
                 $NinjaPropertyOptions = Ninja-Property-Options -Name $Name 2>&1
             }
         }
-        # If an error is received it will have an exception property, the function will exit with that error information.
         if ($NinjaPropertyOptions.Exception) { throw $NinjaPropertyOptions }
-        # The below types require values not typically given in order to be set. The below code will convert whatever we're given into a format ninjarmm-cli supports.
         switch ($Type) {
             "Checkbox" {
-                # While it's highly likely we were given a value like "True" or a boolean datatype it's better to be safe than sorry.
                 $NinjaValue = [System.Convert]::ToBoolean($Value)
             }
             "Date or Date Time" {
-                # Ninjarmm-cli expects the GUID of the option to be selected. Therefore, the given value will be matched with a GUID.
                 $Date = (Get-Date $Value).ToUniversalTime()
                 $TimeSpan = New-TimeSpan (Get-Date "1970-01-01 00:00:00") $Date
                 $NinjaValue = $TimeSpan.TotalSeconds
             }
             "Dropdown" {
-                # Ninjarmm-cli is expecting the guid of the option we're trying to select. So we'll match up the value we were given with a guid.
                 $Options = $NinjaPropertyOptions -replace '=', ',' | ConvertFrom-Csv -Header "GUID", "Name"
                 $Selection = $Options | Where-Object { $_.Name -eq $Value } | Select-Object -ExpandProperty GUID
                 if (-not $Selection) {
@@ -324,11 +328,9 @@ begin {
                 $NinjaValue = $Selection
             }
             default {
-                # All the other types shouldn't require additional work on the input.
                 $NinjaValue = $Value
             }
         }
-        # We'll need to set the field differently depending on if its a field in a Ninja Document or not.
         if ($DocumentName) {
             $CustomField = Ninja-Property-Docs-Set -AttributeName $Name -AttributeValue $NinjaValue @DocumentationParams 2>&1
         }
@@ -343,29 +345,25 @@ begin {
 
 process {
     if (-not (Test-IsElevated)) {
-        Write-Error -Message "Access Denied. Please run with Administrator privileges."
+        Write-Log "Access Denied. Please run with Administrator privileges." -Level Error
         exit 1
     }
     
     if ($env:wysiwygCustomFieldName -and $env:wysiwygCustomFieldName -notlike "null") { $CustomField = $env:wysiwygCustomFieldName }
 
     if (Test-WifiRadioStatus) {
-        Write-Host "[Info] Wifi Radio is On"
+        Write-Log "Wifi Radio is On"
     }
     else {
         $RadioStatus = Get-WifiRadioStatus
-        Write-Host "[Info] Wi-Fi Radio is $($RadioStatus.Hardware) in Hardware"
-        Write-Host "[Info] Wi-Fi Radio is $($RadioStatus.Software) in Software"
-        Write-Host "[Warn] Wi-Fi Radio is Off"
+        Write-Log "Wi-Fi Radio is $($RadioStatus.Hardware) in Hardware"
+        Write-Log "Wi-Fi Radio is $($RadioStatus.Software) in Software"
+        Write-Log "Wi-Fi Radio is Off" -Level Warning
     }
 
-    # Get Wifi Adapters
     $WifiAdapters = Get-WifiAdapters
-
-    # Get Wifi Access Points
     $AccessPointList = Get-WifiAPs
 
-    # Build the report
     $Report = "<h1>Wifi Report</h1>"
 
     $Report += "<h2>Wifi Adapters</h2>"
@@ -384,7 +382,7 @@ process {
         $Report += "<p>No Other Wifi Networks Found</p>"
     }
 
-    Write-Host "--- Wifi Report ---"
+    Write-Log "--- Wifi Report ---"
     Write-Host ""
     Write-Host "### Wifi Adapters ###"
     $WifiAdapters | Format-Table -AutoSize | Out-String -Width 4000 | Write-Host
@@ -399,27 +397,28 @@ process {
     }
 
     if ($Report) {
-        # Save report to multi-line custom field
         if ($CustomField) {
             try {
-                # Set the custom field with the generated report
-                Write-Host "[Info] Attempting to set Custom Field '$CustomField'."
+                Write-Log "Attempting to set Custom Field '$CustomField'"
                 Set-NinjaProperty -Name $CustomField -Value $($Report | Out-String)
-                Write-Host "[Info] Successfully set Custom Field '$CustomField'!"
+                Write-Log "Successfully set Custom Field '$CustomField'"
             }
             catch {
-                Write-Host "[Warn] $($_.Exception.Message)"
+                Write-Log "$($_.Exception.Message)" -Level Warning
             }
         }
     }
     else {
-        Write-Host "Could not generate wlan report."
+        Write-Log "Could not generate wlan report" -Level Error
         exit 1
     }
-    
 }
+
 end {
+    $EndTime = Get-Date
+    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+    Write-Log "Script execution completed in $ExecutionTime seconds"
     
-    
-    
+    [System.GC]::Collect()
+    [System.GC]::WaitForPendingFinalizers()
 }

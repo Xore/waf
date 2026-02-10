@@ -17,8 +17,21 @@
     - 5: Activated but Evaluation license
 
 .EXAMPLE
-    Licensing-UnlicensedWindowsAlert.ps1
-    Checks Windows license status and exits with appropriate code.
+    .\Licensing-UnlicensedWindowsAlert.ps1
+    
+    [2026-02-11 00:05:00] [INFO] Checking Windows license status
+    [2026-02-11 00:05:01] [INFO] License Status: 1 (Licensed)
+    [2026-02-11 00:05:01] [INFO] Windows is activated and licensed
+    Exit Code: 0
+
+.EXAMPLE
+    .\Licensing-UnlicensedWindowsAlert.ps1
+    
+    When Windows is unlicensed:
+    [2026-02-11 00:05:00] [INFO] Checking Windows license status
+    [2026-02-11 00:05:01] [WARNING] License Status: 0 (Unlicensed)
+    [2026-02-11 00:05:01] [ERROR] KMS Activation Error Found
+    Exit Code: 3
 
 .OUTPUTS
     System.Int32
@@ -27,15 +40,23 @@
 .NOTES
     File Name      : Licensing-UnlicensedWindowsAlert.ps1
     Prerequisite   : PowerShell 5.1 or higher
+    Minimum OS     : Windows 10, Windows Server 2016
     Version        : 3.0.0
     Author         : WAF Team
     Change Log:
-    - 3.0.0: Upgraded to V3 format with enhanced error handling
+    - 3.0.0: Upgraded to V3 standards with Write-Output only logging
     - 1.1: Renamed script
     - 1.0: Initial version
     
 .LINK
     https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/dn502528(v=ws.11)
+
+.FUNCTIONALITY
+    - Checks Windows activation status via WMI
+    - Queries slmgr.vbs for detailed license information
+    - Detects KMS/MAK activation errors
+    - Provides troubleshooting guidance for common activation issues
+    - Returns appropriate exit codes for automation
 #>
 
 [CmdletBinding()]
@@ -44,19 +65,25 @@ param ()
 begin {
     $ErrorActionPreference = 'Stop'
     $ProgressPreference = 'SilentlyContinue'
+    $StartTime = Get-Date
     
     Set-StrictMode -Version Latest
+    
+    $script:ExitCode = 0
+    $script:ErrorCount = 0
+    $script:WarningCount = 0
 
     function Write-Log {
-        param([string]$Message, [string]$Level = 'INFO')
-        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-        $logMessage = "[$timestamp] [$Level] $Message"
+        param(
+            [string]$Message,
+            [string]$Level = 'INFO'
+        )
+        $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $LogMessage = "[$Timestamp] [$Level] $Message"
+        Write-Output $LogMessage
         
-        switch ($Level) {
-            'ERROR' { Write-Error $logMessage }
-            'WARNING' { Write-Warning $logMessage }
-            default { Write-Host $logMessage }
-        }
+        if ($Level -eq 'ERROR') { $script:ErrorCount++ }
+        if ($Level -eq 'WARNING') { $script:WarningCount++ }
     }
 
     $NotificationReasons = @(
@@ -127,7 +154,7 @@ begin {
             ErrorCode            = '0xC004F038'
             ErrorMessage         = 'The Software Protection Service reported that the computer could not be activated. The count reported by your Key Management Service (KMS) is insufficient. Please contact your system administrator.'
             ActivationType       = 'KMS client'
-            PossibleCause        = 'The count on the KMS host is not high enough. The KMS count must be ≥5 for Windows Server or ≥25 for Windows client.'
+            PossibleCause        = 'The count on the KMS host is not high enough. The KMS count must be >=5 for Windows Server or >=25 for Windows client.'
             TroubleshootingSteps = 'More computers are needed in the KMS pool for KMS clients to activate. Run Slmgr.vbs /dli to get the current count on the KMS host.'
         }
         [PSCustomObject]@{
@@ -219,11 +246,24 @@ begin {
 
 process {
     try {
-        Write-Host ''
+        Write-Log 'Checking Windows license status'
 
         $LicenseStatus = Get-CimInstance -ClassName 'SoftwareLicensingProduct' -Filter "Name like 'Windows%'" -ErrorAction SilentlyContinue |
             Where-Object { $_.PartialProductKey } |
             Select-Object -ExpandProperty LicenseStatus
+
+        $StatusText = switch ($LicenseStatus) {
+            0 { 'Unlicensed' }
+            1 { 'Licensed' }
+            2 { 'Out-of-Box Grace Period' }
+            3 { 'Out-of-Tolerance Grace Period' }
+            4 { 'Non-Genuine Grace Period' }
+            5 { 'Notification' }
+            6 { 'Extended Grace' }
+            default { 'Unknown' }
+        }
+        
+        Write-Log "License Status: $LicenseStatus ($StatusText)"
 
         $ActivationNumber = switch ($LicenseStatus) {
             0 { 3 }  # Unlicensed
@@ -239,58 +279,81 @@ process {
         $SlmgrPath = Join-Path $env:SystemRoot 'System32\slmgr.vbs'
         
         if (-not (Test-Path -Path $SlmgrPath)) {
-            Write-Log 'slmgr.vbs not found in expected location' -Level WARNING
-            exit $ActivationNumber
+            Write-Log 'slmgr.vbs not found in expected location' -Level 'WARNING'
+            $script:ExitCode = $ActivationNumber
+            return
         }
 
         $Result = cscript.exe $SlmgrPath -dli 2>&1
         
         if ($LASTEXITCODE -ne 0) {
-            Write-Log 'Failed to execute slmgr.vbs' -Level WARNING
-            exit $ActivationNumber
+            Write-Log 'Failed to execute slmgr.vbs' -Level 'WARNING'
+            $script:ExitCode = $ActivationNumber
+            return
         }
 
-        $Result | Select-Object -Skip 4 | Out-String | Write-Host
+        $SlmgrOutput = $Result | Select-Object -Skip 4 | Out-String
+        Write-Output $SlmgrOutput
         
         $Notification = $Result -split [System.Environment]::NewLine | Where-Object { $_ -match '^Notification Reason: .*' }
         
-        Write-Host ''
-        
         if ($Notification) {
             $NotificationCode = $($($Notification -split ': ')[1] -split '\.')[0]
-            Write-Log 'KMS Activation Error Found' -Level ERROR
+            Write-Log 'KMS Activation Error Found' -Level 'ERROR'
             
             if ($NotificationCode -like '0xC004F200') {
-                Write-Host 'Non-Genuine'
+                Write-Log 'Error Type: Non-Genuine'
             }
             elseif ($NotificationCode -like '0xC004F009') {
-                Write-Host 'Grace Time Expired'
+                Write-Log 'Error Type: Grace Time Expired'
             }
             else {
                 $ErrorDetails = $NotificationReasons | Where-Object { $_.ErrorCode -like $NotificationCode }
                 
                 if ($ErrorDetails) {
-                    $ErrorDetails | Out-String | Write-Host
+                    Write-Log "Error Code: $($ErrorDetails.ErrorCode)"
+                    Write-Log "Error Message: $($ErrorDetails.ErrorMessage)"
+                    Write-Log "Activation Type: $($ErrorDetails.ActivationType)"
+                    Write-Log "Possible Cause: $($ErrorDetails.PossibleCause)"
+                    Write-Log "Troubleshooting: $($ErrorDetails.TroubleshootingSteps)"
                 }
                 else {
-                    Write-Host "Unknown notification code: $NotificationCode"
+                    Write-Log "Unknown notification code: $NotificationCode" -Level 'WARNING'
                 }
             }
         }
         
         if ($Result -like '*Eval*') {
-            Write-Host 'Evaluation Licensed'
-            exit 5
+            Write-Log 'Windows is running as Evaluation license' -Level 'WARNING'
+            $script:ExitCode = 5
         }
-        
-        exit $ActivationNumber
+        else {
+            $script:ExitCode = $ActivationNumber
+        }
     }
     catch {
-        Write-Log "Failed to check license status: $_" -Level ERROR
-        exit 3
+        Write-Log "Failed to check license status: $_" -Level 'ERROR'
+        $script:ExitCode = 3
     }
 }
 
 end {
-    [System.GC]::Collect()
+    try {
+        $EndTime = Get-Date
+        $Duration = ($EndTime - $StartTime).TotalSeconds
+        
+        Write-Output "`n========================================"
+        Write-Output "Execution Summary"
+        Write-Output "========================================"
+        Write-Output "Script: Licensing-UnlicensedWindowsAlert.ps1"
+        Write-Output "Duration: $Duration seconds"
+        Write-Output "Errors: $script:ErrorCount"
+        Write-Output "Warnings: $script:WarningCount"
+        Write-Output "Exit Code: $script:ExitCode"
+        Write-Output "========================================"
+    }
+    finally {
+        [System.GC]::Collect()
+        exit $script:ExitCode
+    }
 }

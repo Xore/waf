@@ -2,102 +2,257 @@
 
 <#
 .SYNOPSIS
-    This will get information about the current number of Hyper-V checkpoints there are on a given machine. Can be given a threshold in days to report on, can also get this threshold from an integer custom field.
+    Monitors Hyper-V VM checkpoints and alerts on old checkpoints.
+
 .DESCRIPTION
-    This will get information about the current number of Hyper-V checkpoints there are on a given machine. 
-    Can be given a threshold in days to report on, can also get this threshold from an integer custom field.
-
-.EXAMPLE 
-    (No Parameters)
-    WARNING: There are checkpoints older than 04/12/2023 14:01:26!
-
-    VMName              Name                   CreationTime
-    ------              ----                   ------------
-    SRV16-TEST          Fresh Start            4/12/2023 10:53:14 AM
-    SRV16-TEST          Hyper-V Installed      4/12/2023 11:13:09 AM
-    SRV19-TEST          Fresh Start            4/12/2023 10:42:44 AM
-    SRV22-TEST          Fresh Start            4/12/2023 10:45:02 AM
-
-PARAMETER: -OlderThan "14"
-    Alert/Show only vm checkpoints older than x days. 
-    ex. "7" will alert/show vm checkpoints older than 7 days.
-.EXAMPLE
-    -OlderThan "7"
-    WARNING: There are checkpoints older than 04/05/2023 14:04:01!
+    This script scans all Hyper-V virtual machines for checkpoints (snapshots) and identifies
+    any that are older than a specified threshold. Old checkpoints can consume significant
+    disk space and may indicate forgotten test environments or pending cleanup tasks.
     
-    VMName              Name                                                              CreationTime
-    ------              ----                                                              ------------
-    old WIN10-TEST      Automatic Checkpoint - WIN10-TEST - (3/30/2023 - 3:02:28 PM)      3/30/2023 3:02:28 PM 
+    Checkpoints should typically be short-lived. Long-lasting checkpoints can impact VM
+    performance, consume storage, and complicate backup operations.
 
-PARAMETER: -FromCustomField "ReplaceMeWithAnyIntegerCustomField"
-    Name of an integer custom field that contains your desired OlderThan threshold.
-    ex. "CheckpointAgeLimit" where you have entered in your desired age limit in the "CheckPointAgeLimit" custom field rather than in a parameter.
+.PARAMETER OlderThan
+    Number of days to use as the age threshold for checkpoints.
+    Default: 0 (reports all checkpoints)
+
+.PARAMETER FromCustomField
+    Name of an integer custom field containing the age threshold in days.
+    Overrides the OlderThan parameter if provided.
+
+.PARAMETER SaveToCustomField
+    Name of custom field to save checkpoint report to.
+
 .EXAMPLE
-    -FromCustomField "ReplaceMeWithAnyIntegerCustomField"
-    WARNING: There are checkpoints older than 04/05/2023 14:04:01!
+    HyperV-CheckpointExpirationAlert.ps1
     
-    VMName              Name                                                              CreationTime
-    ------              ----                                                              ------------
-    old WIN10-TEST      Automatic Checkpoint - WIN10-TEST - (3/30/2023 - 3:02:28 PM)      3/30/2023 3:02:28 PM
+    Reports all VM checkpoints on the system.
+
+.EXAMPLE
+    HyperV-CheckpointExpirationAlert.ps1 -OlderThan 7
+    
+    Alerts on VM checkpoints older than 7 days.
+
+.EXAMPLE
+    HyperV-CheckpointExpirationAlert.ps1 -FromCustomField "CheckpointAgeLimit"
+    
+    Retrieves age threshold from custom field and reports old checkpoints.
 
 .OUTPUTS
-    
+    None. Status information is written to the console.
+
 .NOTES
-    Minimum OS Architecture Supported: Windows 10, Server 2016
-    Version: 1.1
-    Release Notes: Renamed script and added Script Variable support
+    File Name      : HyperV-CheckpointExpirationAlert.ps1
+    Prerequisite   : PowerShell 5.1 or higher, Hyper-V role installed
+    Requires       : Administrator privileges
+    Minimum OS     : Windows 10, Windows Server 2016
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: Upgraded to V3 standards with Write-Log function and execution tracking
+    - 1.1: Renamed script and added Script Variable support
+    - 1.0: Initial release
+    
 .COMPONENT
-    ManageUsers
+    Hyper-V - Virtual machine checkpoint management
+    
+.LINK
+    https://learn.microsoft.com/en-us/powershell/module/hyper-v/get-vmsnapshot
+
+.FUNCTIONALITY
+    - Scans all Hyper-V VMs for checkpoints
+    - Identifies checkpoints older than specified threshold
+    - Reports VM name, checkpoint name, and creation time
+    - Can save report to custom fields
+    - Exits with error code if old checkpoints found
 #>
 
 [CmdletBinding()]
 param (
     [Parameter()]
-    [int]$OlderThan = "0",
+    [int]$OlderThan = 0,
+    
     [Parameter()]
-    [String]$FromCustomField
+    [string]$FromCustomField,
+    
+    [Parameter()]
+    [string]$SaveToCustomField
 )
+
 begin {
-    if ($env:ageLimit -and $env:ageLimit -notlike "null") { $OlderThan = $env:ageLimit }
-    if ($env:retrieveAgeLimitFromCustomField -and $env:retrieveAgeLimitFromCustomField -notlike "null") { $FromCustomField = $env:retrieveAgeLimitFromCustomField }
+    $ErrorActionPreference = 'Stop'
+    $ProgressPreference = 'SilentlyContinue'
+    $StartTime = Get-Date
+    
+    Set-StrictMode -Version Latest
+    
+    $script:ExitCode = 0
+    $script:ErrorCount = 0
+    $script:WarningCount = 0
+
+    function Write-Log {
+        param([string]$Message, [string]$Level = 'INFO')
+        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $logMessage = "[$timestamp] [$Level] $Message"
+        Write-Output $logMessage
+        
+        if ($Level -eq 'ERROR') { $script:ErrorCount++ }
+        if ($Level -eq 'WARNING') { $script:WarningCount++ }
+    }
+
+    function Set-NinjaField {
+        <#
+        .SYNOPSIS
+            Sets NinjaRMM custom field with CLI fallback.
+        #>
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$Name,
+            
+            [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+            [AllowEmptyString()]
+            [string]$Value
+        )
+        
+        try {
+            if (Get-Command 'Ninja-Property-Set-Piped' -ErrorAction SilentlyContinue) {
+                $Value | Ninja-Property-Set-Piped -Name $Name
+            }
+            else {
+                Write-Log "CLI fallback - Would set field '$Name' to: $Value" -Level 'INFO'
+            }
+        }
+        catch {
+            Write-Log "Failed to set custom field '$Name': $_" -Level 'ERROR'
+            throw
+        }
+    }
 
     function Test-IsElevated {
-        $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-        $p = New-Object System.Security.Principal.WindowsPrincipal($id)
-        $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+        <#
+        .SYNOPSIS
+            Tests if script is running with administrator privileges.
+        #>
+        $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $p = New-Object Security.Principal.WindowsPrincipal($id)
+        return $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     }
 
     function Test-IsSystem {
-        $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        <#
+        .SYNOPSIS
+            Tests if script is running as SYSTEM account.
+        #>
+        $id = [Security.Principal.WindowsIdentity]::GetCurrent()
         return $id.Name -like "NT AUTHORITY*" -or $id.IsSystem
     }
 
-    if (!(Test-IsElevated) -and !(Test-IsSystem)) {
-        Write-Error -Message "Access Denied. Please run with Administrator privileges."
-        exit 1
+    if ($env:ageLimit -and $env:ageLimit -notlike 'null') {
+        $OlderThan = [int]$env:ageLimit
+    }
+    
+    if ($env:retrieveAgeLimitFromCustomField -and $env:retrieveAgeLimitFromCustomField -notlike 'null') {
+        $FromCustomField = $env:retrieveAgeLimitFromCustomField
+    }
+    
+    if ($env:saveToCustomField -and $env:saveToCustomField -notlike 'null') {
+        $SaveToCustomField = $env:saveToCustomField
     }
 }
+
 process {
+    try {
+        if (-not (Test-IsElevated) -and -not (Test-IsSystem)) {
+            Write-Log 'Access Denied. Please run with Administrator privileges' -Level 'ERROR'
+            $script:ExitCode = 1
+            return
+        }
 
-    $Threshold = (Get-Date).AddDays(-$OlderThan)
+        if (-not (Get-Command 'Get-VM' -ErrorAction SilentlyContinue)) {
+            Write-Log 'Hyper-V module not found. Hyper-V role may not be installed' -Level 'ERROR'
+            $script:ExitCode = 1
+            return
+        }
 
-    if ($FromCustomField) {
-        $Threshold = (Get-Date).AddDays( - (Ninja-Property-Get $FromCustomField))
-    }
-    
-    $CheckPoints = Get-VM | Get-VMSnapshot | Where-Object { $_.CreationTime -lt $Threshold }
+        if ($FromCustomField) {
+            try {
+                $CustomAge = Ninja-Property-Get $FromCustomField 2>$null
+                if ($CustomAge) {
+                    $OlderThan = [int]$CustomAge
+                    Write-Log "Using age threshold from custom field: $OlderThan days"
+                }
+            }
+            catch {
+                Write-Log "Failed to retrieve threshold from custom field '$FromCustomField'" -Level 'WARNING'
+            }
+        }
 
-    if (!$CheckPoints) {
-        Write-Host "There are no checkpoints older than $Threshold!"
-        exit 0
+        $Threshold = (Get-Date).AddDays(-$OlderThan)
+        Write-Log "Scanning for VM checkpoints older than $Threshold"
+
+        $VMs = Get-VM -ErrorAction Stop
+        
+        if (-not $VMs) {
+            Write-Log 'No virtual machines found on this system'
+            return
+        }
+
+        Write-Log "Found $($VMs.Count) virtual machine(s), checking for old checkpoints..."
+        
+        $Checkpoints = Get-VM | Get-VMSnapshot -ErrorAction SilentlyContinue | Where-Object {
+            $_.CreationTime -lt $Threshold
+        }
+
+        if (-not $Checkpoints) {
+            Write-Log "No checkpoints older than $Threshold found"
+        }
+        else {
+            Write-Log "Found $($Checkpoints.Count) checkpoint(s) older than $Threshold" -Level 'WARNING'
+            
+            $Report = @()
+            foreach ($CP in $Checkpoints) {
+                $Info = "VM: $($CP.VMName) | Checkpoint: $($CP.Name) | Created: $($CP.CreationTime)"
+                Write-Log $Info -Level 'WARNING'
+                $Report += $Info
+            }
+
+            if ($SaveToCustomField) {
+                try {
+                    $Report -join "; " | Set-NinjaField -Name $SaveToCustomField
+                    Write-Log "Report saved to custom field '$SaveToCustomField'"
+                }
+                catch {
+                    Write-Log "Failed to save to custom field: $_" -Level 'ERROR'
+                }
+            }
+            
+            $script:ExitCode = 1
+        }
     }
-    else {
-        Write-Warning "There are checkpoints older than $Threshold!"
-        $Checkpoints | Format-Table -Property VMName, Name, CreationTime | Out-String | Write-Host
-        exit 1
+    catch {
+        Write-Log "Failed to check VM checkpoints: $_" -Level 'ERROR'
+        $script:ExitCode = 1
     }
-}end {
-    
-    
-    
+}
+
+end {
+    try {
+        $EndTime = Get-Date
+        $Duration = ($EndTime - $StartTime).TotalSeconds
+        
+        Write-Output "`n========================================"
+        Write-Output "Execution Summary"
+        Write-Output "========================================"
+        Write-Output "Script: HyperV-CheckpointExpirationAlert.ps1"
+        Write-Output "Duration: $Duration seconds"
+        Write-Output "Errors: $script:ErrorCount"
+        Write-Output "Warnings: $script:WarningCount"
+        Write-Output "Exit Code: $script:ExitCode"
+        Write-Output "========================================"
+    }
+    finally {
+        [System.GC]::Collect()
+        exit $script:ExitCode
+    }
 }

@@ -46,7 +46,7 @@
     Version        : 3.0.0
     Author         : WAF Team
     Change Log:
-    - 3.0.0: Upgraded to V3 standards with proper Write-Log function
+    - 3.0.0: Upgraded to V3.0.0 standards (script-scoped exit code)
     - 1.0: Initial release
     
 .COMPONENT
@@ -108,7 +108,7 @@ begin {
     }
 
     $RegPath = "Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
-    $ExitCode = 0
+    $script:ExitCode = 0
 }
 
 process {
@@ -161,7 +161,7 @@ process {
     }
     catch {
         Write-Log "Failed to configure Explorer settings: $_" -Level ERROR
-        $ExitCode = 1
+        $script:ExitCode = 1
     }
 }
 
@@ -173,6 +173,6 @@ end {
     }
     finally {
         [System.GC]::Collect()
-        exit $ExitCode
+        exit $script:ExitCode
     }
 }

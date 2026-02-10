@@ -2,109 +2,123 @@
 
 <#
 .SYNOPSIS
-    Starts SAP GUI application and launches Chrome browser for BDE workflow.
+    Starts SAP GUI and Chrome browser for BDE workflow automation.
 
 .DESCRIPTION
-    This script automates the startup sequence for BDE (Business Data Entry) operations by launching 
-    SAP GUI followed by Google Chrome browser. It ensures both applications are running before 
-    proceeding, providing a streamlined workflow initialization.
+    Automates the startup sequence for Business Desktop Environment (BDE) operations
+    by launching SAP GUI followed by Google Chrome browser. Validates both applications
+    are installed before attempting to start them.
     
-    This automation is useful for standardizing the startup process for users who require both 
-    SAP GUI and browser-based tools as part of their daily workflow.
+    This standardizes the startup process for users requiring both SAP GUI and
+    browser-based tools as part of their daily workflow.
 
 .PARAMETER SAPPath
-    Full path to the SAP GUI executable. Default: C:\Program Files (x86)\SAP\FrontEnd\SAPgui\saplogon.exe
+    Full path to the SAP GUI executable.
+    Default: C:\Program Files (x86)\SAP\FrontEnd\SAPgui\saplogon.exe
 
 .PARAMETER ChromePath
-    Full path to Google Chrome executable. Default: C:\Program Files\Google\Chrome\Application\chrome.exe
+    Full path to Google Chrome executable.
+    Default: C:\Program Files\Google\Chrome\Application\chrome.exe
 
 .EXAMPLE
-    No Parameters (uses default paths)
+    BDE-StartSAPandBrowser.ps1
+    Launches SAP GUI and Chrome using default installation paths.
 
-    [Info] Starting SAP GUI from: C:\Program Files (x86)\SAP\FrontEnd\SAPgui\saplogon.exe
-    [Info] SAP GUI started successfully
-    [Info] Starting Chrome browser from: C:\Program Files\Google\Chrome\Application\chrome.exe
-    [Info] Chrome browser started successfully
-    [Info] BDE workflow startup complete
-
-.OUTPUTS
-    None
+.EXAMPLE
+    BDE-StartSAPandBrowser.ps1 -SAPPath "D:\SAP\saplogon.exe" -ChromePath "C:\Program Files\Chrome\chrome.exe"
+    Uses custom paths for SAP GUI and Chrome.
 
 .NOTES
-    Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Release notes: Initial release for WAF v3.0
-    User interaction: Applications will launch in foreground
-    Restart behavior: N/A
-    Typical duration: < 5 seconds
-    
-.COMPONENT
-    SAP GUI - SAP Logon application
-    Google Chrome - Web browser
-    
-.LINK
-    https://support.sap.com/en/product/connectors/sapgui.html
-
-.FUNCTIONALITY
-    - Validates SAP GUI installation path
-    - Launches SAP Logon application
-    - Validates Chrome browser installation
-    - Launches Chrome browser
-    - Provides startup sequence confirmation
-    - Reports any missing applications or startup failures
+    File Name      : BDE-StartSAPandBrowser.ps1
+    Prerequisite   : PowerShell 5.1 or higher
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: Upgraded to V3 format with enhanced error handling
+    - 1.0: Initial version
 #>
 
 [CmdletBinding()]
 param(
-    [string]$SAPPath = "C:\Program Files (x86)\SAP\FrontEnd\SAPgui\saplogon.exe",
-    [string]$ChromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
+    [Parameter()]
+    [string]$SAPPath = 'C:\Program Files (x86)\SAP\FrontEnd\SAPgui\saplogon.exe',
+    
+    [Parameter()]
+    [string]$ChromePath = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
 )
 
 begin {
-    if ($env:sapPath -and $env:sapPath -notlike "null") {
-        $SAPPath = $env:sapPath
-    }
-    if ($env:chromePath -and $env:chromePath -notlike "null") {
-        $ChromePath = $env:chromePath
-    }
+    $ErrorActionPreference = 'Stop'
+    $ProgressPreference = 'SilentlyContinue'
+    
+    Set-StrictMode -Version Latest
 
-    $ExitCode = 0
+    function Write-Log {
+        param([string]$Message, [string]$Level = 'INFO')
+        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $logMessage = "[$timestamp] [$Level] $Message"
+        
+        switch ($Level) {
+            'ERROR' { Write-Error $logMessage }
+            'WARNING' { Write-Warning $logMessage }
+            default { Write-Host $logMessage }
+        }
+    }
 }
 
 process {
     try {
+        if ($env:sapPath -and $env:sapPath -notlike 'null') {
+            $SAPPath = $env:sapPath
+        }
+        
+        if ($env:chromePath -and $env:chromePath -notlike 'null') {
+            $ChromePath = $env:chromePath
+        }
+
+        $ApplicationsStarted = 0
+
         if (-not (Test-Path -Path $SAPPath -ErrorAction SilentlyContinue)) {
-            Write-Host "[Error] SAP GUI not found at: $SAPPath"
-            $ExitCode = 1
+            Write-Log "SAP GUI not found at: $SAPPath" -Level ERROR
         }
         else {
-            Write-Host "[Info] Starting SAP GUI from: $SAPPath"
+            Write-Log "Starting SAP GUI from: $SAPPath"
             Start-Process -FilePath $SAPPath -ErrorAction Stop
-            Write-Host "[Info] SAP GUI started successfully"
+            Write-Log 'SAP GUI started successfully'
+            $ApplicationsStarted++
         }
 
         Start-Sleep -Seconds 2
 
         if (-not (Test-Path -Path $ChromePath -ErrorAction SilentlyContinue)) {
-            Write-Host "[Error] Chrome browser not found at: $ChromePath"
-            $ExitCode = 1
+            Write-Log "Chrome browser not found at: $ChromePath" -Level ERROR
         }
         else {
-            Write-Host "[Info] Starting Chrome browser from: $ChromePath"
+            Write-Log "Starting Chrome browser from: $ChromePath"
             Start-Process -FilePath $ChromePath -ErrorAction Stop
-            Write-Host "[Info] Chrome browser started successfully"
+            Write-Log 'Chrome browser started successfully'
+            $ApplicationsStarted++
         }
 
-        if ($ExitCode -eq 0) {
-            Write-Host "[Info] BDE workflow startup complete"
+        if ($ApplicationsStarted -eq 2) {
+            Write-Log 'BDE workflow startup complete'
+            exit 0
+        }
+        elseif ($ApplicationsStarted -gt 0) {
+            Write-Log 'BDE workflow partially started (some applications missing)' -Level WARNING
+            exit 1
+        }
+        else {
+            Write-Log 'BDE workflow startup failed (no applications started)' -Level ERROR
+            exit 1
         }
     }
     catch {
-        Write-Host "[Error] Failed to start BDE workflow: $_"
-        $ExitCode = 1
+        Write-Log "Failed to start BDE workflow: $_" -Level ERROR
+        exit 1
     }
-
-    exit $ExitCode
 }
 
 end {
+    [System.GC]::Collect()
 }

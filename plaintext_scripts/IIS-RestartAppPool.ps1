@@ -1,179 +1,351 @@
-#Requires -Version 5.1 -Modules WebAdministration
+#Requires -Version 5.1
+#Requires -Modules WebAdministration
 
 <#
 .SYNOPSIS
-    Restarts a specified IIS application pool.
+    Restarts a specified IIS application pool
 
 .DESCRIPTION
-    This script restarts an IIS application pool by name. It verifies the pool exists, stops it 
-    gracefully, waits for complete shutdown, then starts it again. This is useful for applying 
-    configuration changes, clearing memory leaks, or recovering from hung worker processes.
+    Restarts an IIS application pool by name with graceful shutdown and verification.
+    This script performs the following operations:
+    - Validates the application pool exists
+    - Reports current state before restart
+    - Stops the app pool gracefully with configurable timeout
+    - Waits for complete shutdown
+    - Starts the app pool
+    - Verifies successful restart
+    - Saves results to NinjaRMM custom fields if specified
     
-    The script includes safety checks to ensure the application pool exists and provides 
-    detailed status reporting throughout the restart process.
+    This is useful for applying configuration changes, clearing memory leaks, recovering
+    from hung worker processes, or routine maintenance operations. The script includes
+    safety checks and detailed status reporting throughout the restart process.
+    
+    This script runs unattended without user interaction.
 
 .PARAMETER AppPoolName
-    Name of the IIS application pool to restart. Required parameter.
+    Name of the IIS application pool to restart. This is a required parameter.
+    The app pool must exist in IIS or the script will fail.
 
 .PARAMETER WaitTimeout
-    Maximum seconds to wait for the app pool to stop before forcing. Default: 30 seconds
+    Maximum seconds to wait for the app pool to stop before forcing.
+    Default is 30 seconds. Increase for larger applications.
 
 .PARAMETER SaveToCustomField
-    Name of a custom field to save the restart operation results.
+    Name of a NinjaRMM custom field to save the restart operation results.
+    Results include timestamp and final state.
 
 .EXAMPLE
-    -AppPoolName "DefaultAppPool"
-
-    [Info] Restarting IIS application pool 'DefaultAppPool'...
-    [Info] Current state: Started
-    [Info] Stopping application pool...
-    [Info] Application pool stopped successfully
-    [Info] Starting application pool...
-    [Info] Application pool 'DefaultAppPool' restarted successfully
+    .\IIS-RestartAppPool.ps1 -AppPoolName "DefaultAppPool"
+    
+    Restarts the DefaultAppPool with default 30-second timeout.
 
 .EXAMPLE
-    -AppPoolName "MyWebApp" -WaitTimeout 60
+    .\IIS-RestartAppPool.ps1 -AppPoolName "MyWebApp" -WaitTimeout 60
+    
+    Restarts MyWebApp pool with 60-second timeout.
 
-    [Info] Restarting IIS application pool 'MyWebApp'...
-    [Info] Using wait timeout of 60 seconds
-    [Info] Application pool 'MyWebApp' restarted successfully
-
-.OUTPUTS
-    None
+.EXAMPLE
+    .\IIS-RestartAppPool.ps1 -AppPoolName "DefaultAppPool" -SaveToCustomField "LastAppPoolRestart"
+    
+    Restarts pool and saves results to custom field.
 
 .NOTES
-    Minimum OS Architecture Supported: Windows Server 2012 R2 with IIS role
-    Release notes: Initial release for WAF v3.0
-    Requires: WebAdministration PowerShell module, IIS role installed
+    Script Name:    IIS-RestartAppPool.ps1
+    Author:         Windows Automation Framework
+    Version:        3.0.0
+    Creation Date:  2024-01-15
+    Last Modified:  2026-02-10
     
-.COMPONENT
-    WebAdministration - IIS management PowerShell module
+    Execution Context: Administrator (SYSTEM via NinjaRMM)
+    Execution Frequency: On-demand or scheduled for maintenance
+    Typical Duration: 5-15 seconds depending on app pool size
+    Timeout Setting: 60 seconds recommended
     
-.LINK
-    https://learn.microsoft.com/en-us/powershell/module/webadministration/
+    User Interaction: NONE (fully automated, no prompts)
+    Restart Behavior: Restarts specified IIS app pool only
+    
+    Dependencies:
+        - Windows PowerShell 5.1 or higher
+        - WebAdministration PowerShell module
+        - IIS role installed on Windows Server
+        - Administrator privileges required
+    
+    Environment Variables (Optional):
+        - appPoolName: Alternative to -AppPoolName parameter
+        - waitTimeout: Alternative to -WaitTimeout parameter
+        - saveToCustomField: Alternative to -SaveToCustomField parameter
+    
+    Exit Codes:
+        0 - Success (app pool restarted successfully)
+        1 - Failure (app pool not found, restart failed, or verification failed)
+    
+    Performance Note:
+        Stop/start time varies based on app pool size and active requests.
+        Timeout should be adjusted based on application requirements.
 
-.FUNCTIONALITY
-    - Restarts IIS application pools by name
-    - Validates application pool exists before restart
-    - Reports current state before restart
-    - Gracefully stops app pool with configurable timeout
-    - Waits for complete shutdown before starting
-    - Verifies successful restart
-    - Can save restart results to custom fields
-    - Provides detailed status throughout operation
+.LINK
+    https://github.com/Xore/waf
+    https://learn.microsoft.com/en-us/powershell/module/webadministration/
 #>
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
+    [Parameter(Mandatory=$true)]
+    [ValidateNotNullOrEmpty()]
     [string]$AppPoolName,
+    
+    [Parameter(Mandatory=$false)]
+    [ValidateRange(5,300)]
     [int]$WaitTimeout = 30,
+    
+    [Parameter(Mandatory=$false)]
+    [ValidateLength(1,255)]
     [string]$SaveToCustomField
 )
 
-begin {
-    if ($env:appPoolName -and $env:appPoolName -notlike "null") {
-        $AppPoolName = $env:appPoolName
-    }
-    if ($env:waitTimeout -and $env:waitTimeout -notlike "null") {
-        $WaitTimeout = [int]$env:waitTimeout
-    }
-    if ($env:saveToCustomField -and $env:saveToCustomField -notlike "null") {
-        $SaveToCustomField = $env:saveToCustomField
-    }
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
 
-    function Set-NinjaProperty {
-        [CmdletBinding()]
-        Param(
-            [Parameter(Mandatory = $True)]
-            [String]$Name,
-            [Parameter(Mandatory = $True, ValueFromPipeline = $True)]
-            $Value
-        )
-        $NinjaValue = $Value
-        $CustomField = $NinjaValue | Ninja-Property-Set-Piped -Name $Name 2>&1
-        if ($CustomField.Exception) {
-            throw $CustomField
-        }
-    }
+$ScriptVersion = "3.0.0"
+$ScriptName = "IIS-RestartAppPool"
 
-    $ExitCode = 0
+# Support environment variables
+if ($env:appPoolName -and $env:appPoolName -notlike "null") {
+    $AppPoolName = $env:appPoolName
+}
+if ($env:waitTimeout -and $env:waitTimeout -notlike "null") {
+    $WaitTimeout = [int]$env:waitTimeout
+}
+if ($env:saveToCustomField -and $env:saveToCustomField -notlike "null") {
+    $SaveToCustomField = $env:saveToCustomField
 }
 
-process {
-    if ([string]::IsNullOrWhiteSpace($AppPoolName)) {
-        Write-Host "[Error] AppPoolName parameter is required"
-        exit 1
-    }
+# ============================================================================
+# INITIALIZATION
+# ============================================================================
 
-    try {
-        Write-Host "[Info] Restarting IIS application pool '$AppPoolName'..."
+$StartTime = Get-Date
+$ErrorActionPreference = 'Continue'
+$script:ExitCode = 0
+$script:ErrorCount = 0
+$script:WarningCount = 0
+$script:CLIFallbackCount = 0
+$InitialState = "Unknown"
+$FinalState = "Unknown"
+$RestartSuccessful = $false
+
+Set-StrictMode -Version Latest
+
+# ============================================================================
+# FUNCTIONS
+# ============================================================================
+
+function Write-Log {
+    <#
+    .SYNOPSIS
+        Writes structured log messages with plain text output
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Message,
         
+        [Parameter(Mandatory=$false)]
+        [ValidateSet('DEBUG','INFO','WARN','ERROR','SUCCESS','ALERT')]
+        [string]$Level = 'INFO'
+    )
+    
+    $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $LogMessage = "[$Timestamp] [$Level] $Message"
+    
+    # Plain text output only - no colors
+    Write-Output $LogMessage
+    
+    # Track counts
+    switch ($Level) {
+        'WARN'  { $script:WarningCount++ }
+        'ERROR' { $script:ErrorCount++; $script:ExitCode = 1 }
+        'ALERT' { $script:WarningCount++ }
+    }
+}
+
+function Set-NinjaField {
+    <#
+    .SYNOPSIS
+        Sets a NinjaRMM custom field with CLI fallback
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Name,
+        
+        [Parameter(Mandatory=$true)]
+        [AllowEmptyString()]
+        [string]$Value
+    )
+    
+    try {
+        $null = Ninja-Property-Set-Piped -Name $Name -Value $Value 2>&1
+        Write-Log "Custom field '$Name' updated successfully" -Level DEBUG
+    } catch {
+        Write-Log "Ninja cmdlet unavailable, using CLI fallback for field '$Name'" -Level WARN
+        $script:CLIFallbackCount++
+        
+        try {
+            $NinjaPath = "C:\Program Files (x86)\NinjaRMMAgent\ninjarmm-cli.exe"
+            if (-not (Test-Path $NinjaPath)) {
+                $NinjaPath = "C:\Program Files\NinjaRMMAgent\ninjarmm-cli.exe"
+            }
+            
+            if (Test-Path $NinjaPath) {
+                $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
+                $ProcessInfo.FileName = $NinjaPath
+                $ProcessInfo.Arguments = "set $Name `"$Value`""
+                $ProcessInfo.UseShellExecute = $false
+                $ProcessInfo.RedirectStandardOutput = $true
+                $ProcessInfo.RedirectStandardError = $true
+                $Process = New-Object System.Diagnostics.Process
+                $Process.StartInfo = $ProcessInfo
+                $null = $Process.Start()
+                $null = $Process.WaitForExit(5000)
+                Write-Log "CLI fallback succeeded for field '$Name'" -Level DEBUG
+            } else {
+                throw "NinjaRMM CLI executable not found"
+            }
+        } catch {
+            Write-Log "CLI fallback failed for field '$Name': $($_.Exception.Message)" -Level ERROR
+            throw
+        }
+    }
+}
+
+# ============================================================================
+# MAIN EXECUTION
+# ============================================================================
+
+try {
+    Write-Log "========================================" -Level INFO
+    Write-Log "Starting: $ScriptName v$ScriptVersion" -Level INFO
+    Write-Log "========================================" -Level INFO
+    
+    # Validate AppPoolName parameter
+    if ([string]::IsNullOrWhiteSpace($AppPoolName)) {
+        throw "AppPoolName parameter is required and cannot be empty"
+    }
+    
+    Write-Log "Target app pool: $AppPoolName" -Level INFO
+    Write-Log "Wait timeout: $WaitTimeout seconds" -Level DEBUG
+    
+    # Import WebAdministration module
+    try {
         Import-Module WebAdministration -ErrorAction Stop
-
-        $AppPool = Get-Item "IIS:\AppPools\$AppPoolName" -ErrorAction SilentlyContinue
-
-        if (-not $AppPool) {
-            Write-Host "[Error] Application pool '$AppPoolName' not found"
-            exit 1
-        }
-
-        $InitialState = $AppPool.State
-        Write-Host "[Info] Current state: $InitialState"
-
-        if ($WaitTimeout -ne 30) {
-            Write-Host "[Info] Using wait timeout of $WaitTimeout seconds"
-        }
-
-        if ($InitialState -eq "Started") {
-            Write-Host "[Info] Stopping application pool..."
+        Write-Log "WebAdministration module loaded successfully" -Level DEBUG
+    } catch {
+        throw "Failed to load WebAdministration module. Ensure IIS is installed: $($_.Exception.Message)"
+    }
+    
+    # Check if app pool exists
+    Write-Log "Verifying app pool exists..." -Level INFO
+    $AppPool = Get-Item "IIS:\AppPools\$AppPoolName" -ErrorAction SilentlyContinue
+    
+    if (-not $AppPool) {
+        throw "Application pool '$AppPoolName' not found in IIS"
+    }
+    
+    $InitialState = $AppPool.State
+    Write-Log "App pool found - Current state: $InitialState" -Level INFO
+    
+    # Stop app pool if running
+    if ($InitialState -eq "Started") {
+        Write-Log "Stopping application pool..." -Level INFO
+        
+        try {
             Stop-WebAppPool -Name $AppPoolName -ErrorAction Stop
             
+            # Wait for app pool to stop
             $ElapsedSeconds = 0
-            while ((Get-WebAppPoolState -Name $AppPoolName).Value -ne "Stopped" -and $ElapsedSeconds -lt $WaitTimeout) {
+            $CurrentState = (Get-WebAppPoolState -Name $AppPoolName).Value
+            
+            while ($CurrentState -ne "Stopped" -and $ElapsedSeconds -lt $WaitTimeout) {
                 Start-Sleep -Seconds 1
                 $ElapsedSeconds++
+                $CurrentState = (Get-WebAppPoolState -Name $AppPoolName).Value
             }
-
-            if ((Get-WebAppPoolState -Name $AppPoolName).Value -ne "Stopped") {
-                Write-Host "[Warn] Application pool did not stop within $WaitTimeout seconds, forcing restart"
+            
+            if ($CurrentState -ne "Stopped") {
+                Write-Log "App pool did not stop within $WaitTimeout seconds (current state: $CurrentState)" -Level WARN
+                Write-Log "Forcing restart anyway..." -Level WARN
             } else {
-                Write-Host "[Info] Application pool stopped successfully"
+                Write-Log "App pool stopped successfully after $ElapsedSeconds seconds" -Level SUCCESS
             }
+            
+        } catch {
+            Write-Log "Error stopping app pool: $($_.Exception.Message)" -Level ERROR
+            throw
         }
-
-        Write-Host "[Info] Starting application pool..."
-        Start-WebAppPool -Name $AppPoolName -ErrorAction Stop
         
+    } else {
+        Write-Log "App pool is not running (state: $InitialState), proceeding to start" -Level INFO
+    }
+    
+    # Start app pool
+    Write-Log "Starting application pool..." -Level INFO
+    
+    try {
+        Start-WebAppPool -Name $AppPoolName -ErrorAction Stop
         Start-Sleep -Seconds 2
+        
         $FinalState = (Get-WebAppPoolState -Name $AppPoolName).Value
-
+        
         if ($FinalState -eq "Started") {
-            Write-Host "[Info] Application pool '$AppPoolName' restarted successfully"
-            $Result = "App pool '$AppPoolName' restarted successfully at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+            Write-Log "App pool '$AppPoolName' restarted successfully" -Level SUCCESS
+            $RestartSuccessful = $true
+            $ResultMessage = "App pool '$AppPoolName' restarted successfully at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
         } else {
-            Write-Host "[Error] Application pool is in state '$FinalState' after restart attempt"
-            $Result = "App pool '$AppPoolName' restart failed - final state: $FinalState"
-            $ExitCode = 1
+            Write-Log "App pool is in state '$FinalState' after restart attempt" -Level ERROR
+            $ResultMessage = "App pool '$AppPoolName' restart failed - final state: $FinalState"
+            $script:ExitCode = 1
         }
-
-        if ($SaveToCustomField) {
-            try {
-                $Result | Set-NinjaProperty -Name $SaveToCustomField
-                Write-Host "[Info] Results saved to custom field '$SaveToCustomField'"
-            } catch {
-                Write-Host "[Error] Failed to save to custom field: $_"
-                $ExitCode = 1
-            }
+        
+    } catch {
+        Write-Log "Error starting app pool: $($_.Exception.Message)" -Level ERROR
+        $ResultMessage = "App pool '$AppPoolName' restart failed: $($_.Exception.Message)"
+        throw
+    }
+    
+    # Save to custom field if specified
+    if ($SaveToCustomField) {
+        try {
+            Set-NinjaField -Name $SaveToCustomField -Value $ResultMessage
+            Write-Log "Results saved to custom field '$SaveToCustomField'" -Level SUCCESS
+        } catch {
+            Write-Log "Failed to save to custom field: $($_.Exception.Message)" -Level ERROR
         }
     }
-    catch {
-        Write-Host "[Error] Failed to restart application pool: $_"
-        $ExitCode = 1
-    }
-
-    exit $ExitCode
-}
-
-end {
+    
+} catch {
+    Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
+    Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
+    $script:ExitCode = 1
+    
+} finally {
+    $EndTime = Get-Date
+    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+    
+    Write-Log "" -Level INFO
+    Write-Log "========================================" -Level INFO
+    Write-Log "Execution Summary:" -Level INFO
+    Write-Log "  App Pool Name: $AppPoolName" -Level INFO
+    Write-Log "  Initial State: $InitialState" -Level INFO
+    Write-Log "  Final State: $FinalState" -Level INFO
+    Write-Log "  Restart Successful: $RestartSuccessful" -Level INFO
+    Write-Log "  Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
+    Write-Log "  Errors: $script:ErrorCount" -Level INFO
+    Write-Log "  Warnings: $script:WarningCount" -Level INFO
+    Write-Log "  CLI Fallbacks: $script:CLIFallbackCount" -Level INFO
+    Write-Log "  Exit Code: $script:ExitCode" -Level INFO
+    Write-Log "========================================" -Level INFO
+    
+    exit $script:ExitCode
 }

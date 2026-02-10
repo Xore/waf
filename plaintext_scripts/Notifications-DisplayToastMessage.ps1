@@ -2,205 +2,268 @@
 
 <#
 .SYNOPSIS
-    Sends an important toast notification to the currently signed in user. Please run as the Current Logged-on User.
+    Displays a toast notification to the currently logged-on user.
+
 .DESCRIPTION
-    Sends an important toast notification to the currently signed in user. Please run as 'Current Logged on User'.
-    You can also specify the "ApplicationId" to any string.
-    The default ApplicationId is your company name found in the NINJA_COMPANY_NAME environment variable, but will fallback to "NinjaOne RMM" if it happens to not be set.
+    Sends a Windows toast notification to the currently logged-in user.
+    The script must be executed as the 'Current Logged on User' context.
+    
+    Creates or updates registry entries to enable toast notifications for the
+    specified ApplicationId. The ApplicationId defaults to NINJA_COMPANY_NAME
+    environment variable or 'NinjaOne RMM' if not set.
+
+.PARAMETER Title
+    The toast notification title (max 42 characters recommended).
+
+.PARAMETER Message
+    The toast notification message body (max 254 characters recommended).
+
+.PARAMETER ApplicationId
+    Optional application identifier for the toast notification.
+    Defaults to NINJA_COMPANY_NAME environment variable or 'NinjaOne RMM'.
 
 .EXAMPLE
-    -Title "My Title Here" -Message "My Message Here"
-    Sends the title "My Title Here" and message "My Message Here" as a Toast message/notification to the currently signed in user.
+    Notifications-DisplayToastMessage.ps1 -Title "Update Available" -Message "Please restart your computer"
+    Displays a toast notification with the specified title and message.
+
 .EXAMPLE
-    -Title "My Title Here" -Message "My Message Here" -ApplicationId "MyCompany"
-    Sends the title "My Title Here" and message "My Message Here" as a Toast message/notification to the currently signed in user.
-        ApplicationId: Creates a registry entry for your toasts called "MyCompany".
+    Notifications-DisplayToastMessage.ps1 -Title "Alert" -Message "System maintenance required" -ApplicationId "MyCompany"
+    Displays a toast notification with a custom ApplicationId.
+
 .OUTPUTS
-    None
-.NOTES
-    If you want to change the defaults then with in the param block.
-    If you want to customize the application name to show your company name,
-        then look for $ApplicationId and change the content between the double quotes.
+    System.Int32
+    Exit code 0 on success, 1 on failure.
 
-    Minimum OS Architecture Supported: Windows 10 (IoT editions are not supported due to lack of shell)
-    Release Notes: Initial Release
+.NOTES
+    File Name      : Notifications-DisplayToastMessage.ps1
+    Prerequisite   : PowerShell 5.1, Windows 10 or higher
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: Upgraded to V3 format with enhanced error handling
+    - 1.0: Initial release
+    
+.LINK
+    https://docs.microsoft.com/en-us/windows/uwp/design/shell/tiles-and-notifications/
 #>
 
 [CmdletBinding()]
-param
-(
+param (
+    [Parameter(Mandatory = $false)]
     [string]$Title,
+    
+    [Parameter(Mandatory = $false)]
     [string]$Message,
+    
+    [Parameter(Mandatory = $false)]
     [string]$ApplicationId
 )
 
 begin {
-    # Set the default ApplicationId if it's not provided. Use the Company Name if available, otherwise use the default.
-    $ApplicationId = if ($env:NINJA_COMPANY_NAME) { $env:NINJA_COMPANY_NAME } else { "NinjaOne RMM" }
+    $ErrorActionPreference = 'Stop'
+    $ProgressPreference = 'SilentlyContinue'
+    
+    Set-StrictMode -Version Latest
 
-    Write-Host "[Info] Using ApplicationId: $($ApplicationId -replace '\s+','.')"
-
-    if ($env:title -and $env:title -notlike "null") { $Title = $env:title }
-    if ($env:message -and $env:message -notlike "null") { $Message = $env:message }
-    if ($env:applicationId -and $env:applicationId -notlike "null") { $ApplicationId = $env:applicationId }
-
-    if ([String]::IsNullOrWhiteSpace($Title)) {
-        Write-Host "[Error] A Title is required."
-        exit 1
-    }
-    if ([String]::IsNullOrWhiteSpace($Message)) {
-        Write-Host "[Error] A Message is required."
-        exit 1
-    }
-
-    if ($Title.Length -gt 42) {
-        Write-Host "[Warn] The Title is longer than 42 characters. The title will be truncated by the Windows API to 42 characters."
-    }
-    if ($Message.Length -gt 254) {
-        Write-Host "[Warn] The Message is longer than 254 characters. The message might get truncated by the Windows API."
+    function Write-Log {
+        param([string]$Message, [string]$Level = 'INFO')
+        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $logMessage = "[$timestamp] [$Level] $Message"
+        
+        switch ($Level) {
+            'ERROR' { Write-Error $logMessage }
+            'WARNING' { Write-Warning $logMessage }
+            default { Write-Host $logMessage }
+        }
     }
 
     function Test-IsSystem {
-        $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-        return $id.Name -like "NT AUTHORITY*" -or $id.IsSystem
-    }
-
-    if (Test-IsSystem) {
-        Write-Host "[Error] Please run this script as 'Current Logged on User'."
-        Exit 1
+        <#
+        .SYNOPSIS
+            Checks if the current process is running as SYSTEM.
+        #>
+        try {
+            $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+            return ($identity.Name -like 'NT AUTHORITY*' -or $identity.IsSystem)
+        }
+        catch {
+            Write-Log "Failed to determine user context: $_" -Level WARNING
+            return $false
+        }
     }
 
     function Set-RegKey {
+        <#
+        .SYNOPSIS
+            Creates or updates a registry key value.
+        #>
         param (
-            $Path,
-            $Name,
+            [Parameter(Mandatory = $true)]
+            [string]$Path,
+            
+            [Parameter(Mandatory = $true)]
+            [string]$Name,
+            
+            [Parameter(Mandatory = $true)]
             $Value,
-            [ValidateSet("DWord", "QWord", "String", "ExpandedString", "Binary", "MultiString", "Unknown")]
-            $PropertyType = "DWord"
+            
+            [Parameter(Mandatory = $false)]
+            [ValidateSet('DWord', 'QWord', 'String', 'ExpandedString', 'Binary', 'MultiString', 'Unknown')]
+            [string]$PropertyType = 'DWord'
         )
-        if (-not $(Test-Path -Path $Path)) {
-            # Check if path does not exist and create the path
-            New-Item -Path $Path -Force | Out-Null
+        
+        try {
+            if (-not (Test-Path -Path $Path)) {
+                New-Item -Path $Path -Force | Out-Null
+                Write-Log "Created registry path: $Path"
+            }
+
+            $existingValue = Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue
+            
+            if ($existingValue) {
+                $currentValue = $existingValue.$Name
+                Set-ItemProperty -Path $Path -Name $Name -Value $Value -Force -ErrorAction Stop | Out-Null
+                Write-Log "Updated $Path\$Name from '$currentValue' to '$Value'"
+            }
+            else {
+                New-ItemProperty -Path $Path -Name $Name -Value $Value -PropertyType $PropertyType -Force -ErrorAction Stop | Out-Null
+                Write-Log "Created $Path\$Name with value '$Value'"
+            }
         }
-        if ((Get-ItemProperty -Path $Path -Name $Name -ErrorAction Ignore)) {
-            # Update property and print out what it was changed from and changed to
-            $CurrentValue = (Get-ItemProperty -Path $Path -Name $Name -ErrorAction Ignore).$Name
-            try {
-                Set-ItemProperty -Path $Path -Name $Name -Value $Value -Force -Confirm:$false -ErrorAction Stop | Out-Null
-            }
-            catch {
-                Write-Host "[Error] Unable to Set registry key for $Name please see below error!"
-                Write-Host "$($_.Exception.Message)"
-                exit 1
-            }
-            Write-Host "[Info] $Path\$Name changed from:"
-            Write-Host " $CurrentValue to:"
-            Write-Host " $($(Get-ItemProperty -Path $Path -Name $Name -ErrorAction Ignore).$Name)"
-        }
-        else {
-            # Create property with value
-            try {
-                New-ItemProperty -Path $Path -Name $Name -Value $Value -PropertyType $PropertyType -Force -Confirm:$false -ErrorAction Stop | Out-Null
-            }
-            catch {
-                Write-Host "[Error] Unable to Set registry key for $Name please see below error!"
-                Write-Host "$($_.Exception.Message)"
-                exit 1
-            }
-            Write-Host "[Info] Set $Path\$Name to:"
-            Write-Host " $($(Get-ItemProperty -Path $Path -Name $Name -ErrorAction Ignore).$Name)"
+        catch {
+            throw "Failed to set registry key $Path\$Name: $_"
         }
     }
 
     function Show-Notification {
+        <#
+        .SYNOPSIS
+            Displays a Windows toast notification.
+        #>
         [CmdletBinding()]
-        Param (
-            [string]
-            $ApplicationId,
-            [string]
-            $ToastTitle,
-            [string]
-            [Parameter(ValueFromPipeline)]
-            $ToastText
+        param (
+            [Parameter(Mandatory = $true)]
+            [string]$ApplicationId,
+            
+            [Parameter(Mandatory = $true)]
+            [string]$ToastTitle,
+            
+            [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+            [string]$ToastText
         )
 
-        # Import all the needed libraries
-        [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
-        [Windows.UI.Notifications.ToastNotification, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
-        [Windows.System.User, Windows.System, ContentType = WindowsRuntime] > $null
-        [Windows.System.UserType, Windows.System, ContentType = WindowsRuntime] > $null
-        [Windows.System.UserAuthenticationStatus, Windows.System, ContentType = WindowsRuntime] > $null
-        [Windows.Storage.ApplicationData, Windows.Storage, ContentType = WindowsRuntime] > $null
-
-        # Make sure that we can use the toast manager, also checks if the service is running and responding
         try {
-            $ToastNotifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("$ApplicationId")
+            [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
+            [Windows.UI.Notifications.ToastNotification, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
+            [Windows.System.User, Windows.System, ContentType = WindowsRuntime] > $null
+            [Windows.System.UserType, Windows.System, ContentType = WindowsRuntime] > $null
+            [Windows.System.UserAuthenticationStatus, Windows.System, ContentType = WindowsRuntime] > $null
+            [Windows.Storage.ApplicationData, Windows.Storage, ContentType = WindowsRuntime] > $null
         }
         catch {
-            Write-Host "$($_.Exception.Message)"
-            Write-Host "[Error] Failed to create notification."
+            throw "Failed to load required Windows Runtime libraries: $_"
         }
 
-        # Create a new toast notification
-        $RawXml = [xml] @"
+        try {
+            $ToastNotifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($ApplicationId)
+        }
+        catch {
+            throw "Failed to create toast notifier: $_"
+        }
+
+        $RawXml = [xml]@"
 <toast scenario='urgent'>
     <visual>
-    <binding template='ToastGeneric'>
-        <text hint-maxLines='1'>$ToastTitle</text>
-        <text>$ToastText</text>
-    </binding>
+        <binding template='ToastGeneric'>
+            <text hint-maxLines='1'>$ToastTitle</text>
+            <text>$ToastText</text>
+        </binding>
     </visual>
 </toast>
 "@
 
-        # Serialized Xml for later consumption
         $SerializedXml = New-Object Windows.Data.Xml.Dom.XmlDocument
         $SerializedXml.LoadXml($RawXml.OuterXml)
 
-        # Setup how are toast will act, such as expiration time
-        $Toast = $null
         $Toast = [Windows.UI.Notifications.ToastNotification]::new($SerializedXml)
-        $Toast.Tag = "PowerShell"
-        $Toast.Group = "PowerShell"
+        $Toast.Tag = 'PowerShell'
+        $Toast.Group = 'PowerShell'
         $Toast.ExpirationTime = [DateTimeOffset]::Now.AddMinutes(1)
 
-        # Show our message to the user
         $ToastNotifier.Show($Toast)
     }
 }
+
 process {
-    # Create an object to store the ApplicationId and DisplayName
-    $Application = [PSCustomObject]@{
-        DisplayName = $ApplicationId
-        # Replace any spaces with a period in the ApplicationId
-        AppId       = $($ApplicationId -replace '\s+', '.')
-    }
-    Write-Host "Display Name: $($Application.DisplayName)"
-    Write-Host "Application ID: $($Application.AppId)"
-
-    Set-RegKey -Path "HKCU:\SOFTWARE\Classes\AppUserModelId\$($Application.AppId)" -Name "DisplayName" -Value $Application.DisplayName -PropertyType String
-    Set-RegKey -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\$($Application.AppId)" -Name "AllowUrgentNotifications" -Value 1 -PropertyType DWord
-
     try {
-        Write-Host "[Info] Attempting to send message to user..."
-        $NotificationParams = @{
+        if (Test-IsSystem) {
+            Write-Log "This script must run as 'Current Logged on User', not SYSTEM" -Level ERROR
+            exit 1
+        }
+
+        if ($env:title -and $env:title -notlike 'null') { $Title = $env:title }
+        if ($env:message -and $env:message -notlike 'null') { $Message = $env:message }
+        if ($env:applicationId -and $env:applicationId -notlike 'null') { $ApplicationId = $env:applicationId }
+
+        if (-not $ApplicationId) {
+            $ApplicationId = if ($env:NINJA_COMPANY_NAME) { $env:NINJA_COMPANY_NAME } else { 'NinjaOne RMM' }
+        }
+
+        if ([string]::IsNullOrWhiteSpace($Title)) {
+            Write-Log 'Title parameter is required' -Level ERROR
+            exit 1
+        }
+
+        if ([string]::IsNullOrWhiteSpace($Message)) {
+            Write-Log 'Message parameter is required' -Level ERROR
+            exit 1
+        }
+
+        if ($Title.Length -gt 42) {
+            Write-Log 'Title exceeds 42 characters and may be truncated by Windows' -Level WARNING
+        }
+
+        if ($Message.Length -gt 254) {
+            Write-Log 'Message exceeds 254 characters and may be truncated by Windows' -Level WARNING
+        }
+
+        $Application = [PSCustomObject]@{
+            DisplayName = $ApplicationId
+            AppId       = $ApplicationId -replace '\s+', '.'
+        }
+
+        Write-Log "Display Name: $($Application.DisplayName)"
+        Write-Log "Application ID: $($Application.AppId)"
+
+        Set-RegKey -Path "HKCU:\SOFTWARE\Classes\AppUserModelId\$($Application.AppId)" `
+                   -Name 'DisplayName' `
+                   -Value $Application.DisplayName `
+                   -PropertyType String
+
+        Set-RegKey -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\$($Application.AppId)" `
+                   -Name 'AllowUrgentNotifications' `
+                   -Value 1 `
+                   -PropertyType DWord
+
+        Write-Log 'Sending toast notification...'
+        
+        $notificationParams = @{
             ToastTitle    = $Title
             ToastText     = $Message
             ApplicationId = $Application.AppId
         }
-        Show-Notification @NotificationParams -ErrorAction Stop
-        Write-Host "[Info] Message sent to user."
+        
+        Show-Notification @notificationParams
+        
+        Write-Log 'Toast notification sent successfully'
+        exit 0
     }
     catch {
-        Write-Host "[Error] Failed to send message to user."
-        Write-Host "$($_.Exception.Message)"
+        Write-Log "Failed to send toast notification: $_" -Level ERROR
         exit 1
     }
-    exit 0
-}
-end {
-    
-    
-    
 }
 
+end {
+    [System.GC]::Collect()
+}

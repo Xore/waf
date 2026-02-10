@@ -80,14 +80,14 @@
     
     Warning:
     - VMs with degraded integration services
-    - High resource utilization (>85%)
+    - High resource utilization (>85 percent)
     - Cluster nodes in warning state
     - VMs with old checkpoints
     
     Critical:
     - VMs with failed heartbeat
     - Cluster resources offline
-    - Host resource exhaustion (>95%)
+    - Host resource exhaustion (>95 percent)
     - Critical integration service failures
     
     Unknown:
@@ -98,7 +98,7 @@
 .NOTES
     Script Name:    Hyper-V Monitor 1.ps1
     Author:         Windows Automation Framework
-    Version:        1.0
+    Version:        1.1
     Creation Date:  2026-02-10
     Last Modified:  2026-02-10
     
@@ -162,21 +162,16 @@ param()
 # CONFIGURATION
 # ============================================================================
 
-# Script version
-$ScriptVersion = "1.0"
+$ScriptVersion = "1.1"
 
-# Logging configuration
-$LogLevel = "INFO"  # DEBUG, INFO, WARN, ERROR
+$LogLevel = "INFO"
 $VerbosePreference = 'SilentlyContinue'
 
-# Timeouts and limits
 $DefaultTimeout = 120
 $MaxRetries = 3
 
-# NinjaRMM CLI path
 $NinjaRMMCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
 
-# Resource thresholds
 $WarningCPUPercent = 85
 $CriticalCPUPercent = 95
 $WarningMemoryPercent = 85
@@ -186,11 +181,9 @@ $CriticalMemoryPercent = 95
 # INITIALIZATION
 # ============================================================================
 
-# Start timing - REQUIRED FOR ALL SCRIPTS
 $StartTime = Get-Date
 $ScriptName = $MyInvocation.MyCommand.Name
 
-# Initialize error tracking
 $ErrorActionPreference = 'Stop'
 $script:ErrorCount = 0
 $script:WarningCount = 0
@@ -352,7 +345,6 @@ function Test-HyperVInstalled {
     try {
         Write-Log "Checking for Hyper-V installation..." -Level INFO
         
-        # Check for Hyper-V service
         $HyperVService = Get-Service -Name "vmms" -ErrorAction SilentlyContinue
         
         if ($null -eq $HyperVService) {
@@ -376,7 +368,6 @@ function Install-HyperVModule {
     try {
         Write-Log "Checking Hyper-V PowerShell module..." -Level INFO
         
-        # Check if module is available
         if (Get-Module -ListAvailable -Name Hyper-V) {
             Write-Log "Hyper-V module already installed" -Level DEBUG
             Import-Module Hyper-V -ErrorAction Stop
@@ -384,10 +375,8 @@ function Install-HyperVModule {
             return $true
         }
         
-        # Try to install as Windows feature
         Write-Log "Installing Hyper-V PowerShell module..." -Level INFO
         
-        # Check if DISM/WindowsFeature cmdlets available
         if (Get-Command Install-WindowsFeature -ErrorAction SilentlyContinue) {
             Install-WindowsFeature -Name Hyper-V-PowerShell -ErrorAction Stop | Out-Null
             Write-Log "Hyper-V PowerShell feature installed" -Level INFO
@@ -398,7 +387,6 @@ function Install-HyperVModule {
             throw "Unable to install Hyper-V module - install cmdlets not available"
         }
         
-        # Import the module
         Import-Module Hyper-V -ErrorAction Stop
         Write-Log "Hyper-V module imported successfully" -Level INFO
         return $true
@@ -414,7 +402,6 @@ function Get-HyperVVersion {
     param()
     
     try {
-        # Try registry first
         $RegPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Virtualization"
         if (Test-Path $RegPath) {
             $Version = Get-ItemProperty -Path $RegPath -Name "Version" -ErrorAction SilentlyContinue
@@ -423,7 +410,6 @@ function Get-HyperVVersion {
             }
         }
         
-        # Fallback to VM host info
         $VMHost = Get-VMHost -ErrorAction SilentlyContinue
         if ($VMHost -and $VMHost.HyperVVersion) {
             return "Hyper-V v$($VMHost.HyperVVersion)"
@@ -442,7 +428,6 @@ function Test-FailoverClusterMember {
     param()
     
     try {
-        # Check if FailoverClusters module is available
         if (-not (Get-Module -ListAvailable -Name FailoverClusters)) {
             Write-Log "FailoverClusters module not available" -Level DEBUG
             return $false
@@ -450,7 +435,6 @@ function Test-FailoverClusterMember {
         
         Import-Module FailoverClusters -ErrorAction Stop
         
-        # Try to get cluster information
         $Cluster = Get-Cluster -ErrorAction SilentlyContinue
         
         if ($null -ne $Cluster) {
@@ -484,24 +468,20 @@ function Get-ClusterInformation {
             return $ClusterInfo
         }
         
-        # Get cluster details
         $Cluster = Get-Cluster -ErrorAction Stop
         $ClusterInfo.Clustered = $true
         $ClusterInfo.ClusterName = $Cluster.Name
         
-        # Get all nodes
         $Nodes = Get-ClusterNode -ErrorAction SilentlyContinue
         if ($Nodes) {
             $ClusterInfo.NodeCount = @($Nodes).Count
             
-            # Check local node status
             $LocalNode = $Nodes | Where-Object { $_.Name -eq $env:COMPUTERNAME }
             if ($LocalNode) {
                 $ClusterInfo.LocalNodeStatus = $LocalNode.State.ToString()
             }
         }
         
-        # Get quorum status
         try {
             $Quorum = Get-ClusterQuorum -ErrorAction SilentlyContinue
             if ($Quorum) {
@@ -511,7 +491,6 @@ function Get-ClusterInformation {
             Write-Log "Unable to retrieve quorum status" -Level DEBUG
         }
         
-        # Overall cluster health
         if ($Nodes) {
             $OnlineNodes = @($Nodes | Where-Object { $_.State -eq 'Up' }).Count
             if ($OnlineNodes -eq $ClusterInfo.NodeCount) {
@@ -562,17 +541,14 @@ function Get-VMDetailedStatus {
             CheckpointCount = 0
         }
         
-        # Uptime for running VMs
         if ($VM.State -eq 'Running' -and $VM.Uptime) {
             $VMStatus.Uptime = Format-Uptime -Uptime $VM.Uptime
         }
         
-        # CPU usage
         if ($VM.State -eq 'Running') {
             $VMStatus.CPUUsage = $VM.CPUUsage
         }
         
-        # Memory
         $VMMemory = Get-VMMemory -VM $VM -ErrorAction SilentlyContinue
         if ($VMMemory) {
             $VMStatus.MemoryAssignedMB = [Math]::Round($VMMemory.Startup / 1MB)
@@ -581,7 +557,6 @@ function Get-VMDetailedStatus {
             }
         }
         
-        # Integration services
         $IntServices = Get-VMIntegrationService -VM $VM -ErrorAction SilentlyContinue
         if ($IntServices) {
             $HeartbeatService = $IntServices | Where-Object { $_.Name -like "*Heartbeat*" -or $_.Name -eq "Heartbeat" }
@@ -591,16 +566,13 @@ function Get-VMDetailedStatus {
             }
         }
         
-        # Health color based on state and heartbeat
         $VMStatus.HealthColor = Get-VMHealthColor -State $VM.State -Heartbeat $VMStatus.Heartbeat
         
-        # Replication health
         $Replication = Get-VMReplication -VM $VM -ErrorAction SilentlyContinue
         if ($Replication) {
             $VMStatus.ReplicationHealth = $Replication.ReplicationHealth.ToString()
         }
         
-        # Checkpoints
         $Checkpoints = Get-VMSnapshot -VM $VM -ErrorAction SilentlyContinue
         if ($Checkpoints) {
             $VMStatus.CheckpointCount = @($Checkpoints).Count
@@ -650,14 +622,13 @@ function Build-VMHTMLReport {
                 default { 'black' }
             }
             
-            # Build table row
             $HTMLRows += @"
 <tr>
     <td><strong>$($VMStatus.Name)</strong></td>
     <td style='color:$StateColor'><strong>$($VMStatus.State)</strong></td>
     <td style='background-color:$($VMStatus.HealthColor); color:white; text-align:center; font-weight:bold;'>$($VMStatus.Heartbeat)</td>
     <td>$($VMStatus.Uptime)</td>
-    <td>$($VMStatus.CPUUsage)%</td>
+    <td>$($VMStatus.CPUUsage) percent</td>
     <td>$($VMStatus.MemoryAssignedMB) MB</td>
     <td>Gen $($VMStatus.Generation)</td>
     <td>$($VMStatus.IntegrationServicesState)</td>
@@ -665,7 +636,6 @@ function Build-VMHTMLReport {
 "@
         }
         
-        # Build summary section
         $TotalVMs = $VMList.Count
         $RunningVMs = @($VMList | Where-Object { $_.State -eq 'Running' }).Count
         $StoppedVMs = @($VMList | Where-Object { $_.State -eq 'Off' }).Count
@@ -673,7 +643,6 @@ function Build-VMHTMLReport {
         $WarningVMs = @($VMList | Where-Object { $_.HealthColor -in @('yellow','orange','lightgreen') }).Count
         $CriticalVMs = @($VMList | Where-Object { $_.HealthColor -eq 'red' }).Count
         
-        # Build HTML
         $HTML = @"
 <style>
 table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; font-size: 12px; }
@@ -713,7 +682,6 @@ $($HTMLRows -join "`n")
             $HTML += "    <div class='summary-item'><strong>Critical:</strong> <span style='color:red'>$CriticalVMs</span></div>`n"
         }
         
-        # Add cluster info if available
         if ($ClusterInfo -and $ClusterInfo.Clustered) {
             $HTML += "    <div class='summary-item'><strong>Cluster:</strong> $($ClusterInfo.ClusterName) ($($ClusterInfo.ClusterStatus))</div>`n"
         }
@@ -738,13 +706,11 @@ function Get-HostResourceUtilization {
             MemoryPercent = 0
         }
         
-        # Get CPU usage
         $CPU = Get-Counter '\Processor(_Total)\% Processor Time' -ErrorAction SilentlyContinue
         if ($CPU) {
             $Resources.CPUPercent = [Math]::Round($CPU.CounterSamples[0].CookedValue)
         }
         
-        # Get memory usage
         $OS = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
         if ($OS) {
             $TotalMemory = $OS.TotalVisibleMemorySize
@@ -770,7 +736,6 @@ try {
     Write-Log "Starting: $ScriptName v$ScriptVersion" -Level INFO
     Write-Log "========================================" -Level INFO
     
-    # Initialize variables
     $hypervInstalled = $false
     $hypervVersion = "Not Installed"
     $vmCount = 0
@@ -786,11 +751,9 @@ try {
     $vmReport = ""
     $healthStatus = "Unknown"
     
-    # Check if Hyper-V is installed
     if (-not (Test-HyperVInstalled)) {
         Write-Log "Hyper-V is not installed on this system" -Level INFO
         
-        # Update fields for non-Hyper-V systems
         Set-NinjaField -FieldName "hypervInstalled" -Value $false
         Set-NinjaField -FieldName "hypervVersion" -Value "Not Installed"
         Set-NinjaField -FieldName "hypervVMCount" -Value 0
@@ -814,16 +777,13 @@ try {
     $hypervInstalled = $true
     Write-Log "Hyper-V installation detected" -Level INFO
     
-    # Install/Import Hyper-V module
     if (-not (Install-HyperVModule)) {
         throw "Failed to install or import Hyper-V PowerShell module"
     }
     
-    # Get Hyper-V version
     $hypervVersion = Get-HyperVVersion
     Write-Log "Hyper-V Version: $hypervVersion" -Level INFO
     
-    # Get cluster information
     Write-Log "Checking for failover cluster membership..." -Level INFO
     $ClusterInfo = Get-ClusterInformation
     $clustered = $ClusterInfo.Clustered
@@ -838,13 +798,11 @@ try {
         Write-Log "System is not a cluster member" -Level INFO
     }
     
-    # Get all VMs
     Write-Log "Retrieving virtual machines..." -Level INFO
     $VMs = Get-VM -ErrorAction Stop
     $vmCount = @($VMs).Count
     Write-Log "Found $vmCount virtual machines" -Level INFO
     
-    # Process each VM
     $VMStatusList = @()
     $vmHealthy = 0
     $vmWarning = 0
@@ -853,18 +811,15 @@ try {
     foreach ($VM in $VMs) {
         Write-Log "Processing VM: $($VM.Name)" -Level DEBUG
         
-        # Count by state
         switch ($VM.State) {
             'Running' { $vmsRunning++ }
             'Off' { $vmsStopped++ }
             default { $vmsOther++ }
         }
         
-        # Get detailed status
         $VMStatus = Get-VMDetailedStatus -VM $VM
         $VMStatusList += $VMStatus
         
-        # Count health status
         switch ($VMStatus.HealthColor) {
             'green' { $vmHealthy++ }
             'lightgreen' { $vmHealthy++ }
@@ -876,18 +831,15 @@ try {
     Write-Log "VM Status - Running: $vmsRunning, Stopped: $vmsStopped, Other: $vmsOther" -Level INFO
     Write-Log "VM Health - Healthy: $vmHealthy, Warning: $vmWarning, Critical: $vmCritical" -Level INFO
     
-    # Get host resource utilization
     Write-Log "Getting host resource utilization..." -Level INFO
     $HostResources = Get-HostResourceUtilization
     $hostCPUPercent = $HostResources.CPUPercent
     $hostMemoryPercent = $HostResources.MemoryPercent
-    Write-Log "Host CPU: $hostCPUPercent%, Memory: $hostMemoryPercent%" -Level INFO
+    Write-Log "Host CPU: $hostCPUPercent percent, Memory: $hostMemoryPercent percent" -Level INFO
     
-    # Build HTML report
     Write-Log "Building HTML report..." -Level INFO
     $vmReport = Build-VMHTMLReport -VMList $VMStatusList -ClusterInfo $ClusterInfo
     
-    # Determine overall health status
     Write-Log "Determining overall health status..." -Level INFO
     
     if ($vmCritical -gt 0) {
@@ -899,10 +851,10 @@ try {
             Write-Log "Health: Warning - $vmWarning VMs in warning state" -Level WARN
         }
         if ($hostCPUPercent -ge $WarningCPUPercent) {
-            Write-Log "Health: Warning - High host CPU usage ($hostCPUPercent%)" -Level WARN
+            Write-Log "Health: Warning - High host CPU usage ($hostCPUPercent percent)" -Level WARN
         }
         if ($hostMemoryPercent -ge $WarningMemoryPercent) {
-            Write-Log "Health: Warning - High host memory usage ($hostMemoryPercent%)" -Level WARN
+            Write-Log "Health: Warning - High host memory usage ($hostMemoryPercent percent)" -Level WARN
         }
     } elseif ($clustered -and $clusterStatus -ne "Healthy") {
         $healthStatus = "Warning"
@@ -912,7 +864,6 @@ try {
         Write-Log "Health: Healthy - All VMs operating normally" -Level INFO
     }
     
-    # Update NinjaRMM fields
     Write-Log "Updating NinjaRMM custom fields..." -Level INFO
     
     Set-NinjaField -FieldName "hypervInstalled" -Value $true
@@ -937,7 +888,7 @@ try {
     Write-Log "  Version: $hypervVersion" -Level INFO
     Write-Log "  Total VMs: $vmCount" -Level INFO
     Write-Log "  Running: $vmsRunning | Stopped: $vmsStopped | Other: $vmsOther" -Level INFO
-    Write-Log "  Host CPU: $hostCPUPercent% | Memory: $hostMemoryPercent%" -Level INFO
+    Write-Log "  Host CPU: $hostCPUPercent percent | Memory: $hostMemoryPercent percent" -Level INFO
     if ($clustered) {
         Write-Log "  Cluster: $clusterName ($clusterStatus)" -Level INFO
     }
@@ -949,14 +900,12 @@ try {
     Write-Log "Script execution failed: $_" -Level ERROR
     Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level ERROR
     
-    # Set error state
     Set-NinjaField -FieldName "hypervHealthStatus" -Value "Unknown"
     Set-NinjaField -FieldName "hypervVMReport" -Value "Monitor script error: $($_.Exception.Message)"
     
     exit 1
     
 } finally {
-    # Calculate execution time - REQUIRED
     $EndTime = Get-Date
     $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
     
@@ -973,7 +922,6 @@ try {
     Write-Log "========================================" -Level INFO
 }
 
-# Exit with appropriate code
 if ($script:ErrorCount -gt 0) {
     exit 1
 } else {

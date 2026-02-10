@@ -2,327 +2,323 @@
 
 <#
 .SYNOPSIS
-    Exports the specified event logs to a specified location in a compressed zip file.
+    Exports specified event logs to a compressed zip file.
+
 .DESCRIPTION
-    Exports the specified event logs to a specified location in a compressed zip file.
-    The event logs can be exported from a specific date range.
+    This script exports Windows event logs to .evtx files and compresses them into a zip archive.
+    Supports date range filtering and automatic cleanup of temporary files.
 
-PARAMETER: -EventLogs "System,Security" -BackupDestination "C:\Temp\EventLogs\"
-    Exports the specified event logs to a specified location in a compressed zip file.
-.EXAMPLE
-    -EventLogs "System,Security" -BackupDestination "C:\Temp\EventLogs\"
-    ## EXAMPLE OUTPUT WITH EventLogs ##
-    [Info] Today is 2023-04-17
-    [Info] EventLogs are System,Security
-    [Info] Backup Destination is C:\Temp\EventLogs\
-    [Info] Start Date is null
-    [Info] End Date is null
-    [Info] Exporting Event Logs...
-    [Info] Exported Event Logs to C:\Temp\EventLogs\System.evtx
-    [Info] Exported Event Logs to C:\Temp\EventLogs\Security.evtx
-    [Info] Successfully exported Event Logs!
-    [Info] Compressing Event Logs...
-    [Info] Compressed Event Logs to C:\Temp\EventLogs\Backup-System-Security-2023-04-17.zip
-    [Info] Successfully compressed Event Logs!
-    [Info] Removing Temporary Event Logs...
-    [Info] Removed Temporary Event Logs!
+.PARAMETER EventLogs
+    Comma-separated list of event log names to export (e.g., "System,Security,Application").
 
-PARAMETER: -EventLogs "System,Security" -BackupDestination "C:\Temp\EventLogs\" -StartDate "2023-04-15" -EndDate "2023-04-15"
-    Exports the specified event logs to a specified location in a compressed zip file.
-    The event logs can be exported from a specific date range.
+.PARAMETER BackupDestination
+    Path to the folder where the backup zip file will be saved.
+
+.PARAMETER StartDate
+    Optional start date for filtering events (format: yyyy-MM-dd).
+
+.PARAMETER EndDate
+    Optional end date for filtering events (format: yyyy-MM-dd).
+
 .EXAMPLE
-    -EventLogs "System,Security" -BackupDestination "C:\Temp\EventLogs\" -StartDate "2023-04-15" -EndDate "2023-04-15"
-    ## EXAMPLE OUTPUT WITH StartDate and EndDate ##
-    [Info] Today is 2023-04-17
-    [Info] EventLogs are System,Security
-    [Info] Backup Destination is C:\Temp\EventLogs\
-    [Info] Start Date is 2023-04-15
-    [Info] End Date is 2023-04-16
-    [Info] Exporting Event Logs...
-    [Info] Exported Event Logs to C:\Temp\EventLogs\System.evtx
-    [Info] Exported Event Logs to C:\Temp\EventLogs\Security.evtx
-    [Info] Successfully exported Event Logs!
-    [Info] Compressing Event Logs...
-    [Info] Compressed Event Logs to C:\Temp\EventLogs\Backup-System-Security-2023-04-17.zip
-    [Info] Successfully compressed Event Logs!
-    [Info] Removing Temporary Event Logs...
-    [Info] Removed Temporary Event Logs!
+    .\EventLog-BackupToLocalDisk.ps1 -EventLogs "System,Security" -BackupDestination "C:\Temp\EventLogs\"
+
+    Exports System and Security event logs to C:\Temp\EventLogs\
+
+.EXAMPLE
+    .\EventLog-BackupToLocalDisk.ps1 -EventLogs "System" -BackupDestination "C:\Backup" -StartDate "2026-02-01" -EndDate "2026-02-10"
+
+    Exports System event log for date range February 1-10, 2026.
+
+.OUTPUTS
+    Creates a compressed .zip file containing the exported event logs.
+
 .NOTES
-    Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Version: 1.0
-    Release Notes: Initial Release
+    File Name      : EventLog-BackupToLocalDisk.ps1
+    Prerequisite   : PowerShell 5.1 or higher, Administrator privileges
+    Minimum OS     : Windows 10, Windows Server 2016
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: Upgraded to V3 standards with Write-Log function and execution tracking
+    - 1.0: Initial release
 #>
 
 [CmdletBinding()]
 param (
+    [Parameter()]
     [String]$EventLogs,
+    
+    [Parameter()]
     [String]$BackupDestination,
+    
+    [Parameter()]
     [DateTime]$StartDate,
+    
+    [Parameter()]
     [DateTime]$EndDate
 )
 
 begin {
+    $ErrorActionPreference = 'Stop'
+    $ProgressPreference = 'SilentlyContinue'
+    $StartTime = Get-Date
+    $ExitCode = 0
+    
+    Set-StrictMode -Version Latest
+
+    function Write-Log {
+        param(
+            [string]$Message,
+            [string]$Level = 'INFO'
+        )
+        $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $LogMessage = "[$Timestamp] [$Level] $Message"
+        
+        switch ($Level) {
+            'ERROR' { Write-Error $LogMessage }
+            'WARNING' { Write-Warning $LogMessage }
+            default { Write-Output $LogMessage }
+        }
+    }
+
     function Test-IsElevated {
         $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
         $p = New-Object System.Security.Principal.WindowsPrincipal($id)
         $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
     }
 }
+
 process {
-    if (-not (Test-IsElevated)) {
-        Write-Host "[Error] Access Denied. Please run with Administrator privileges."
-        exit 1
-    }
-    if ($env:eventLogs -and $env:eventLogs -notlike "null") {
-        $EventLogs = $env:eventLogs
-    }
-    
-    $EventLogNames = $EventLogs -split "," | ForEach-Object { $_.Trim() }
-    if ($env:backupDestination -and $env:backupDestination -notlike "null") {
-        $BackupDestination = $env:backupDestination
-    }
-    if ($env:startDate -and $env:startDate -notlike "null") {
-        $StartDate = $env:startDate
-    }
-    if ($env:endDate -and $env:endDate -notlike "null") {
-        $EndDate = $env:endDate
-    }
+    try {
+        if (-not (Test-IsElevated)) {
+            Write-Log "Access Denied. Please run with Administrator privileges." -Level ERROR
+            $ExitCode = 1
+            return
+        }
 
-    # Validate StartDate and EndDate
-    if ($StartDate) {
-        try {
-            $StartDate = Get-Date -Date $StartDate -ErrorAction Stop
+        if ($env:eventLogs -and $env:eventLogs -notlike "null") {
+            $EventLogs = $env:eventLogs
         }
-        catch {
-            Write-Host "[Error] The specified start date is not a valid date."
-            exit 1
+        
+        $EventLogNames = $EventLogs -split "," | ForEach-Object { $_.Trim() }
+        
+        if ($env:backupDestination -and $env:backupDestination -notlike "null") {
+            $BackupDestination = $env:backupDestination
         }
-    }
-    if ($EndDate) {
-        try {
-            $EndDate = Get-Date -Date $EndDate -ErrorAction Stop
+        if ($env:startDate -and $env:startDate -notlike "null") {
+            $StartDate = $env:startDate
         }
-        catch {
-            Write-Host "[Error] The specified end date is not a valid date."
-            exit 1
+        if ($env:endDate -and $env:endDate -notlike "null") {
+            $EndDate = $env:endDate
         }
-    }
-    # Validate BackupDestination is a valid path to a folder
-    if ($(Test-Path -Path $BackupDestination -PathType Container -ErrorAction SilentlyContinue)) {
-        $BackupDestination = Get-Item -Path $BackupDestination
-    }
-    else {
-        try {
-            $BackupDestination = New-Item -Path $BackupDestination -ItemType Directory -ErrorAction Stop
-        }
-        catch {
-            Write-Host "[Error] The specified backup destination is not a valid path to a folder."
-            exit 1
-        }
-    }
 
-    Write-Host "[Info] Today is $(Get-Date -Format yyyy-MM-dd-HH-mm)"
-
-    # Validate EventLogs are valid event logs
-    if (
-        $(
-            wevtutil.exe el | ForEach-Object {
-                if ($EventLogNames -and $($EventLogNames -contains $_ -or $EventLogNames -like $_)) { $_ }
-            }
-        ).Count -eq 0
-    ) {
-        Write-Host "[Error] No Event Logs matching: $EventLogNames"
-    }
-
-    Write-Host "[Info] EventLogs are $EventLogNames"
-    if ($EventLogNames -and $EventLogNames.Count -gt 0) {
-        Write-Host "[Info] Backup Destination is $BackupDestination"
-
-        # If the start date is specified, check if it's a valid date
         if ($StartDate) {
             try {
-                $StartDate = $(Get-Date -Date $StartDate).ToUniversalTime()
+                $StartDate = Get-Date -Date $StartDate
             }
             catch {
-                Write-Host "[Error] The specified start date is not a valid date."
-                exit 1
+                Write-Log "The specified start date is not a valid date." -Level ERROR
+                $ExitCode = 1
+                return
             }
-            Write-Host "[Info] Start Date is $(Get-Date -Date $StartDate -Format yyyy-MM-dd-HH-mm)"
         }
-        else {
-            Write-Host "[Info] Start Date is null"
-        }
+        
         if ($EndDate) {
             try {
-                $EndDate = $(Get-Date -Date $EndDate).ToUniversalTime()
+                $EndDate = Get-Date -Date $EndDate
             }
             catch {
-                Write-Host "[Error] The specified end date is not a valid date."
-                exit 1
+                Write-Log "The specified end date is not a valid date." -Level ERROR
+                $ExitCode = 1
+                return
             }
-            Write-Host "[Info] End Date is $(Get-Date -Date $EndDate -Format yyyy-MM-dd-HH-mm)"
-        }
-        else {
-            Write-Host "[Info] End Date is null"
         }
 
-        # Check if the start date after the end date
+        if (Test-Path -Path $BackupDestination -PathType Container -ErrorAction SilentlyContinue) {
+            $BackupDestination = Get-Item -Path $BackupDestination
+        }
+        else {
+            try {
+                $BackupDestination = New-Item -Path $BackupDestination -ItemType Directory -ErrorAction Stop
+            }
+            catch {
+                Write-Log "The specified backup destination is not a valid path to a folder." -Level ERROR
+                $ExitCode = 1
+                return
+            }
+        }
+
+        Write-Log "Today is $(Get-Date -Format yyyy-MM-dd-HH-mm)"
+
+        $AvailableLogs = wevtutil.exe el | ForEach-Object {
+            if ($EventLogNames -and ($EventLogNames -contains $_ -or $EventLogNames -like $_)) { $_ }
+        }
+
+        if ($AvailableLogs.Count -eq 0) {
+            Write-Log "No Event Logs matching: $EventLogNames" -Level ERROR
+            $ExitCode = 1
+            return
+        }
+
+        Write-Log "EventLogs are $EventLogNames"
+        Write-Log "Backup Destination is $BackupDestination"
+
+        if ($StartDate) {
+            $StartDate = $StartDate.ToUniversalTime()
+            Write-Log "Start Date is $(Get-Date -Date $StartDate -Format yyyy-MM-dd-HH-mm)"
+        }
+        else {
+            Write-Log "Start Date is null"
+        }
+        
+        if ($EndDate) {
+            $EndDate = $EndDate.ToUniversalTime()
+            Write-Log "End Date is $(Get-Date -Date $EndDate -Format yyyy-MM-dd-HH-mm)"
+        }
+        else {
+            Write-Log "End Date is null"
+        }
+
         if ($StartDate -and $EndDate -and $StartDate -gt $EndDate) {
-            # Flip the dates if the start date is after the end date
             $OldEndDate = $EndDate
             $OldStartDate = $StartDate
             $EndDate = $OldStartDate
             $StartDate = $OldEndDate
-            Write-Host "[Info] Start Date is after the end date. Flipping dates."
+            Write-Log "Start Date is after the end date. Flipping dates." -Level WARNING
         }
 
-        Write-Host "[Info] Exporting Event Logs..."
+        Write-Log "Exporting Event Logs..."
+        $ExportedFiles = @()
+        
         foreach ($EventLog in $EventLogNames) {
-            $EventLogPath = $(Join-Path -Path $BackupDestination -ChildPath "$EventLog.evtx")
+            $EventLogPath = Join-Path -Path $BackupDestination -ChildPath "$EventLog.evtx"
             try {
-                if ($StartDate -and $EndDate) {
-                    wevtutil.exe epl "$EventLog" "$EventLogPath" /ow:true /query:"*[System[TimeCreated[@SystemTime>='$(Get-Date -Date $StartDate -UFormat "%Y-%m-%dT%H:%M:%S")' and @SystemTime<='$(Get-Date -Date $EndDate -UFormat "%Y-%m-%dT%H:%M:%S")']]]" 2>$null
+                $Query = if ($StartDate -and $EndDate) {
+                    "*[System[TimeCreated[@SystemTime>='$(Get-Date -Date $StartDate -UFormat "%Y-%m-%dT%H:%M:%S")' and @SystemTime<='$(Get-Date -Date $EndDate -UFormat "%Y-%m-%dT%H:%M:%S")']]]" 
                 }
                 elseif ($StartDate) {
-                    wevtutil.exe epl "$EventLog" "$EventLogPath" /ow:true /query:"*[System[TimeCreated[@SystemTime>='$(Get-Date -Date $StartDate -UFormat "%Y-%m-%dT%H:%M:%S")']]]" 2>$null
+                    "*[System[TimeCreated[@SystemTime>='$(Get-Date -Date $StartDate -UFormat "%Y-%m-%dT%H:%M:%S")']]]" 
                 }
                 elseif ($EndDate) {
-                    wevtutil.exe epl "$EventLog" "$EventLogPath" /ow:true /query:"*[System[TimeCreated[@SystemTime<='$(Get-Date -Date $EndDate -UFormat "%Y-%m-%dT%H:%M:%S")']]]" 2>$null
+                    "*[System[TimeCreated[@SystemTime<='$(Get-Date -Date $EndDate -UFormat "%Y-%m-%dT%H:%M:%S")']]]" 
                 }
                 else {
-                    wevtutil.exe epl "$EventLog" "$EventLogPath" /ow:true /query:"*[System[TimeCreated[@SystemTime>='1970-01-01T00:00:00']]]" 2>$null
+                    "*[System[TimeCreated[@SystemTime>='1970-01-01T00:00:00']]]" 
                 }
-                if ($(Test-Path -Path $EventLogPath -ErrorAction SilentlyContinue)) {
-                    # Get the number of events in the log
-                    $EventCount = $(Get-WinEvent -Path $EventLogPath -ErrorAction SilentlyContinue).Count
+
+                wevtutil.exe epl "$EventLog" "$EventLogPath" /ow:true /query:"$Query" 2>$null
+
+                if (Test-Path -Path $EventLogPath -ErrorAction SilentlyContinue) {
+                    $EventCount = (Get-WinEvent -Path $EventLogPath -ErrorAction SilentlyContinue).Count
                     if ($EventCount -and $EventCount -gt 0) {
-                        Write-Host "[Info] Found $EventCount events from $EventLog"
+                        Write-Log "Found $EventCount events from $EventLog"
+                        Write-Log "Exported Event Logs to $EventLogPath"
+                        $ExportedFiles += $EventLogPath
                     }
                     else {
-                        Write-Host "[Warn] No events found in $EventLog"
-                        continue
+                        Write-Log "No events found in $EventLog" -Level WARNING
                     }
-                    Write-Host "[Info] Exported Event Logs to $EventLogPath"
                 }
                 else {
-                    throw
+                    throw "Export failed"
                 }
             }
             catch {
-                Write-Host "[Error] Failed to export event logs $EventLog"
+                Write-Log "Failed to export event logs $EventLog" -Level ERROR
                 continue
             }
         }
 
-        Write-Host "[Info] Compressing Event Logs..."
-
-        # Get the event log paths that where created
-        $JoinedPaths = foreach ($EventLog in $EventLogNames) {
-            # Join the Backup Destination and the Event Log Name
-            $JoinedPath = Join-Path -Path $BackupDestination -ChildPath "$EventLog.evtx" -ErrorAction SilentlyContinue
-            if ($(Test-Path -Path $JoinedPath -ErrorAction SilentlyContinue)) {
-                # Get the saved event log path
-                Get-Item -Path $JoinedPath -ErrorAction SilentlyContinue
-            }
+        if ($ExportedFiles.Count -eq 0) {
+            Write-Log "No event logs were exported." -Level ERROR
+            $ExitCode = 1
+            return
         }
-        $JoinedPaths = $JoinedPaths | Where-Object { $(Test-Path -Path $_ -ErrorAction SilentlyContinue) }
 
-        try {
-            # Create a destination path to save the compressed file to
-            # <Folder>Backup-<EventLogName-EventLogName>-<Date>.zip
-            $Destination = Join-Path -Path $($BackupDestination) -ChildPath $(
-                @(
-                    "Backup-",
-                    $($EventLogNames -join '-'),
-                    "-",
-                    $(Get-Date -Format yyyy-MM-dd-HH-mm),
-                    ".zip"
-                ) -join ''
-            )
+        Write-Log "Compressing Event Logs..."
 
-            $CompressArchiveSplat = @{
-                Path            = $JoinedPaths
-                DestinationPath = $Destination
-                Update          = $true
+        $Destination = Join-Path -Path $BackupDestination -ChildPath (
+            "Backup-" + ($EventLogNames -join '-') + "-" + (Get-Date -Format yyyy-MM-dd-HH-mm) + ".zip"
+        )
+
+        $CompressArchiveSplat = @{
+            Path            = $ExportedFiles
+            DestinationPath = $Destination
+            Update          = $true
+        }
+
+        $CompressError = $true
+        $ErrorCount = 0
+        $TimeOut = 120
+        
+        while ($CompressError -and $ErrorCount -lt $TimeOut) {
+            try {
+                Compress-Archive @CompressArchiveSplat -ErrorAction Stop
+                $CompressError = $false
+                break
             }
-
-            # # If the destination path already exists, update the archive instead of creating a new one
-            # if ($(Test-Path -Path $Destination -ErrorAction SilentlyContinue)) {
-            #     $CompressArchiveSplat.Add("Update", $true)
-            # }
-
-            # Compress the Event Logs
-            $CompressError = $true
-            $ErrorCount = 0
-            $SecondsToSleep = 1
-            $TimeOut = 120
-            while ($CompressError) {
-                try {
-                    $CompressError = $false
-                    Compress-Archive @CompressArchiveSplat -ErrorAction Stop
-                    break
+            catch {
+                $CompressError = $true
+                if ($ErrorCount -eq 0) {
+                    Write-Log "Waiting for wevtutil.exe to close file." -Level WARNING
                 }
-                catch {
-                    $CompressError = $true
-                }
-
-                if ($CompressError) {
-                    if ($ErrorCount -gt $TimeOut) {
-                        Write-Host "[Warn] Skipping compression... Timed out."
-                    }
-                    if ($ErrorCount -eq 0) {
-                        Write-Host "[Info] Waiting for wevtutil.exe to close file."
-                    }
-                    Start-Sleep -Seconds $SecondsToSleep
-                }
+                Start-Sleep -Seconds 1
                 $ErrorCount++
             }
-            if ($CompressError) {
-                Write-Host "[Error] Failed to Compress Event Logs."
-            }
-            else {
-                Write-Host "[Info] Compressed Event Logs to $($Destination)"
-            }
-        }
-        catch {
-            Write-Host "[Error] Failed to compress event logs."
         }
 
-        if ($(Test-Path -Path $Destination -ErrorAction SilentlyContinue)) {
-            Write-Host "[Info] Removing Temporary Event Logs..."
-            foreach ($EventLogPath in $JoinedPaths) {
+        if ($CompressError) {
+            Write-Log "Failed to compress Event Logs (timed out)." -Level ERROR
+            $ExitCode = 1
+        }
+        else {
+            Write-Log "Compressed Event Logs to $Destination"
+        }
+
+        if (Test-Path -Path $Destination -ErrorAction SilentlyContinue) {
+            Write-Log "Removing Temporary Event Logs..."
+            foreach ($EventLogPath in $ExportedFiles) {
                 try {
-                    Remove-Item -Path $EventLogPath -Force -ErrorAction SilentlyContinue
-                    Write-Host "[Info] Removed Temporary Event Logs: $EventLogPath"
+                    Remove-Item -Path $EventLogPath -Force -ErrorAction Stop
+                    Write-Log "Removed Temporary Event Logs: $EventLogPath"
                 }
-                catch {}
+                catch {
+                    Write-Log "Failed to remove temporary file: $EventLogPath" -Level WARNING
+                }
             }
         }
         else {
-            Write-Host "[Info] Renaming Event Logs..."
-            foreach ($EventLogPath in $JoinedPaths) {
-                if ($(Test-Path -Path $EventLogPath -ErrorAction SilentlyContinue)) {
+            Write-Log "Renaming Event Logs..."
+            foreach ($EventLogPath in $ExportedFiles) {
+                if (Test-Path -Path $EventLogPath -ErrorAction SilentlyContinue) {
                     try {
-                        $NewPath = Rename-Item -Path $EventLogPath -NewName "$($EventLogPath.BaseName)-$(Get-Date -Format yyyy-MM-dd-HH-mm).evtx" -PassThru -ErrorAction Stop
-                        Write-Host "[Info] Event Logs saved to: $NewPath"
+                        $BaseName = [System.IO.Path]::GetFileNameWithoutExtension($EventLogPath)
+                        $NewName = "$BaseName-$(Get-Date -Format yyyy-MM-dd-HH-mm).evtx"
+                        $NewPath = Rename-Item -Path $EventLogPath -NewName $NewName -PassThru -ErrorAction Stop
+                        Write-Log "Event Logs saved to: $NewPath"
                     }
                     catch {
-                        Write-Host "[Info] Event Logs saved to: $EventLogPath"
+                        Write-Log "Event Logs saved to: $EventLogPath"
                     }
-                }
-                else {
-                    Write-Host "[Info] Event Logs saved to: $EventLogPath"
                 }
             }
         }
     }
-    else {
-        Write-Host "[Error] No Event Logs were specified."
-        exit 1
+    catch {
+        Write-Log "An unexpected error occurred: $_" -Level ERROR
+        $ExitCode = 1
     }
 }
+
 end {
-    
-    
-    
+    try {
+        $EndTime = Get-Date
+        $Duration = ($EndTime - $StartTime).TotalSeconds
+        Write-Log "Script execution completed in $Duration seconds"
+    }
+    finally {
+        [System.GC]::Collect()
+        exit $ExitCode
+    }
 }

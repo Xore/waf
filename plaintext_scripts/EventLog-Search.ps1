@@ -151,10 +151,10 @@ if ($env:saveToCustomField -and $env:saveToCustomField -notlike "null") {
 
 $StartTime = Get-Date
 $ErrorActionPreference = 'Continue'
-$script:ExitCode = 0
-$script:ErrorCount = 0
-$script:WarningCount = 0
-$script:CLIFallbackCount = 0
+$ExitCode = 0
+$ErrorCount = 0
+$WarningCount = 0
+$CLIFallbackCount = 0
 $EventsFound = 0
 
 Set-StrictMode -Version Latest
@@ -329,7 +329,7 @@ try {
 } catch {
     Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
     Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
-    $script:ExitCode = 1
+    $ExitCode = 1
     
 } finally {
     $EndTime = Get-Date
@@ -340,11 +340,11 @@ try {
     Write-Log "Execution Summary:" -Level INFO
     Write-Log "  Events Found: $EventsFound" -Level INFO
     Write-Log "  Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
-    Write-Log "  Errors: $script:ErrorCount" -Level INFO
-    Write-Log "  Warnings: $script:WarningCount" -Level INFO
-    Write-Log "  CLI Fallbacks: $script:CLIFallbackCount" -Level INFO
-    Write-Log "  Exit Code: $script:ExitCode" -Level INFO
+    Write-Log "  Errors: $ErrorCount" -Level INFO
+    Write-Log "  Warnings: $WarningCount" -Level INFO
+    Write-Log "  CLI Fallbacks: $CLIFallbackCount" -Level INFO
+    Write-Log "  Exit Code: $ExitCode" -Level INFO
     Write-Log "========================================" -Level INFO
     
-    exit $script:ExitCode
+    exit $ExitCode
 }

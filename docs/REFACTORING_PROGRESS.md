@@ -5,8 +5,8 @@ This document tracks the progress of upgrading WAF scripts to V3.0.0 standards.
 ## Current Status
 
 **Date:** 2026-02-10  
-**Progress:** 8 scripts upgraded to V3.0.0  
-**Remaining:** ~69 scripts with $ExitCode pattern identified
+**Progress:** 11 scripts upgraded to V3.0.0  
+**Remaining:** ~66 scripts with $ExitCode pattern identified
 
 ## Upgrade Standards
 
@@ -16,6 +16,7 @@ All scripts are being upgraded to comply with:
 - Execution time tracking
 - Begin/Process/End block structure
 - Consistent code formatting and documentation
+- Proper cleanup in end blocks using [System.GC]::Collect()
 
 ## Completed Scripts
 
@@ -55,20 +56,31 @@ All scripts are being upgraded to comply with:
    - Commit: [6aad300](https://github.com/Xore/waf/commit/6aad3009e66cd0bf155efaa7c0272255d5f1c542)
    - Changes: Replaced `$ExitCode` with `$script:ExitCode`
 
-## Pending Scripts (69 remaining)
+### Batch 4 (2026-02-10 19:51 CET)
+9. **Browser-ListExtensions.ps1**
+   - Commit: [011f75b](https://github.com/Xore/waf/commit/011f75b714a76442d24e99f75259bdf332b5fd28)
+   - Changes: Replaced `$ExitCode` with `$script:ExitCode`, added end block cleanup
+   - Note: Large complex script (36KB+) with multi-browser support
+
+10. **Security-SetLMCompatibilityLevel.ps1**
+    - Commit: [7dd0309](https://github.com/Xore/waf/commit/7dd030968f7cacb8313f69297cd7235459898d7f)
+    - Changes: Replaced `$ExitCode` with `$script:ExitCode`
+
+11. **RDP-CheckStatusAndPort.ps1**
+    - Commit: [1e8c4ed](https://github.com/Xore/waf/commit/1e8c4ed01e672d221953daad8527dfc4de13e3c0)
+    - Changes: Replaced `$ExitCode` with `$script:ExitCode`
+
+## Pending Scripts (66 remaining)
 
 Scripts identified for upgrade:
-- Cepros-UpdateCDBServerURL.ps1
-- Software-InstallNetFramework35.ps1
-- Software-InstallSiemensNX2.ps1
-- Browser-ListExtensions.ps1
-- Security-SetLMCompatibilityLevel.ps1
-- MalwareBytes-UpdateDefinitions.ps1
-- RDP-CheckStatusAndPort.ps1
-- Software-InstallOffice365.ps1
 - Shortcuts-CreateDesktopEXE.ps1
 - Windows-GetActivationStatus.ps1
 - Network-CheckAndDisableSMBv1.ps1
+- MalwareBytes-UpdateDefinitions.ps1
+- Software-InstallOffice365.ps1
+- Software-InstallNetFramework35.ps1
+- Software-InstallSiemensNX2.ps1
+- Cepros-UpdateCDBServerURL.ps1
 - ... and 58 more scripts
 
 ## Notes
@@ -78,3 +90,4 @@ Scripts identified for upgrade:
 - Each script pushed individually to GitHub
 - Version bumped to 3.0.0 for all upgraded scripts
 - All commits include descriptive messages following conventional commit format
+- Proper resource cleanup added where missing

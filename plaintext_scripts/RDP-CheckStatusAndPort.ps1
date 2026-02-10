@@ -39,7 +39,7 @@
     Version        : 3.0.0
     Author         : WAF Team
     Change Log:
-    - 3.0.0: Upgraded to V3 standards with Write-Log function and execution tracking
+    - 3.0.0: Upgraded to V3.0.0 standards (script-scoped exit code)
     - 1.0: Initial release
 #>
 
@@ -53,7 +53,7 @@ begin {
     $ErrorActionPreference = 'Stop'
     $ProgressPreference = 'SilentlyContinue'
     $StartTime = Get-Date
-    $ExitCode = 0
+    $script:ExitCode = 0
     
     Set-StrictMode -Version Latest
 
@@ -123,13 +123,13 @@ process {
             }
             catch {
                 Write-Log "Failed to set custom field: $_" -Level ERROR
-                $ExitCode = 1
+                $script:ExitCode = 1
             }
         }
     }
     catch {
         Write-Log "An unexpected error occurred: $_" -Level ERROR
-        $ExitCode = 1
+        $script:ExitCode = 1
     }
 }
 
@@ -141,6 +141,6 @@ end {
     }
     finally {
         [System.GC]::Collect()
-        exit $ExitCode
+        exit $script:ExitCode
     }
 }

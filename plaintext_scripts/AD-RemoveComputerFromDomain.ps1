@@ -1,4 +1,4 @@
-#Requires -Version 2.0
+#Requires -Version 5.1
 
 <#
 .SYNOPSIS
@@ -86,7 +86,7 @@
     Credential Security:
     - PSCredential object prevents plain-text password exposure
     - ConvertTo-SecureString encrypts password in memory
-    - Credentials cleared from memory after use ($LeaveCred = $null)
+    - Credentials cleared from memory after use
     - Secure custom fields encrypted with AES-256
     - No credential logging to console output
     
@@ -231,18 +231,23 @@
     Retrieves password from secure custom field named "DomainAdminPassword".
 
 .NOTES
-    Script Name:    AD-RemoveComputerFromDomain.ps1
-    Author:         Windows Automation Framework
-    Version:        3.0
-    Creation Date:  2024-01-15
-    Last Modified:  2026-02-10
+    File Name      : AD-RemoveComputerFromDomain.ps1
+    Prerequisite   : PowerShell 5.1 or higher
+    Minimum OS     : Windows 10, Windows Server 2016
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: V3 standards with Set-StrictMode and enhanced error handling
+    - 3.0: Enhanced documentation and NinjaRMM integration
+    - 2.0: Added credential management
+    - 1.0: Initial release
     
     Execution Context: SYSTEM or Administrator required
     Execution Frequency: One-time (domain removal operation)
     Typical Duration: 15-60 seconds (plus restart time if enabled)
     Timeout Setting: 180 seconds recommended
     
-    User Interaction: NONE (automatic restart if enabled)
+    User Interaction: None (automatic restart if enabled)
     Restart Behavior: Optional automatic restart
     
     NinjaRMM Fields Updated: None
@@ -251,7 +256,7 @@
         - Network connectivity to domain controller
         - Valid domain administrator credentials
         - DNS resolution to domain
-        - PowerShell 2.0 or later
+        - PowerShell 5.1 or later
     
     Exit Codes:
         0 - Successfully removed from domain
@@ -280,204 +285,222 @@ param (
     [Switch]$NoRestart = [System.Convert]::ToBoolean($env:noRestart)
 )
 
-# Configuration
-$ScriptVersion = "3.0"
-$ScriptName = "AD-RemoveComputerFromDomain"
+begin {
+    Set-StrictMode -Version Latest
+    
+    $ScriptVersion = "3.0.0"
+    $ScriptName = "AD-RemoveComputerFromDomain"
+    
+    $StartTime = Get-Date
+    $ErrorActionPreference = 'Stop'
+    $script:ErrorCount = 0
+    $script:WarningCount = 0
+    $script:ExitCode = 0
+    $script:LeaveCred = $null
 
-function Get-NinjaProperty {
-    <#
-    .SYNOPSIS
-        Retrieve NinjaRMM custom field values with type conversion
-    .DESCRIPTION
-        Comprehensive function to retrieve custom field data from NinjaRMM
-        with support for multiple field types and automatic type conversion.
-    #>
-    [CmdletBinding()]
-    Param(
-        [Parameter(Mandatory = $True, ValueFromPipeline = $True)]
-        [String]$Name,
-        [Parameter()]
-        [String]$Type,
-        [Parameter()]
-        [String]$DocumentName
-    )
-
-    $DocumentationParams = @{}
-    if ($DocumentName) { $DocumentationParams["DocumentName"] = $DocumentName }
-
-    $NeedsOptions = "DropDown", "MultiSelect"
-
-    if ($DocumentName) {
-        if ($Type -Like "Secure") { 
-            throw [System.ArgumentOutOfRangeException]::New("$Type is an invalid type! Secure fields only available as device custom fields.")
-        }
-
-        $NinjaPropertyValue = Ninja-Property-Docs-Get -AttributeName $Name @DocumentationParams 2>&1
-
-        if ($NeedsOptions -contains $Type) {
-            $NinjaPropertyOptions = Ninja-Property-Docs-Options -AttributeName $Name @DocumentationParams 2>&1
-        }
-    }
-    else {
-        $NinjaPropertyValue = Ninja-Property-Get -Name $Name 2>&1
-
-        if ($NeedsOptions -contains $Type) {
-            $NinjaPropertyOptions = Ninja-Property-Options -Name $Name 2>&1
+    function Write-Log {
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory=$true)]
+            [string]$Message,
+            [Parameter(Mandatory=$false)]
+            [ValidateSet('DEBUG','INFO','WARN','ERROR','SUCCESS')]
+            [string]$Level = 'INFO'
+        )
+        
+        $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        Write-Output "[$Timestamp] [$Level] $Message"
+        
+        switch ($Level) {
+            'WARN'  { $script:WarningCount++ }
+            'ERROR' { $script:ErrorCount++ }
         }
     }
 
-    if ($NinjaPropertyValue.Exception) { throw $NinjaPropertyValue }
-    if ($NinjaPropertyOptions.Exception) { throw $NinjaPropertyOptions }
+    function Get-NinjaProperty {
+        <#
+        .SYNOPSIS
+            Retrieve NinjaRMM custom field values with type conversion
+        .DESCRIPTION
+            Comprehensive function to retrieve custom field data from NinjaRMM
+            with support for multiple field types and automatic type conversion.
+        #>
+        [CmdletBinding()]
+        Param(
+            [Parameter(Mandatory = $True, ValueFromPipeline = $True)]
+            [String]$Name,
+            [Parameter()]
+            [String]$Type,
+            [Parameter()]
+            [String]$DocumentName
+        )
 
-    if (-not $NinjaPropertyValue) {
-        throw [System.NullReferenceException]::New("The Custom Field '$Name' is empty!")
-    }
+        $DocumentationParams = @{}
+        if ($DocumentName) { $DocumentationParams["DocumentName"] = $DocumentName }
 
-    switch ($Type) {
-        "Attachment" { $NinjaPropertyValue | ConvertFrom-Json }
-        "Checkbox" { [System.Convert]::ToBoolean([int]$NinjaPropertyValue) }
-        "Date or Date Time" {
-            $UnixTimeStamp = $NinjaPropertyValue
-            $UTC = (Get-Date "1970-01-01 00:00:00").AddSeconds($UnixTimeStamp)
-            $TimeZone = [TimeZoneInfo]::Local
-            [TimeZoneInfo]::ConvertTimeFromUtc($UTC, $TimeZone)
-        }
-        "Decimal" { [double]$NinjaPropertyValue }
-        "Device Dropdown" { $NinjaPropertyValue | ConvertFrom-Json }
-        "Device MultiSelect" { $NinjaPropertyValue | ConvertFrom-Json }
-        "Dropdown" {
-            $Options = $NinjaPropertyOptions -replace '=', ',' | ConvertFrom-Csv -Header "GUID", "Name"
-            $Options | Where-Object { $_.GUID -eq $NinjaPropertyValue } | Select-Object -ExpandProperty Name
-        }
-        "Integer" { [int]$NinjaPropertyValue }
-        "MultiSelect" {
-            $Options = $NinjaPropertyOptions -replace '=', ',' | ConvertFrom-Csv -Header "GUID", "Name"
-            $Selection = ($NinjaPropertyValue -split ',').trim()
+        $NeedsOptions = "DropDown", "MultiSelect"
 
-            foreach ($Item in $Selection) {
-                $Options | Where-Object { $_.GUID -eq $Item } | Select-Object -ExpandProperty Name
+        if ($DocumentName) {
+            if ($Type -Like "Secure") { 
+                throw [System.ArgumentOutOfRangeException]::New("$Type is an invalid type! Secure fields only available as device custom fields.")
+            }
+
+            $NinjaPropertyValue = Ninja-Property-Docs-Get -AttributeName $Name @DocumentationParams 2>&1
+
+            if ($NeedsOptions -contains $Type) {
+                $NinjaPropertyOptions = Ninja-Property-Docs-Options -AttributeName $Name @DocumentationParams 2>&1
             }
         }
-        "Organization Dropdown" { $NinjaPropertyValue | ConvertFrom-Json }
-        "Organization Location Dropdown" { $NinjaPropertyValue | ConvertFrom-Json }
-        "Organization Location MultiSelect" { $NinjaPropertyValue | ConvertFrom-Json }
-        "Organization MultiSelect" { $NinjaPropertyValue | ConvertFrom-Json }
-        "Time" {
-            $Seconds = $NinjaPropertyValue
-            $UTC = ([TimeSpan]::FromSeconds($Seconds)).ToString("hh\:mm\:ss")
-            $TimeZone = [TimeZoneInfo]::Local
-            $ConvertedTime = [TimeZoneInfo]::ConvertTimeFromUtc($UTC, $TimeZone)
-            Get-Date $ConvertedTime -DisplayHint Time
+        else {
+            $NinjaPropertyValue = Ninja-Property-Get -Name $Name 2>&1
+
+            if ($NeedsOptions -contains $Type) {
+                $NinjaPropertyOptions = Ninja-Property-Options -Name $Name 2>&1
+            }
         }
-        default { $NinjaPropertyValue }
+
+        if ($NinjaPropertyValue.Exception) { throw $NinjaPropertyValue }
+        if ($NinjaPropertyOptions.Exception) { throw $NinjaPropertyOptions }
+
+        if (-not $NinjaPropertyValue) {
+            throw [System.NullReferenceException]::New("The Custom Field '$Name' is empty!")
+        }
+
+        switch ($Type) {
+            "Attachment" { $NinjaPropertyValue | ConvertFrom-Json }
+            "Checkbox" { [System.Convert]::ToBoolean([int]$NinjaPropertyValue) }
+            "Date or Date Time" {
+                $UnixTimeStamp = $NinjaPropertyValue
+                $UTC = (Get-Date "1970-01-01 00:00:00").AddSeconds($UnixTimeStamp)
+                $TimeZone = [TimeZoneInfo]::Local
+                [TimeZoneInfo]::ConvertTimeFromUtc($UTC, $TimeZone)
+            }
+            "Decimal" { [double]$NinjaPropertyValue }
+            "Device Dropdown" { $NinjaPropertyValue | ConvertFrom-Json }
+            "Device MultiSelect" { $NinjaPropertyValue | ConvertFrom-Json }
+            "Dropdown" {
+                $Options = $NinjaPropertyOptions -replace '=', ',' | ConvertFrom-Csv -Header "GUID", "Name"
+                $Options | Where-Object { $_.GUID -eq $NinjaPropertyValue } | Select-Object -ExpandProperty Name
+            }
+            "Integer" { [int]$NinjaPropertyValue }
+            "MultiSelect" {
+                $Options = $NinjaPropertyOptions -replace '=', ',' | ConvertFrom-Csv -Header "GUID", "Name"
+                $Selection = ($NinjaPropertyValue -split ',').trim()
+
+                foreach ($Item in $Selection) {
+                    $Options | Where-Object { $_.GUID -eq $Item } | Select-Object -ExpandProperty Name
+                }
+            }
+            "Organization Dropdown" { $NinjaPropertyValue | ConvertFrom-Json }
+            "Organization Location Dropdown" { $NinjaPropertyValue | ConvertFrom-Json }
+            "Organization Location MultiSelect" { $NinjaPropertyValue | ConvertFrom-Json }
+            "Organization MultiSelect" { $NinjaPropertyValue | ConvertFrom-Json }
+            "Time" {
+                $Seconds = $NinjaPropertyValue
+                $UTC = ([TimeSpan]::FromSeconds($Seconds)).ToString("hh\:mm\:ss")
+                $TimeZone = [TimeZoneInfo]::Local
+                $ConvertedTime = [TimeZoneInfo]::ConvertTimeFromUtc($UTC, $TimeZone)
+                Get-Date $ConvertedTime -DisplayHint Time
+            }
+            default { $NinjaPropertyValue }
+        }
     }
 }
 
-try {
-    Write-Host "========================================"
-    Write-Host "Starting: $ScriptName v$ScriptVersion"
-    Write-Host "========================================"
-    Write-Host ""
-    
-    # Check for environment variable overrides
-    if ($env:domainUsername -and $env:domainUsername -notlike "null") { 
-        $UserName = $env:domainUsername 
-    }
+process {
+    try {
+        Write-Log "========================================" -Level INFO
+        Write-Log "Starting: $ScriptName v$ScriptVersion" -Level INFO
+        Write-Log "========================================" -Level INFO
+        
+        if ($env:domainUsername -and $env:domainUsername -notlike "null") { 
+            $UserName = $env:domainUsername 
+            Write-Log "Using username from environment variable: $UserName" -Level INFO
+        }
 
-    if ($env:domainPasswordWithCustomField -and $env:domainPasswordWithCustomField -notlike "null") { 
-        try {
-            Write-Host "Retrieving domain password from secure custom field: $env:domainPasswordWithCustomField"
+        if ($env:domainPasswordWithCustomField -and $env:domainPasswordWithCustomField -notlike "null") { 
+            Write-Log "Retrieving domain password from secure custom field: $env:domainPasswordWithCustomField" -Level INFO
             $Password = Get-NinjaProperty -Name $env:domainPasswordWithCustomField
             
             if ([string]::IsNullOrWhiteSpace($Password)) {
-                Write-Host "ERROR: The secure custom field '$env:domainPasswordWithCustomField' is empty."
-                exit 1
+                Write-Log "The secure custom field '$env:domainPasswordWithCustomField' is empty" -Level ERROR
+                $script:ExitCode = 1
+                return
             }
             
-            Write-Host "Password retrieved successfully from secure custom field"
+            Write-Log "Password retrieved successfully from secure custom field" -Level SUCCESS
         }
-        catch {
-            Write-Host "ERROR: Failed to retrieve password from secure custom field '$env:domainPasswordWithCustomField'"
-            Write-Host "ERROR: $($_.Exception.Message)"
-            exit 1
+
+        if (-not $UserName -or -not $Password) {
+            Write-Log "Domain username and password are required" -Level ERROR
+            Write-Log "Configure parameters: -UserName and -Password" -Level ERROR
+            Write-Log "Or set environment variables: domainUsername and domainPasswordWithCustomField" -Level ERROR
+            $script:ExitCode = 1
+            return
         }
-    }
 
-    # Validate credentials were provided
-    if (-not $UserName -or -not $Password) {
-        Write-Host "ERROR: Domain username and password are required."
-        Write-Host ""
-        Write-Host "Usage:"
-        Write-Host "  -UserName <domain\username>"
-        Write-Host "  -Password <password>"
-        Write-Host ""
-        Write-Host "Or configure NinjaRMM environment variables:"
-        Write-Host "  domainUsername"
-        Write-Host "  domainPasswordWithCustomField"
-        exit 1
-    }
+        Write-Log "Domain Username: $UserName" -Level INFO
+        Write-Log "Restart after removal: $(-not $NoRestart)" -Level INFO
 
-    Write-Host "Domain Username: $UserName"
-    Write-Host "Restart after removal: $(-not $NoRestart)"
-    Write-Host ""
+        Write-Log "Creating credential object..." -Level INFO
+        $script:LeaveCred = [PSCredential]::new(
+            $UserName, 
+            $(ConvertTo-SecureString -String $Password -AsPlainText -Force)
+        )
 
-    # Create PSCredential object
-    Write-Host "Creating credential object..."
-    $LeaveCred = [PSCredential]::new(
-        $UserName, 
-        $(ConvertTo-SecureString -String $Password -AsPlainText -Force)
-    )
-
-    # Execute domain removal
-    Write-Host "Removing computer '$env:COMPUTERNAME' from domain..."
-    
-    $LeaveResult = if ($NoRestart) {
-        (Remove-Computer -UnjoinDomainCredential $LeaveCred -PassThru -Force -Confirm:$false).HasSucceeded
-    }
-    else {
-        (Remove-Computer -UnjoinDomainCredential $LeaveCred -PassThru -Force -Restart -Confirm:$false).HasSucceeded
-    }
-
-    if ($LeaveResult) {
-        Write-Host ""
-        Write-Host "========================================"
-        Write-Host "SUCCESS: Computer removed from domain"
-        Write-Host "========================================"
+        Write-Log "Removing computer '$env:COMPUTERNAME' from domain..." -Level INFO
         
-        if ($NoRestart) {
-            Write-Host ""
-            Write-Host "IMPORTANT: A restart is required to complete the domain removal."
-            Write-Host "Computer will not be fully removed until restarted."
+        $LeaveResult = if ($NoRestart) {
+            (Remove-Computer -UnjoinDomainCredential $script:LeaveCred -PassThru -Force -Confirm:$false -ErrorAction Stop).HasSucceeded
         }
         else {
-            Write-Host ""
-            Write-Host "Computer is restarting to complete domain removal..."
+            (Remove-Computer -UnjoinDomainCredential $script:LeaveCred -PassThru -Force -Restart -Confirm:$false -ErrorAction Stop).HasSucceeded
+        }
+
+        if ($LeaveResult) {
+            Write-Log "========================================" -Level SUCCESS
+            Write-Log "Computer successfully removed from domain" -Level SUCCESS
+            Write-Log "========================================" -Level SUCCESS
+            
+            if ($NoRestart) {
+                Write-Log "IMPORTANT: A restart is required to complete the domain removal" -Level WARN
+                Write-Log "Computer will not be fully removed until restarted" -Level WARN
+            }
+            else {
+                Write-Log "Computer is restarting to complete domain removal..." -Level INFO
+            }
+            
+            $script:ExitCode = 0
+        }
+        else {
+            Write-Log "Failed to remove computer '$env:COMPUTERNAME' from domain" -Level ERROR
+            $script:ExitCode = 1
         }
         
-        # Clean up credentials
-        $LeaveCred = $null
-        $Password = $null
-        
-        exit 0
-    }
-    else {
-        Write-Host ""
-        Write-Host "ERROR: Failed to remove computer '$env:COMPUTERNAME' from domain"
-        
-        # Clean up credentials
-        $LeaveCred = $null
-        $Password = $null
-        
-        exit 1
+    } catch {
+        Write-Log "Domain removal failed: $($_.Exception.Message)" -Level ERROR
+        $script:ExitCode = 1
     }
 }
-catch {
-    Write-Host ""
-    Write-Host "ERROR: Domain removal failed: $($_.Exception.Message)"
-    
-    # Clean up credentials
-    if ($LeaveCred) { $LeaveCred = $null }
-    if ($Password) { $Password = $null }
-    
-    exit 1
+
+end {
+    try {
+        if ($script:LeaveCred) { 
+            $script:LeaveCred = $null 
+            Write-Log "Cleared credential objects from memory" -Level INFO
+        }
+        if ($Password) { $Password = $null }
+        
+        $EndTime = Get-Date
+        $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+        
+        Write-Log "========================================" -Level INFO
+        Write-Log "Execution Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
+        Write-Log "Warnings: $script:WarningCount, Errors: $script:ErrorCount" -Level INFO
+        Write-Log "========================================" -Level INFO
+    }
+    finally {
+        [System.GC]::Collect()
+        exit $script:ExitCode
+    }
 }

@@ -22,6 +22,8 @@
     Unexpected shutdowns (Event ID 6008) can indicate various issues including
     power failures, forced shutdowns, or blue screens. This script provides
     visibility into system stability issues.
+    
+    This script runs unattended without user interaction.
 
 .PARAMETER MaxDumpsToAnalyze
     Maximum number of dump files to analyze. Newer dumps are prioritized.
@@ -41,16 +43,19 @@
     
     Analyzes BSOD dumps from last 7 days only, maximum 5 dumps.
 
+.OUTPUTS
+    None. BSOD analysis results are written to console and NinjaRMM custom fields.
+
 .NOTES
     Script Name:    System-BlueScreenAlert.ps1
     Author:         Windows Automation Framework
-    Version:        3.0
+    Version:        3.0.0
     Creation Date:  2024-01-15
-    Last Modified:  2026-02-09
+    Last Modified:  2026-02-10
     
-    Execution Context: Administrator (required for event log and minidump access)
+    Execution Context: Administrator (required)
     Execution Frequency: Daily or on-demand
-    Typical Duration: ~10-30 seconds (depends on network and dump count)
+    Typical Duration: 10-30 seconds (depends on network and dump count)
     Timeout Setting: 120 seconds recommended
     
     User Interaction: NONE (fully automated, no prompts)
@@ -65,11 +70,12 @@
     
     Dependencies:
         - Windows PowerShell 5.1 or higher
-        - Administrator privileges
+        - Administrator privileges (required)
         - Internet access to download BlueScreenView
-        - Windows 10 or Server 2016 minimum
+        - Windows 10, Windows Server 2016 or higher
         - Event log access
         - Write access to %TEMP%
+        - NinjaRMM Agent (if using custom fields)
     
     External Tools:
         - BlueScreenView by NirSoft (https://www.nirsoft.net/utils/blue_screen_view.html)
@@ -112,7 +118,7 @@ param (
 # CONFIGURATION
 # ============================================================================
 
-$ScriptVersion = "3.0"
+$ScriptVersion = "3.0.0"
 $ScriptName = "System-BlueScreenAlert"
 
 # BlueScreenView configuration
@@ -152,9 +158,12 @@ $NinjaRMMCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
 
 $StartTime = Get-Date
 $ErrorActionPreference = 'Stop'
+$script:ExitCode = 0
 $script:ErrorCount = 0
 $script:WarningCount = 0
 $script:CLIFallbackCount = 0
+
+Set-StrictMode -Version Latest
 
 # ============================================================================
 # FUNCTIONS
@@ -178,8 +187,10 @@ function Write-Log {
     $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
     $LogMessage = "[$Timestamp] [$Level] $Message"
     
+    # Plain text output only - no colors
     Write-Output $LogMessage
     
+    # Track counts
     switch ($Level) {
         'WARN'  { $script:WarningCount++ }
         'ERROR' { $script:ErrorCount++ }
@@ -208,6 +219,13 @@ function Set-NinjaField {
     
     $ValueString = $Value.ToString()
     
+    # Truncate if exceeds NinjaRMM field limit (10,000 characters)
+    if ($ValueString.Length -gt 10000) {
+        Write-Log "Field value exceeds 10,000 characters, truncating" -Level WARN
+        $ValueString = $ValueString.Substring(0, 9950) + "`n... (truncated)"
+    }
+    
+    # Method 1: Try Ninja-Property-Set cmdlet
     try {
         if (Get-Command Ninja-Property-Set -ErrorAction SilentlyContinue) {
             Ninja-Property-Set $FieldName $ValueString -ErrorAction Stop
@@ -219,6 +237,7 @@ function Set-NinjaField {
     } catch {
         Write-Log "Ninja-Property-Set failed, using CLI fallback" -Level DEBUG
         
+        # Method 2: Try ninjarmm-cli.exe
         try {
             if (-not (Test-Path $NinjaRMMCLI)) {
                 throw "NinjaRMM CLI not found at: $NinjaRMMCLI"
@@ -243,7 +262,7 @@ function Set-NinjaField {
 function Test-IsElevated {
     <#
     .SYNOPSIS
-        Checks if script is running with Administrator privileges
+        Checks if script is running with administrator privileges
     #>
     $Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
     $Principal = New-Object System.Security.Principal.WindowsPrincipal($Identity)
@@ -416,8 +435,10 @@ try {
     
     # Check administrator privileges
     if (-not (Test-IsElevated)) {
-        throw "Administrator privileges required. Please run as Administrator."
+        Write-Log "ERROR: This script requires administrator privileges" -Level ERROR
+        throw "Access Denied"
     }
+    
     Write-Log "Administrator privileges confirmed" -Level SUCCESS
     
     # Initialize status variables
@@ -452,35 +473,35 @@ try {
         Set-NinjaField -FieldName "bsodDetails" -Value "No Blue Screen crashes detected in last $AnalyzeOlderThanDays days"
         
         Write-Log "BSOD analysis complete - no crashes detected" -Level SUCCESS
-        exit 0
-    }
-    
-    # Minidumps found - analyze them
-    $BSODDetected = "true"
-    $BSODCount = $DumpFiles.Count
-    
-    # Get most recent dump timestamp
-    $MostRecentDump = $DumpFiles | Select-Object -First 1
-    $BSODLastDate = [DateTimeOffset]$MostRecentDump.LastWriteTime | Select-Object -ExpandProperty ToUnixTimeSeconds
-    
-    Write-Log "Most recent dump: $($MostRecentDump.Name) - $($MostRecentDump.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss'))" -Level INFO
-    
-    # Limit analysis to MaxDumpsToAnalyze
-    if ($BSODCount -gt $MaxDumpsToAnalyze) {
-        Write-Log "Limiting analysis to $MaxDumpsToAnalyze most recent dump(s)" -Level INFO
-    }
-    
-    # Run BlueScreenView analysis
-    $AnalysisResults = Invoke-BlueScreenViewAnalysis
-    
-    if ($AnalysisResults) {
-        # Build HTML report
-        $HTMLRows = foreach ($Dump in $AnalysisResults | Select-Object -First $MaxDumpsToAnalyze) {
-            $TimeStr = if ($Dump.Timestamp) { $Dump.Timestamp.ToString('yyyy-MM-dd HH:mm:ss') } else { "Unknown" }
-            "<tr><td>$TimeStr</td><td style='color:#c00'>$($Dump.ErrorCode)</td><td>$($Dump.Reason)</td><td style='font-size:0.9em'>$($Dump.CausedByDriver)</td></tr>"
+        $script:ExitCode = 0
+        
+    } else {
+        # Minidumps found - analyze them
+        $BSODDetected = "true"
+        $BSODCount = $DumpFiles.Count
+        
+        # Get most recent dump timestamp
+        $MostRecentDump = $DumpFiles | Select-Object -First 1
+        $BSODLastDate = [DateTimeOffset]$MostRecentDump.LastWriteTime | Select-Object -ExpandProperty ToUnixTimeSeconds
+        
+        Write-Log "Most recent dump: $($MostRecentDump.Name) - $($MostRecentDump.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss'))" -Level INFO
+        
+        # Limit analysis to MaxDumpsToAnalyze
+        if ($BSODCount -gt $MaxDumpsToAnalyze) {
+            Write-Log "Limiting analysis to $MaxDumpsToAnalyze most recent dump(s)" -Level INFO
         }
         
-        $BSODDetails = @"
+        # Run BlueScreenView analysis
+        $AnalysisResults = Invoke-BlueScreenViewAnalysis
+        
+        if ($AnalysisResults) {
+            # Build HTML report
+            $HTMLRows = foreach ($Dump in $AnalysisResults | Select-Object -First $MaxDumpsToAnalyze) {
+                $TimeStr = if ($Dump.Timestamp) { $Dump.Timestamp.ToString('yyyy-MM-dd HH:mm:ss') } else { "Unknown" }
+                "<tr><td>$TimeStr</td><td style='color:#c00'>$($Dump.ErrorCode)</td><td>$($Dump.Reason)</td><td style='font-size:0.9em'>$($Dump.CausedByDriver)</td></tr>"
+            }
+            
+            $BSODDetails = @"
 <div style='font-family:Arial,sans-serif;'>
 <h3 style='color:#c00'>Blue Screen Crashes Detected</h3>
 <p><strong>Total Dumps Found:</strong> $BSODCount (last $AnalyzeOlderThanDays days)</p>
@@ -492,28 +513,29 @@ $($HTMLRows -join "`n")
 <p style='font-size:0.85em; color:#666; margin-top:10px;'>Analysis limited to $MaxDumpsToAnalyze most recent dump(s)</p>
 </div>
 "@
+            
+            Write-Log "Generated detailed BSOD report" -Level SUCCESS
+            
+        } else {
+            # Analysis failed but dumps exist
+            $BSODDetails = "$BSODCount minidump file(s) detected but analysis failed. Manual review recommended."
+            Write-Log "BlueScreenView analysis failed - manual review needed" -Level WARN
+        }
         
-        Write-Log "Generated detailed BSOD report" -Level SUCCESS
+        # Update NinjaRMM fields
+        Write-Log "Updating NinjaRMM custom fields" -Level INFO
         
-    } else {
-        # Analysis failed but dumps exist
-        $BSODDetails = "$BSODCount minidump file(s) detected but analysis failed. Manual review recommended."
-        Write-Log "BlueScreenView analysis failed - manual review needed" -Level WARN
+        Set-NinjaField -FieldName "bsodDetected" -Value $BSODDetected
+        Set-NinjaField -FieldName "bsodCount" -Value $BSODCount
+        Set-NinjaField -FieldName "bsodLastDate" -Value $BSODLastDate
+        Set-NinjaField -FieldName "bsodUnexpectedShutdowns" -Value $UnexpectedShutdownCount
+        Set-NinjaField -FieldName "bsodDetails" -Value $BSODDetails
+        
+        Write-Log "BSOD analysis complete: $BSODCount crash(es) detected" -Level WARN
+        
+        # Exit with code 1 to indicate BSOD detected
+        $script:ExitCode = 1
     }
-    
-    # Update NinjaRMM fields
-    Write-Log "Updating NinjaRMM custom fields" -Level INFO
-    
-    Set-NinjaField -FieldName "bsodDetected" -Value $BSODDetected
-    Set-NinjaField -FieldName "bsodCount" -Value $BSODCount
-    Set-NinjaField -FieldName "bsodLastDate" -Value $BSODLastDate
-    Set-NinjaField -FieldName "bsodUnexpectedShutdowns" -Value $UnexpectedShutdownCount
-    Set-NinjaField -FieldName "bsodDetails" -Value $BSODDetails
-    
-    Write-Log "BSOD analysis complete: $BSODCount crash(es) detected" -Level WARN
-    
-    # Exit with code 1 to indicate BSOD detected
-    exit 1
     
 } catch {
     Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
@@ -523,7 +545,7 @@ $($HTMLRows -join "`n")
     Set-NinjaField -FieldName "bsodCount" -Value 0
     Set-NinjaField -FieldName "bsodDetails" -Value "Analysis script error: $($_.Exception.Message)"
     
-    exit 2
+    $script:ExitCode = 2
     
 } finally {
     # Clean up downloaded files
@@ -539,15 +561,29 @@ $($HTMLRows -join "`n")
     $EndTime = Get-Date
     $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
     
+    Write-Log "" -Level INFO
     Write-Log "========================================" -Level INFO
     Write-Log "Execution Summary:" -Level INFO
     Write-Log "  Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
     Write-Log "  Errors: $script:ErrorCount" -Level INFO
     Write-Log "  Warnings: $script:WarningCount" -Level INFO
-    
     if ($script:CLIFallbackCount -gt 0) {
         Write-Log "  CLI Fallbacks: $script:CLIFallbackCount" -Level INFO
     }
+    Write-Log "  Exit Code: $script:ExitCode" -Level INFO
+    
+    # Exit code meanings
+    switch ($script:ExitCode) {
+        0 { Write-Log "  Status: STABLE (no BSOD detected)" -Level INFO }
+        1 { Write-Log "  Status: ALERT (BSOD crashes detected)" -Level INFO }
+        2 { Write-Log "  Status: ERROR (analysis failed)" -Level INFO }
+    }
     
     Write-Log "========================================" -Level INFO
+    
+    # Cleanup
+    [System.GC]::Collect()
+    [System.GC]::WaitForPendingFinalizers()
+    
+    exit $script:ExitCode
 }

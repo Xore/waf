@@ -15,20 +15,23 @@
     Performance data is collected using Windows performance counters and formatted
     into HTML reports for dashboard display. High-utilization VMs are identified
     and reported separately for quick identification of performance bottlenecks.
-
-.PARAMETER NinjaRMMField
-    Not used directly. Script updates multiple NinjaRMM custom fields.
+    
+    This script runs unattended without user interaction.
 
 .NOTES
+    Script Name:    Hyper-V Performance Monitor 3.ps1
     Author:         Windows Automation Framework
-    Created:        2026-02-10
-    Version:        1.0
-    Purpose:        Hyper-V performance monitoring with detailed metrics
+    Version:        1.1
+    Creation Date:  2026-02-10
+    Last Modified:  2026-02-10
     
-    Execution Context:  SYSTEM
+    Execution Context: SYSTEM (via NinjaRMM automation)
     Execution Frequency: Every 10 minutes
-    Estimated Duration: ~20 seconds
-    Timeout Setting:    60 seconds
+    Typical Duration: ~20 seconds
+    Timeout Setting: 60 seconds
+    
+    User Interaction: NONE (fully automated, no prompts)
+    Restart Behavior: Never restarts device
     
     Fields Updated:
     - hypervPerfVMHighNetwork (Text)           - VMs with >500MB/s network usage
@@ -45,10 +48,12 @@
     - hypervPerfLastScan (DateTime)            - Last scan timestamp
     
     Dependencies:
+    - Windows PowerShell 5.1 or higher
+    - Administrator privileges (SYSTEM context)
+    - NinjaRMM Agent installed
     - Hyper-V role installed
     - Hyper-V PowerShell module
     - Windows Server 2012 R2 or later
-    - Administrator privileges
     
     Exit Codes:
     0  = Success
@@ -58,7 +63,7 @@
     99 = Unexpected error
 
 .EXAMPLE
-    .\Hyper-V_Performance_Monitor_3.ps1
+    .\"Hyper-V Performance Monitor 3.ps1"
     
     Collects performance metrics and updates NinjaRMM fields.
 
@@ -76,7 +81,7 @@ param()
 # CONFIGURATION
 # ============================================================================
 
-$ScriptVersion = "1.0"
+$ScriptVersion = "1.1"
 $ScriptName = "Hyper-V Performance Monitor 3"
 
 # Performance thresholds
@@ -87,19 +92,29 @@ $Thresholds = @{
     LatencyCriticalMS = 100    # ms - Critical latency
     QueueDepthWarning = 16     # Queue depth warning
     QueueDepthCritical = 32    # Queue depth critical
-    DropRateWarning = 1.0      # % - Packet drop warning
-    DropRateCritical = 5.0     # % - Packet drop critical
+    DropRateWarning = 1.0      # percent - Packet drop warning
+    DropRateCritical = 5.0     # percent - Packet drop critical
     CPUQueueWarning = 2        # Per logical processor
 }
 
 # NinjaRMM field prefix
 $FieldPrefix = "hypervPerf"
 
+# NinjaRMM CLI path
+$NinjaRMMCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
+
 # ============================================================================
-# EXECUTION TIME TRACKING (MANDATORY)
+# INITIALIZATION
 # ============================================================================
 
-$ExecutionStartTime = Get-Date
+# Start timing - REQUIRED FOR ALL SCRIPTS
+$StartTime = Get-Date
+
+# Initialize error tracking
+$ErrorActionPreference = 'Stop'
+$script:ErrorCount = 0
+$script:WarningCount = 0
+$script:CLIFallbackCount = 0
 
 # ============================================================================
 # FUNCTIONS
@@ -107,8 +122,11 @@ $ExecutionStartTime = Get-Date
 
 function Write-Log {
     param(
+        [Parameter(Mandatory=$true)]
         [string]$Message,
-        [ValidateSet('INFO', 'WARNING', 'ERROR', 'DEBUG')]
+        
+        [Parameter(Mandatory=$false)]
+        [ValidateSet('DEBUG','INFO','WARN','ERROR')]
         [string]$Level = 'INFO'
     )
     
@@ -116,37 +134,83 @@ function Write-Log {
     $LogMessage = "[$Timestamp] [$Level] $Message"
     
     switch ($Level) {
-        'ERROR'   { Write-Error $LogMessage }
-        'WARNING' { Write-Warning $LogMessage }
-        'DEBUG'   { Write-Verbose $LogMessage }
-        default   { Write-Output $LogMessage }
+        'DEBUG' { Write-Verbose $LogMessage }
+        'INFO'  { Write-Output $LogMessage }
+        'WARN'  { 
+            Write-Warning $LogMessage
+            $script:WarningCount++
+        }
+        'ERROR' { 
+            Write-Error $LogMessage -ErrorAction Continue
+            $script:ErrorCount++
+        }
     }
 }
 
-function Set-NinjaRMMField {
+function Set-NinjaField {
     <#
     .SYNOPSIS
-        Sets a NinjaRMM custom field value (dual-method for compatibility).
+        Sets a NinjaRMM custom field value with automatic fallback to CLI
+    .DESCRIPTION
+        Attempts to set a NinjaRMM custom field using Ninja-Property-Set cmdlet.
+        If cmdlet fails, automatically falls back to ninjarmm-cli.exe.
+    .PARAMETER FieldName
+        The name of the custom field to set
+    .PARAMETER Value
+        The value to set. Null or empty values are skipped.
     #>
+    [CmdletBinding()]
     param(
+        [Parameter(Mandatory=$true)]
         [string]$FieldName,
+        
+        [Parameter(Mandatory=$true)]
         [AllowNull()]
-        [object]$Value
+        $Value
     )
     
+    # Skip null or empty values
+    if ($null -eq $Value -or $Value -eq "") {
+        Write-Log "Skipping field '$FieldName' - no value provided" -Level DEBUG
+        return
+    }
+    
+    # Convert to string
+    $ValueString = $Value.ToString()
+    
+    # Attempt 1: Try Ninja-Property-Set cmdlet
     try {
-        # Method 1: Direct Ninja Property
         if (Get-Command Ninja-Property-Set -ErrorAction SilentlyContinue) {
-            Ninja-Property-Set -Name $FieldName -Value $Value
-        }
-        
-        # Method 2: Registry-based (fallback)
-        $RegPath = "HKLM:\SOFTWARE\NinjaRMMAgent\CustomFields"
-        if (Test-Path $RegPath) {
-            Set-ItemProperty -Path $RegPath -Name $FieldName -Value $Value -ErrorAction SilentlyContinue
+            Ninja-Property-Set $FieldName $ValueString -ErrorAction Stop
+            Write-Log "Field '$FieldName' set to: $ValueString" -Level DEBUG
+            return
+        } else {
+            Write-Log "Ninja-Property-Set cmdlet not available, using CLI fallback" -Level DEBUG
+            throw "Cmdlet not found"
         }
     } catch {
-        Write-Log "Failed to set field $FieldName : $($_.Exception.Message)" -Level WARNING
+        Write-Log "Ninja-Property-Set failed for '$FieldName': $_" -Level DEBUG
+        Write-Log "Attempting CLI fallback..." -Level DEBUG
+        
+        # Attempt 2: Fall back to NinjaRMM CLI
+        try {
+            if (-not (Test-Path $NinjaRMMCLI)) {
+                throw "NinjaRMM CLI not found at: $NinjaRMMCLI"
+            }
+            
+            $CLIArgs = @("set", $FieldName, $ValueString)
+            $CLIResult = & $NinjaRMMCLI $CLIArgs 2>&1
+            
+            if ($LASTEXITCODE -ne 0) {
+                throw "CLI returned exit code: $LASTEXITCODE. Output: $CLIResult"
+            }
+            
+            Write-Log "Field '$FieldName' set via CLI to: $ValueString" -Level DEBUG
+            $script:CLIFallbackCount++
+        } catch {
+            Write-Log "Failed to set field '$FieldName' (both methods): $_" -Level ERROR
+            throw
+        }
     }
 }
 
@@ -342,10 +406,6 @@ function Get-VMPerformanceMetrics {
 }
 
 function Get-VirtualSwitchMetrics {
-    <#
-    .SYNOPSIS
-        Calculates virtual switch performance metrics including drop rate.
-    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -372,7 +432,7 @@ function Get-VirtualSwitchMetrics {
         }
         
     } catch {
-        Write-Log "Failed to calculate switch metrics: $($_.Exception.Message)" -Level WARNING
+        Write-Log "Failed to calculate switch metrics: $($_.Exception.Message)" -Level WARN
         return @{
             TotalPacketsPerSec = 0
             DroppedPacketsPerSec = 0
@@ -382,10 +442,6 @@ function Get-VirtualSwitchMetrics {
 }
 
 function Get-LiveMigrationBandwidth {
-    <#
-    .SYNOPSIS
-        Gets current live migration bandwidth if migration is active.
-    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -405,10 +461,6 @@ function Get-LiveMigrationBandwidth {
 }
 
 function Get-PerformanceBottlenecks {
-    <#
-    .SYNOPSIS
-        Identifies VMs with performance bottlenecks based on thresholds.
-    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -447,10 +499,6 @@ function Get-PerformanceBottlenecks {
 }
 
 function Get-PerformanceStatus {
-    <#
-    .SYNOPSIS
-        Determines overall performance status based on bottlenecks and thresholds.
-    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -475,12 +523,12 @@ function Get-PerformanceStatus {
     if ($Bottlenecks.HighLatency.Count -gt 0) {
         $CriticalLatency = $Bottlenecks.HighLatency | Where-Object { $_ -match '\((\d+)ms\)' -and [int]$Matches[1] -gt $Thresholds.LatencyCriticalMS }
         if ($CriticalLatency) {
-            $Issues += "CRITICAL: $($CriticalLatency.Count) VMs with critical latency (>$($Thresholds.LatencyCriticalMS)ms)"
+            $Issues += "CRITICAL: $($CriticalLatency.Count) VMs with critical latency (greater than $($Thresholds.LatencyCriticalMS)ms)"
         }
     }
     
     if ($SwitchMetrics.DropRatePercent -gt $Thresholds.DropRateCritical) {
-        $Issues += "CRITICAL: Virtual switch drop rate $($SwitchMetrics.DropRatePercent)% (>$($Thresholds.DropRateCritical)%)"
+        $Issues += "CRITICAL: Virtual switch drop rate $($SwitchMetrics.DropRatePercent) percent (greater than $($Thresholds.DropRateCritical) percent)"
     }
     
     if ($ProcessorQueue -gt ($LogicalProcessors * $Thresholds.CPUQueueWarning)) {
@@ -501,7 +549,7 @@ function Get-PerformanceStatus {
     }
     
     if ($SwitchMetrics.DropRatePercent -gt $Thresholds.DropRateWarning -and $SwitchMetrics.DropRatePercent -le $Thresholds.DropRateCritical) {
-        $Issues += "WARNING: Virtual switch drop rate $($SwitchMetrics.DropRatePercent)%"
+        $Issues += "WARNING: Virtual switch drop rate $($SwitchMetrics.DropRatePercent) percent"
     }
     
     # Determine status
@@ -515,10 +563,6 @@ function Get-PerformanceStatus {
 }
 
 function New-PerformanceHTMLReport {
-    <#
-    .SYNOPSIS
-        Generates HTML report of VM performance metrics.
-    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -558,7 +602,7 @@ function New-PerformanceHTMLReport {
     <div class='metric'><span class='metric-label'>High Network:</span> $($Bottlenecks.HighNetwork.Count)</div>
     <div class='metric'><span class='metric-label'>High IOPS:</span> $($Bottlenecks.HighIOPS.Count)</div>
     <div class='metric'><span class='metric-label'>High Latency:</span> $($Bottlenecks.HighLatency.Count)</div>
-    <div class='metric'><span class='metric-label'>Switch Drop Rate:</span> $($SwitchMetrics.DropRatePercent)%</div>
+    <div class='metric'><span class='metric-label'>Switch Drop Rate:</span> $($SwitchMetrics.DropRatePercent) percent</div>
 "@
     
     if ($MigrationBandwidth -gt 0) {
@@ -573,7 +617,7 @@ function New-PerformanceHTMLReport {
     <thead>
         <tr>
             <th>VM Name</th>
-            <th>CPU %</th>
+            <th>CPU percent</th>
             <th>Network (MB/s)</th>
             <th>IOPS</th>
             <th>Latency (ms)</th>
@@ -601,7 +645,7 @@ function New-PerformanceHTMLReport {
         $HTML += "        <tr class='$RowClass'>"
         $HTML += "<td>$($VM.VMName)</td>"
         $HTML += "<td>$($VM.CPUPercent)</td>"
-        $HTML += "<td>$($VM.NetworkTotalMBps) <small>(↑$($VM.NetworkSentMBps) ↓$($VM.NetworkReceivedMBps))</small></td>"
+        $HTML += "<td>$($VM.NetworkTotalMBps) <small>(Up:$($VM.NetworkSentMBps) Down:$($VM.NetworkReceivedMBps))</small></td>"
         $HTML += "<td>$($VM.TotalIOPS) <small>(R:$($VM.ReadIOPS) W:$($VM.WriteIOPS))</small></td>"
         $HTML += "<td>$($VM.AvgLatencyMS) <small>(R:$($VM.ReadLatencyMS) W:$($VM.WriteLatencyMS))</small></td>"
         $HTML += "<td>$($VM.MaxQueueDepth)</td>"
@@ -649,13 +693,13 @@ try {
     $HyperVService = Get-Service -Name vmms -ErrorAction SilentlyContinue
     if (-not $HyperVService) {
         Write-Log "Hyper-V service (vmms) not found. Hyper-V role not installed." -Level ERROR
-        Set-NinjaRMMField -FieldName "$($FieldPrefix)Status" -Value "NOT_INSTALLED"
+        Set-NinjaField -FieldName "$($FieldPrefix)Status" -Value "NOT_INSTALLED"
         exit 1
     }
     
     if ($HyperVService.Status -ne 'Running') {
         Write-Log "Hyper-V service is not running. Status: $($HyperVService.Status)" -Level ERROR
-        Set-NinjaRMMField -FieldName "$($FieldPrefix)Status" -Value "SERVICE_STOPPED"
+        Set-NinjaField -FieldName "$($FieldPrefix)Status" -Value "SERVICE_STOPPED"
         exit 1
     }
     
@@ -665,7 +709,7 @@ try {
         Import-Module Hyper-V -ErrorAction Stop
     } catch {
         Write-Log "Failed to import Hyper-V module: $($_.Exception.Message)" -Level ERROR
-        Set-NinjaRMMField -FieldName "$($FieldPrefix)Status" -Value "MODULE_ERROR"
+        Set-NinjaField -FieldName "$($FieldPrefix)Status" -Value "MODULE_ERROR"
         exit 2
     }
     
@@ -677,7 +721,7 @@ try {
     $CounterData = Get-HyperVPerformanceCounters
     if (-not $CounterData) {
         Write-Log "Failed to collect performance counters" -Level ERROR
-        Set-NinjaRMMField -FieldName "$($FieldPrefix)Status" -Value "COUNTER_ERROR"
+        Set-NinjaField -FieldName "$($FieldPrefix)Status" -Value "COUNTER_ERROR"
         exit 3
     }
     
@@ -719,34 +763,29 @@ try {
     # Update NinjaRMM fields
     Write-Log "Updating NinjaRMM custom fields..."
     
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)VMHighNetwork" -Value ($Bottlenecks.HighNetwork -join "; ")
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)VMHighIOPS" -Value ($Bottlenecks.HighIOPS -join "; ")
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)VMHighLatency" -Value ($Bottlenecks.HighLatency -join "; ")
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)VMHighQueue" -Value ($Bottlenecks.HighQueue -join "; ")
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)VSwitchDropRate" -Value $SwitchMetrics.DropRatePercent
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)QueueDepthMax" -Value $MaxQueueDepth
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)MigrationBandwidth" -Value $MigrationBandwidth
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)HostCPUQueue" -Value $CounterData.ProcessorQueue
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)Report" -Value $HTMLReport
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)Status" -Value $PerformanceStatus
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)Bottlenecks" -Value $TotalBottlenecks
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)LastScan" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
-    
-    # Calculate execution time (MANDATORY)
-    $ExecutionEndTime = Get-Date
-    $ExecutionDuration = ($ExecutionEndTime - $ExecutionStartTime).TotalSeconds
+    Set-NinjaField -FieldName "$($FieldPrefix)VMHighNetwork" -Value ($Bottlenecks.HighNetwork -join "; ")
+    Set-NinjaField -FieldName "$($FieldPrefix)VMHighIOPS" -Value ($Bottlenecks.HighIOPS -join "; ")
+    Set-NinjaField -FieldName "$($FieldPrefix)VMHighLatency" -Value ($Bottlenecks.HighLatency -join "; ")
+    Set-NinjaField -FieldName "$($FieldPrefix)VMHighQueue" -Value ($Bottlenecks.HighQueue -join "; ")
+    Set-NinjaField -FieldName "$($FieldPrefix)VSwitchDropRate" -Value $SwitchMetrics.DropRatePercent
+    Set-NinjaField -FieldName "$($FieldPrefix)QueueDepthMax" -Value $MaxQueueDepth
+    Set-NinjaField -FieldName "$($FieldPrefix)MigrationBandwidth" -Value $MigrationBandwidth
+    Set-NinjaField -FieldName "$($FieldPrefix)HostCPUQueue" -Value $CounterData.ProcessorQueue
+    Set-NinjaField -FieldName "$($FieldPrefix)Report" -Value $HTMLReport
+    Set-NinjaField -FieldName "$($FieldPrefix)Status" -Value $PerformanceStatus
+    Set-NinjaField -FieldName "$($FieldPrefix)Bottlenecks" -Value $TotalBottlenecks
+    Set-NinjaField -FieldName "$($FieldPrefix)LastScan" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
     
     Write-Log "========================================"
     Write-Log "Performance Summary:"
     Write-Log "  VMs Monitored: $($VMMetrics.Count)"
     Write-Log "  Performance Status: $PerformanceStatus"
     Write-Log "  Total Bottlenecks: $TotalBottlenecks"
-    Write-Log "  Switch Drop Rate: $($SwitchMetrics.DropRatePercent)%"
+    Write-Log "  Switch Drop Rate: $($SwitchMetrics.DropRatePercent) percent"
     Write-Log "  Max Queue Depth: $MaxQueueDepth"
     if ($MigrationBandwidth -gt 0) {
         Write-Log "  Live Migration: $($MigrationBandwidth)MB/s"
     }
-    Write-Log "  Execution Time: $([Math]::Round($ExecutionDuration, 2)) seconds"
     Write-Log "========================================"
     Write-Log "Script completed successfully"
     
@@ -756,12 +795,23 @@ try {
     Write-Log "Unexpected error: $($_.Exception.Message)" -Level ERROR
     Write-Log "Stack Trace: $($_.ScriptStackTrace)" -Level ERROR
     
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)Status" -Value "ERROR"
-    
-    # Calculate execution time even on error
-    $ExecutionEndTime = Get-Date
-    $ExecutionDuration = ($ExecutionEndTime - $ExecutionStartTime).TotalSeconds
-    Write-Log "Execution Time: $([Math]::Round($ExecutionDuration, 2)) seconds"
-    
+    Set-NinjaField -FieldName "$($FieldPrefix)Status" -Value "ERROR"
     exit 99
+    
+} finally {
+    # Calculate execution time - REQUIRED FOR ALL SCRIPTS
+    $EndTime = Get-Date
+    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+    
+    Write-Log "========================================"
+    Write-Log "Execution Summary:"
+    Write-Log "  Duration: $ExecutionTime seconds"
+    Write-Log "  Errors: $script:ErrorCount"
+    Write-Log "  Warnings: $script:WarningCount"
+    
+    if ($script:CLIFallbackCount -gt 0) {
+        Write-Log "  CLI Fallbacks: $script:CLIFallbackCount"
+    }
+    
+    Write-Log "========================================"
 }

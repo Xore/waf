@@ -34,16 +34,19 @@
     
     Forces mini dump configuration regardless of current setting.
 
+.OUTPUTS
+    None. Configuration status is written to console and NinjaRMM custom fields.
+
 .NOTES
     Script Name:    System-EnableMinidumps.ps1
     Author:         Windows Automation Framework
-    Version:        3.0
+    Version:        3.0.0
     Creation Date:  2024-01-15
-    Last Modified:  2026-02-09
+    Last Modified:  2026-02-10
     
-    Execution Context: SYSTEM (via NinjaRMM automation)
+    Execution Context: Administrator (required)
     Execution Frequency: On-demand or during system setup
-    Typical Duration: ~1-2 seconds
+    Typical Duration: 1-2 seconds
     Timeout Setting: 30 seconds recommended
     
     User Interaction: NONE (fully automated, no prompts)
@@ -59,7 +62,8 @@
         - Windows PowerShell 5.1 or higher
         - Administrator privileges (required)
         - Registry write access
-        - Windows 10 or Server 2016 minimum
+        - Windows 10, Windows Server 2016 or higher
+        - NinjaRMM Agent (if using custom fields)
     
     Environment Variables (Optional):
         - forceConfiguration: Override -Force parameter
@@ -81,6 +85,8 @@
 
 .LINK
     https://github.com/Xore/waf
+
+.LINK
     https://learn.microsoft.com/en-us/troubleshoot/windows-server/performance/memory-dump-file-options
 #>
 
@@ -94,7 +100,7 @@ param (
 # CONFIGURATION
 # ============================================================================
 
-$ScriptVersion = "3.0"
+$ScriptVersion = "3.0.0"
 $ScriptName = "System-EnableMinidumps"
 
 # Registry paths
@@ -110,10 +116,13 @@ $NinjaRMMCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
 
 $StartTime = Get-Date
 $ErrorActionPreference = 'Stop'
+$script:ExitCode = 0
 $script:ErrorCount = 0
 $script:WarningCount = 0
 $script:CLIFallbackCount = 0
 $script:RebootRequired = $false
+
+Set-StrictMode -Version Latest
 
 # ============================================================================
 # FUNCTIONS
@@ -137,8 +146,10 @@ function Write-Log {
     $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
     $LogMessage = "[$Timestamp] [$Level] $Message"
     
+    # Plain text output only - no colors
     Write-Output $LogMessage
     
+    # Track counts
     switch ($Level) {
         'WARN'  { $script:WarningCount++ }
         'ERROR' { $script:ErrorCount++ }
@@ -167,6 +178,7 @@ function Set-NinjaField {
     
     $ValueString = $Value.ToString()
     
+    # Method 1: Try Ninja-Property-Set cmdlet
     try {
         if (Get-Command Ninja-Property-Set -ErrorAction SilentlyContinue) {
             Ninja-Property-Set $FieldName $ValueString -ErrorAction Stop
@@ -178,6 +190,7 @@ function Set-NinjaField {
     } catch {
         Write-Log "Ninja-Property-Set failed, using CLI fallback" -Level DEBUG
         
+        # Method 2: Try ninjarmm-cli.exe
         try {
             if (-not (Test-Path $NinjaRMMCLI)) {
                 throw "NinjaRMM CLI not found at: $NinjaRMMCLI"
@@ -202,7 +215,7 @@ function Set-NinjaField {
 function Test-IsElevated {
     <#
     .SYNOPSIS
-        Checks if script is running with Administrator privileges
+        Checks if script is running with administrator privileges
     #>
     $Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
     $Principal = New-Object System.Security.Principal.WindowsPrincipal($Identity)
@@ -291,11 +304,13 @@ try {
         Write-Log "Force mode enabled - will override existing configuration" -Level INFO
     }
     
-    # Check Administrator privileges
+    # Check administrator privileges
     if (-not (Test-IsElevated)) {
-        throw "Administrator privileges required to modify crash dump settings"
+        Write-Log "ERROR: This script requires administrator privileges" -Level ERROR
+        throw "Access Denied"
     }
-    Write-Log "Administrator privileges verified" -Level INFO
+    
+    Write-Log "Administrator privileges confirmed" -Level SUCCESS
     
     # Get current crash dump configuration
     Write-Log "Checking current crash dump configuration" -Level INFO
@@ -376,6 +391,7 @@ try {
     Set-NinjaField -FieldName "crashDumpDate" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
     
     Write-Log "Crash dump configuration completed successfully" -Level SUCCESS
+    $script:ExitCode = 0
     
 } catch {
     Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
@@ -384,28 +400,28 @@ try {
     Set-NinjaField -FieldName "crashDumpStatus" -Value "Failed"
     Set-NinjaField -FieldName "crashDumpDate" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
     
-    exit 1
+    $script:ExitCode = 1
     
 } finally {
     $EndTime = Get-Date
     $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
     
+    Write-Log "" -Level INFO
     Write-Log "========================================" -Level INFO
     Write-Log "Execution Summary:" -Level INFO
     Write-Log "  Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
     Write-Log "  Errors: $script:ErrorCount" -Level INFO
     Write-Log "  Warnings: $script:WarningCount" -Level INFO
     Write-Log "  Reboot Required: $script:RebootRequired" -Level INFO
-    
     if ($script:CLIFallbackCount -gt 0) {
         Write-Log "  CLI Fallbacks: $script:CLIFallbackCount" -Level INFO
     }
-    
+    Write-Log "  Exit Code: $script:ExitCode" -Level INFO
     Write-Log "========================================" -Level INFO
-}
-
-if ($script:ErrorCount -gt 0) {
-    exit 1
-} else {
-    exit 0
+    
+    # Cleanup
+    [System.GC]::Collect()
+    [System.GC]::WaitForPendingFinalizers()
+    
+    exit $script:ExitCode
 }

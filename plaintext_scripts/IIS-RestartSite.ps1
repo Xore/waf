@@ -22,29 +22,34 @@
     If specified, verifies the site is actually running after restart. Default: True
 
 .EXAMPLE
-    -SiteName "Default Web Site"
-
-    [Info] Restarting IIS site 'Default Web Site'...
-    [Info] Current state: Started
-    [Info] Stopping site...
-    [Info] Site stopped successfully
-    [Info] Waiting 3 seconds...
-    [Info] Starting site...
-    [Info] Site started successfully
-    [Info] Final state: Started
+    .\IIS-RestartSite.ps1 -SiteName "Default Web Site"
+    
+    Restarting IIS site 'Default Web Site'...
+    Current state: Started
+    Stopping site...
+    Site stopped successfully
+    Waiting 3 seconds...
+    Starting site...
+    Final state: Started
 
 .EXAMPLE
-    -SiteName "Contoso Web App" -WaitSeconds 5
-
+    .\IIS-RestartSite.ps1 -SiteName "Contoso Web App" -WaitSeconds 5
+    
     Waits 5 seconds between stop and start for thorough cleanup.
 
 .OUTPUTS
-    None
+    None. Status information is written to the console.
 
 .NOTES
-    Minimum OS Architecture Supported: Windows Server 2012 R2 with IIS role
-    Release notes: Initial release for WAF v3.0
-    Requires: WebAdministration PowerShell module, IIS role installed, administrator privileges
+    File Name      : IIS-RestartSite.ps1
+    Prerequisite   : PowerShell 5.1 or higher, IIS role installed, WebAdministration module
+    Requires       : Administrator privileges
+    Minimum OS     : Windows Server 2012 R2 with IIS role
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: Upgraded to V3 standards with Write-Log function and execution tracking
+    - 1.0: Initial release
     
 .COMPONENT
     WebAdministration - IIS management PowerShell module
@@ -67,12 +72,32 @@ param(
     [Parameter(Mandatory=$true)]
     [string]$SiteName,
     
+    [Parameter()]
     [int]$WaitSeconds = 3,
     
+    [Parameter()]
     [switch]$VerifyState = $true
 )
 
 begin {
+    $ErrorActionPreference = 'Stop'
+    $ProgressPreference = 'SilentlyContinue'
+    $StartTime = Get-Date
+    
+    Set-StrictMode -Version Latest
+
+    function Write-Log {
+        param([string]$Message, [string]$Level = 'INFO')
+        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $logMessage = "[$timestamp] [$Level] $Message"
+        
+        switch ($Level) {
+            'ERROR' { Write-Error $logMessage }
+            'WARNING' { Write-Warning $logMessage }
+            default { Write-Output $logMessage }
+        }
+    }
+
     if ($env:siteName -and $env:siteName -notlike "null") {
         $SiteName = $env:siteName
     }
@@ -88,21 +113,20 @@ begin {
 
 process {
     try {
-        Write-Host "[Info] Restarting IIS site '$SiteName'..."
+        Write-Log "Restarting IIS site '$SiteName'..."
         
         Import-Module WebAdministration -ErrorAction Stop
         
         $Site = Get-Website -Name $SiteName -ErrorAction Stop
         
         if (-not $Site) {
-            Write-Host "[Error] Website '$SiteName' not found"
-            exit 1
+            throw "Website '$SiteName' not found"
         }
 
-        Write-Host "[Info] Current state: $($Site.State)"
+        Write-Log "Current state: $($Site.State)"
 
         if ($Site.State -ne "Stopped") {
-            Write-Host "[Info] Stopping site..."
+            Write-Log "Stopping site..."
             Stop-Website -Name $SiteName -ErrorAction Stop
             
             $Timeout = 30
@@ -113,17 +137,17 @@ process {
             }
             
             if ((Get-Website -Name $SiteName).State -eq "Stopped") {
-                Write-Host "[Info] Site stopped successfully"
+                Write-Log "Site stopped successfully"
             } else {
-                Write-Host "[Error] Site did not stop within timeout period"
+                Write-Log "Site did not stop within timeout period" -Level ERROR
                 $ExitCode = 1
             }
         }
 
-        Write-Host "[Info] Waiting $WaitSeconds seconds..."
+        Write-Log "Waiting $WaitSeconds seconds..."
         Start-Sleep -Seconds $WaitSeconds
 
-        Write-Host "[Info] Starting site..."
+        Write-Log "Starting site..."
         Start-Website -Name $SiteName -ErrorAction Stop
         
         $Timeout = 30
@@ -134,22 +158,29 @@ process {
         }
 
         $FinalState = (Get-Website -Name $SiteName).State
-        Write-Host "[Info] Final state: $FinalState"
+        Write-Log "Final state: $FinalState"
 
         if ($VerifyState -and $FinalState -ne "Started") {
-            Write-Host "[Error] Site is not running after restart"
+            Write-Log "Site is not running after restart" -Level ERROR
             $ExitCode = 1
         } else {
-            Write-Host "[Info] Site restarted successfully"
+            Write-Log "Site restarted successfully"
         }
     }
     catch {
-        Write-Host "[Error] Failed to restart site: $_"
+        Write-Log "Failed to restart site: $_" -Level ERROR
         $ExitCode = 1
     }
-
-    exit $ExitCode
 }
 
 end {
+    try {
+        $EndTime = Get-Date
+        $Duration = ($EndTime - $StartTime).TotalSeconds
+        Write-Log "Script execution completed in $Duration seconds"
+    }
+    finally {
+        [System.GC]::Collect()
+        exit $ExitCode
+    }
 }

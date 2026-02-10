@@ -2,13 +2,13 @@
 
 **Project:** Windows Automation Framework  
 **Target:** Upgrade all scripts to V3.0.0 standards  
-**Last Updated:** February 10, 2026, 10:49 PM CET
+**Last Updated:** February 10, 2026, 10:56 PM CET
 
 ## Progress Overview
 
 - **Total Scripts:** 219
-- **Completed:** 89 (40.6%)
-- **Remaining:** 130 (59.4%)
+- **Completed:** 92 (42.0%)
+- **Remaining:** 127 (58.0%)
 
 ## V3.0.0 Compliance Checklist
 
@@ -27,9 +27,18 @@ Each script must meet these requirements:
 - [ ] No checkmarks/crosses/emojis in output
 - [ ] All output is plain text via `Write-Output`
 
-## Completed Scripts (89)
+## Completed Scripts (92)
 
-### Tonight's Session - Feb 10, 2026 (14 scripts)
+### Tonight's Session - Feb 10, 2026 (17 scripts)
+
+#### Certificates (1) - CATEGORY COMPLETE
+- [x] Certificates-GetExpiring.ps1
+
+#### Device (1) - CATEGORY COMPLETE
+- [x] Device-UpdateLocation.ps1
+
+#### Diamod (1) - CATEGORY COMPLETE
+- [x] Diamod-ReregisterServerFixPermissions.ps1
 
 #### Network (5)
 - [x] Network-AlertWiredSub1Gbps.ps1
@@ -117,9 +126,9 @@ Each script must meet these requirements:
 
 _(Additional 15 scripts from previous sessions not fully listed here - see commit history)_
 
-## Scripts Requiring Upgrade (130)
+## Scripts Requiring Upgrade (127)
 
-### AD - Active Directory (10 remaining)
+### AD - Active Directory (13 remaining)
 - [ ] AD-GetOUMembers.ps1
 - [ ] AD-GetOrganizationalUnit.ps1
 - [ ] AD-JoinComputerToDomain.ps1
@@ -134,17 +143,14 @@ _(Additional 15 scripts from previous sessions not fully listed here - see commi
 - [ ] AD-UserLoginHistoryReport.ps1
 - [ ] AD-UserLogonHistory.ps1
 
-### Certificates (1 remaining)
-- [ ] Certificates-GetExpiring.ps1
+### Certificates - COMPLETE
 
 ### DHCP (1 remaining)
 - [ ] DHCP-FindRogueServersNmap.ps1
 
-### Device (1 remaining)
-- [ ] Device-UpdateLocation.ps1
+### Device - COMPLETE
 
-### Diamod (1 remaining)
-- [ ] Diamod-ReregisterServerFixPermissions.ps1
+### Diamod - COMPLETE
 
 ### EventLog (2 remaining)
 - [ ] EventLog-BackupToLocalDisk.ps1
@@ -176,7 +182,7 @@ _(Additional 15 scripts from previous sessions not fully listed here - see commi
 ### Licensing (1 remaining)
 - [ ] Licensing-UnlicensedWindowsAlert.ps1
 
-### Monitoring (3 remaining)
+### Monitoring (4 remaining)
 - [ ] Monitoring-FileModificationAlert.ps1
 - [ ] Monitoring-HostFileChangedAlert.ps1
 - [ ] Monitoring-NTPTimeDifference.ps1
@@ -205,7 +211,7 @@ _(Additional 15 scripts from previous sessions not fully listed here - see commi
 ### Outlook (1 remaining)
 - [ ] Outlook-ReportLargeOSTandPST.ps1
 
-### Power (2 remaining)
+### Power (3 remaining)
 - [ ] Power-ActivePlanReport.ps1
 - [ ] Power-SetFastStartup.ps1
 - [ ] PowerManagement-SetPlan.ps1
@@ -227,7 +233,7 @@ _(Additional 15 scripts from previous sessions not fully listed here - see commi
 - [ ] SQL-CollectMSSQLInstances.ps1
 - [ ] SQL-MonitorServer.ps1
 
-### Security (7 remaining)
+### Security (9 remaining)
 - [ ] Security-AuditUACLevel.ps1
 - [ ] Security-DetectInstalledAntivirus.ps1
 - [ ] Security-LocalAdminsReport.ps1
@@ -244,13 +250,13 @@ _(Additional 15 scripts from previous sessions not fully listed here - see commi
 ### Services (1 remaining)
 - [ ] Services-CheckStoppedAutomatic.ps1
 
-### Shortcuts (5 remaining)
+### Shortcuts (4 remaining)
 - [ ] Shortcuts-CreateCeprosShortcuts.ps1
 - [ ] Shortcuts-CreateDesktopRDP.ps1
 - [ ] Shortcuts-CreateDesktopURL.ps1
 - [ ] Shortcuts-CreateGenericShortcut.ps1
 
-### Software (13 remaining)
+### Software (16 remaining)
 - [ ] Software-InstallCatiaBMW-R2024SP2HFX10.ps1
 - [ ] Software-InstallCatiaBMW-R2024SP5.ps1
 - [ ] Software-InstallDellCommandUpdate.ps1
@@ -268,7 +274,7 @@ _(Additional 15 scripts from previous sessions not fully listed here - see commi
 - [ ] Software-UninstallWindowsDefender.ps1
 - [ ] Software-UpdatePowerShell51.ps1
 
-### System (3 remaining)
+### System (5 remaining)
 - [ ] System-ConfigureTimeSync.ps1
 - [ ] System-EnableMiniDumpsForBSOD.ps1
 - [ ] System-GetDeviceDescription.ps1
@@ -304,6 +310,7 @@ For each script, follow these steps:
 
 ## Session History
 
-- **Feb 10, 2026 (Tonight)**: 14 scripts completed (Network 5, Security 6, System 3)
+- **Feb 10, 2026 (Tonight)**: 17 scripts completed (Certificates 1, Device 1, Diamod 1, Network 5, Security 6, System 3)
 - **Previous Sessions**: 75 scripts completed across all categories
-- **Total Progress**: 89/219 (40.6%)
+- **Total Progress**: 92/219 (42.0%)
+- **Categories Completed**: Certificates, Device, Diamod (3 categories 100% complete)

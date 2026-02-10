@@ -187,8 +187,7 @@
     
     Exit Codes:
         0 - Removal commands executed successfully
-        Note: Individual command failures may not propagate to exit code
-              Check console output for detailed status
+        1 - Error occurred during removal process
     
     WARNING: This is a destructive operation
              Client cannot be remotely managed after removal
@@ -205,94 +204,133 @@
 [CmdletBinding()]
 param()
 
-# Configuration
-$ScriptVersion = "3.0"
-$ScriptName = "Software-RemoveCCMClient"
-
-Write-Host "========================================"
-Write-Host "Starting: $ScriptName v$ScriptVersion"
-Write-Host "========================================"
-Write-Host ""
-
-try {
-    # Step 1: Uninstall CCM client using official uninstaller
-    Write-Host "Step 1: Running CCMSetup.exe /uninstall..."
-    if (Test-Path "C:\Windows\CCMSetup\CCMSetup.exe") {
-        Start-Process -FilePath "C:\Windows\CCMSetup\CCMSetup.exe" -ArgumentList "/uninstall" -Wait -NoNewWindow
-        Write-Host "CCMSetup.exe /uninstall completed"
-    } else {
-        Write-Host "WARNING: CCMSetup.exe not found, skipping official uninstaller"
+begin {
+    $ErrorActionPreference = 'Stop'
+    $ProgressPreference = 'SilentlyContinue'
+    Set-StrictMode -Version Latest
+    
+    $ScriptVersion = "3.0"
+    $ScriptName = "Software-RemoveCCMClient"
+    $StartTime = Get-Date
+    
+    function Write-Log {
+        param(
+            [Parameter(Mandatory=$true)]
+            [string]$Message,
+            
+            [Parameter(Mandatory=$false)]
+            [ValidateSet('INFO', 'WARNING', 'ERROR')]
+            [string]$Level = 'INFO'
+        )
+        
+        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $logMessage = "[$timestamp] [$Level] $Message"
+        
+        switch ($Level) {
+            'ERROR'   { Write-Error $logMessage }
+            'WARNING' { Write-Warning $logMessage }
+            default   { Write-Host $logMessage }
+        }
     }
-    
-    # Step 2: Remove CCM registry keys
-    Write-Host ""
-    Write-Host "Step 2: Removing CCM registry keys..."
-    
-    if (Test-Path "HKLM:\SOFTWARE\Microsoft\CCM") {
-        reg delete "HKLM\SOFTWARE\Microsoft\CCM" /f | Out-Null
-        Write-Host "Removed HKLM\SOFTWARE\Microsoft\CCM"
-    } else {
-        Write-Host "Registry key HKLM\SOFTWARE\Microsoft\CCM not found"
-    }
-    
-    if (Test-Path "HKLM:\SOFTWARE\Microsoft\SMS") {
-        reg delete "HKLM\SOFTWARE\Microsoft\SMS" /f | Out-Null
-        Write-Host "Removed HKLM\SOFTWARE\Microsoft\SMS"
-    } else {
-        Write-Host "Registry key HKLM\SOFTWARE\Microsoft\SMS not found"
-    }
-    
-    # Step 3: Remove CCM directories
-    Write-Host ""
-    Write-Host "Step 3: Removing CCM directories..."
-    
-    if (Test-Path "C:\Windows\CCM") {
-        Remove-Item -Path "C:\Windows\CCM" -Recurse -Force -ErrorAction SilentlyContinue
-        Write-Host "Removed C:\Windows\CCM directory"
-    } else {
-        Write-Host "Directory C:\Windows\CCM not found"
-    }
-    
-    if (Test-Path "C:\Windows\CCMSetup") {
-        Remove-Item -Path "C:\Windows\CCMSetup" -Recurse -Force -ErrorAction SilentlyContinue
-        Write-Host "Removed C:\Windows\CCMSetup directory"
-    } else {
-        Write-Host "Directory C:\Windows\CCMSetup not found"
-    }
-    
-    # Step 4: Remove configuration file
-    Write-Host ""
-    Write-Host "Step 4: Removing SMSCFG.ini configuration file..."
-    
-    if (Test-Path "C:\Windows\SMSCFG.ini") {
-        Remove-Item -Path "C:\Windows\SMSCFG.ini" -Force -ErrorAction SilentlyContinue
-        Write-Host "Removed C:\Windows\SMSCFG.ini"
-    } else {
-        Write-Host "Configuration file C:\Windows\SMSCFG.ini not found"
-    }
-    
-    # Step 5: Salvage WMI repository to remove CCM namespaces
-    Write-Host ""
-    Write-Host "Step 5: Salvaging WMI repository to remove CCM namespaces..."
-    Write-Host "This may take 30-120 seconds..."
-    
-    winmgmt /salvagerepository | Out-Null
-    Write-Host "WMI repository salvage completed"
-    
-    Write-Host ""
-    Write-Host "========================================"
-    Write-Host "CCM Client Removal Completed"
-    Write-Host "========================================"
-    Write-Host ""
-    Write-Host "IMPORTANT: A system restart is recommended to complete the removal."
-    Write-Host "The system is no longer managed by Configuration Manager."
-    
-    exit 0
 }
-catch {
-    Write-Host ""
-    Write-Host "ERROR: CCM client removal encountered an error: $($_.Exception.Message)"
-    Write-Host "Some components may have been removed successfully."
-    Write-Host "Check the output above for detailed status."
-    exit 1
+
+process {
+    try {
+        Write-Log "========================================" 
+        Write-Log "Starting: $ScriptName v$ScriptVersion"
+        Write-Log "========================================"
+        Write-Log ""
+        
+        Write-Log "WARNING: This is a destructive operation" "WARNING"
+        Write-Log "Client will no longer be managed by Configuration Manager after removal" "WARNING"
+        Write-Log ""
+        
+        # Step 1: Uninstall CCM client using official uninstaller
+        Write-Log "Step 1: Running CCMSetup.exe /uninstall..."
+        if (Test-Path "C:\Windows\CCMSetup\CCMSetup.exe") {
+            Start-Process -FilePath "C:\Windows\CCMSetup\CCMSetup.exe" -ArgumentList "/uninstall" -Wait -NoNewWindow
+            Write-Log "CCMSetup.exe /uninstall completed"
+        } else {
+            Write-Log "CCMSetup.exe not found, skipping official uninstaller" "WARNING"
+        }
+        
+        # Step 2: Remove CCM registry keys
+        Write-Log ""
+        Write-Log "Step 2: Removing CCM registry keys..."
+        
+        if (Test-Path "HKLM:\SOFTWARE\Microsoft\CCM") {
+            reg delete "HKLM\SOFTWARE\Microsoft\CCM" /f | Out-Null
+            Write-Log "Removed HKLM\SOFTWARE\Microsoft\CCM"
+        } else {
+            Write-Log "Registry key HKLM\SOFTWARE\Microsoft\CCM not found"
+        }
+        
+        if (Test-Path "HKLM:\SOFTWARE\Microsoft\SMS") {
+            reg delete "HKLM\SOFTWARE\Microsoft\SMS" /f | Out-Null
+            Write-Log "Removed HKLM\SOFTWARE\Microsoft\SMS"
+        } else {
+            Write-Log "Registry key HKLM\SOFTWARE\Microsoft\SMS not found"
+        }
+        
+        # Step 3: Remove CCM directories
+        Write-Log ""
+        Write-Log "Step 3: Removing CCM directories..."
+        
+        if (Test-Path "C:\Windows\CCM") {
+            Remove-Item -Path "C:\Windows\CCM" -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Log "Removed C:\Windows\CCM directory"
+        } else {
+            Write-Log "Directory C:\Windows\CCM not found"
+        }
+        
+        if (Test-Path "C:\Windows\CCMSetup") {
+            Remove-Item -Path "C:\Windows\CCMSetup" -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Log "Removed C:\Windows\CCMSetup directory"
+        } else {
+            Write-Log "Directory C:\Windows\CCMSetup not found"
+        }
+        
+        # Step 4: Remove configuration file
+        Write-Log ""
+        Write-Log "Step 4: Removing SMSCFG.ini configuration file..."
+        
+        if (Test-Path "C:\Windows\SMSCFG.ini") {
+            Remove-Item -Path "C:\Windows\SMSCFG.ini" -Force -ErrorAction SilentlyContinue
+            Write-Log "Removed C:\Windows\SMSCFG.ini"
+        } else {
+            Write-Log "Configuration file C:\Windows\SMSCFG.ini not found"
+        }
+        
+        # Step 5: Salvage WMI repository to remove CCM namespaces
+        Write-Log ""
+        Write-Log "Step 5: Salvaging WMI repository to remove CCM namespaces..."
+        Write-Log "This may take 30-120 seconds..."
+        
+        winmgmt /salvagerepository | Out-Null
+        Write-Log "WMI repository salvage completed"
+        
+        Write-Log ""
+        Write-Log "========================================"
+        Write-Log "CCM Client Removal Completed"
+        Write-Log "========================================"
+        Write-Log ""
+        Write-Log "IMPORTANT: A system restart is recommended to complete the removal." "WARNING"
+        Write-Log "The system is no longer managed by Configuration Manager." "WARNING"
+        
+        exit 0
+    }
+    catch {
+        Write-Log "CCM client removal encountered an error: $($_.Exception.Message)" "ERROR"
+        Write-Log "Some components may have been removed successfully." "WARNING"
+        Write-Log "Check the output above for detailed status." "WARNING"
+        exit 1
+    }
+}
+
+end {
+    if ($StartTime) {
+        $executionTime = (Get-Date) - $StartTime
+        Write-Log "Script execution time: $($executionTime.TotalSeconds) seconds"
+    }
+    [System.GC]::Collect()
 }

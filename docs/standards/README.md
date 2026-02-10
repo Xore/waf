@@ -1,6 +1,6 @@
 # Windows Automation Framework - Standards Documentation
 
-**Last Updated:** February 9, 2026
+**Last Updated:** February 11, 2026
 
 ---
 
@@ -12,7 +12,7 @@ This directory contains all coding standards, best practices, and technical guid
 
 ## Core Standards
 
-### [CODING_STANDARDS.md](CODING_STANDARDS.md)
+### [CODING_STANDARDS.md](../../archive/docs/standards/CODING_STANDARDS.md)
 **Primary development standards document**
 
 **Version:** 1.4
@@ -40,9 +40,7 @@ Comprehensive coding standards covering:
 
 ---
 
-## Technical Guides
-
-### [OUTPUT_FORMATTING.md](OUTPUT_FORMATTING.md)
+### [OUTPUT_FORMATTING.md](../../archive/docs/standards/OUTPUT_FORMATTING.md)
 **Output formatting standards for scripts**
 
 **Version:** 1.0
@@ -59,70 +57,25 @@ Critical standards for script output to ensure compatibility and readability:
 - Use severity levels instead of colors (INFO, WARN, ERROR, DEBUG)
 - Log milestone percentages instead of progress bars
 
-**Critical Requirement:**
-- **ALL scripts MUST use plain text output only**
-- Never use Write-Host with -ForegroundColor
-- Never use emojis or special Unicode characters
-- Never use ANSI color codes
-- Never use Write-Progress for long operations
-- Use words instead of symbols ("Success" not "✓")
+---
 
-**Rationale:**
-- NinjaRMM console displays plain text only
-- Log files corrupted by UTF-8 emojis
-- SIEM/monitoring tools require plain text
-- Accessibility (screen readers)
-- Cross-platform compatibility
-
-**Quick Reference:**
-| Prohibited | Alternative |
-|------------|-------------|
-| "Status: ✓" | "Status: Success" |
-| "CPU: 75%" | "CPU: 75 percent" |
-| Write-Host -ForegroundColor Green | Write-Log -Level INFO |
-| Write-Progress | Log milestone percentages |
-| "100 → 200" | "Changed from 100 to 200" |
-| "Temp: 45°C" | "Temperature: 45 degrees Celsius" |
-
-### [LANGUAGE_AWARE_PATHS.md](LANGUAGE_AWARE_PATHS.md)
+### [LANGUAGE_AWARE_PATHS.md](../../archive/docs/standards/LANGUAGE_AWARE_PATHS.md)
 **Language-aware path handling for German and English Windows**
 
 **Version:** 1.0
-
-Comprehensive guide for handling file system paths that vary between Windows language versions:
-
-**Key Features:**
-- **Get-LocalizedPath function** (handles German and English folder names)
-- **Common folder translations** (Desktop/Schreibtisch, Documents/Dokumente, etc.)
-- **Environment variable usage** (language-independent paths)
-- **Registry-based resolution** (shell folder paths)
-- **System folder handling** (Program Files/Programme, Users/Benutzer)
-- Complete usage examples
-- Testing guidelines
-- Best practices and anti-patterns
 
 **Critical Requirement:**
 - **ALL scripts MUST support both German and English path variants**
 - Never hardcode single-language paths
 - Use Get-LocalizedPath function for user folders
 - Prefer environment variables when available
-- Log which path variant was found
-
-**Common Folder Translations:**
-| English | German |
-|---------|--------|
-| Desktop | Schreibtisch |
-| Documents | Dokumente |
-| Pictures | Bilder |
-| Music | Musik |
-| Public | Öffentlich |
 
 ---
 
 ## Template Files
 
-### SCRIPT_HEADER_TEMPLATE.ps1
-**Standard script template** (to be created)
+### [SCRIPT_HEADER_TEMPLATE.ps1](../../archive/docs/standards/SCRIPT_HEADER_TEMPLATE.ps1)
+**Standard script template**
 
 Starter template including:
 - Comment-based help structure
@@ -134,65 +87,14 @@ Starter template including:
 - Main execution block
 - Finally block with execution time logging
 
----
+### [SCRIPT_REFACTORING_GUIDE.md](../../archive/docs/standards/SCRIPT_REFACTORING_GUIDE.md)
+**Guide for upgrading scripts to V3 standards**
 
-## Quick Start Guide
-
-### Creating a New Script
-
-1. **Get next sequential number:**
-   ```powershell
-   Get-ChildItem -Filter "*.ps1" -Recurse |
-       Where-Object { $_.Name -match ' (\d+)\.ps1$' } |
-       ForEach-Object { [int]$Matches[1] } |
-       Measure-Object -Maximum | Select-Object -ExpandProperty Maximum
-   # Add 1 to this number
-   ```
-
-2. **Name your script:**
-   - Format: `[Description] [Number].ps1`
-   - Example: `Disk Space Monitor 47.ps1`
-   - 2-5 words, human-readable
-   - Title Case
-
-3. **Use the template:**
-   - Copy `SCRIPT_HEADER_TEMPLATE.ps1`
-   - Update comment-based help
-   - Include required functions (Write-Log, Set-NinjaField)
-   - Add module installation if needed
-   - Add Get-LocalizedPath if using user folders
-
-4. **Implement output standards:**
-   ```powershell
-   # REQUIRED - Plain text only
-   Write-Log "Status: Success" -Level INFO
-   Write-Log "CPU usage: 75 percent" -Level INFO
-   
-   # FORBIDDEN - No emojis, symbols, or colors
-   # Write-Host "Status: ✓" -ForegroundColor Green  # NEVER do this
-   ```
-
-5. **Implement language-aware paths:**
-   ```powershell
-   # Include Get-LocalizedPath function from LANGUAGE_AWARE_PATHS.md
-   
-   # Use for user folders
-   $DesktopPath = Get-LocalizedPath -FolderType 'Desktop'
-   
-   # Or use environment variables
-   $AppData = $env:APPDATA  # Language-independent
-   ```
-
-6. **Test thoroughly:**
-   - Runs without errors
-   - No user interaction
-   - Execution time logged
-   - Fields populate correctly
-   - Works on German Windows
-   - Works on English Windows
-   - Handles missing modules
-   - No unexpected restarts
-   - **No emojis, symbols, or colors in output**
+Refactoring guidance for:
+- V2 to V3 migration
+- Function name updates
+- Error handling improvements
+- Testing and validation
 
 ---
 
@@ -225,8 +127,6 @@ Starter template including:
 - [ ] No Write-Progress for long operations
 - [ ] Plain ASCII text only
 - [ ] Uses words not symbols ("Success" not "✓")
-- [ ] Percentages written as "75 percent" not "75%"
-- [ ] Status indicators are text ("Running" not "▶")
 
 #### Code Quality
 - [ ] Variables use PascalCase
@@ -243,64 +143,18 @@ Starter template including:
 - [ ] Execution time measured (5+ runs)
 - [ ] Fields populate correctly
 - [ ] Error scenarios tested
-- [ ] Module auto-installation tested
-- [ ] Log output verified (plain text, no symbols)
 
 ---
 
-## Document Version History
+## Related Documentation
 
-### CODING_STANDARDS.md
-- **v1.4** (2026-02-09): Added module dependency auto-installation requirements
-- **v1.3** (2026-02-09): Added file naming schema with sequential numbering
-- **v1.2** (Earlier): Added execution time tracking and dual-method field setting
-
-### OUTPUT_FORMATTING.md
-- **v1.0** (2026-02-09): Initial release with emoji/symbol/color prohibition
-
-### LANGUAGE_AWARE_PATHS.md
-- **v1.0** (2026-02-09): Initial release with German/English path support
-
----
-
-## Contributing to Standards
-
-If you identify areas for improvement:
-
-1. Document the issue or proposed change
-2. Discuss with team (if major change)
-3. Update relevant standard document(s)
-4. Increment version number
-5. Update this README.md
-6. Commit with clear message: `[Standards] Description of change`
-
----
-
-## Related Resources
-
-### GitHub Repository
-- **Main Repo:** [Xore/waf](https://github.com/Xore/waf)
-- **Issues:** Report standard issues or suggestions
-- **Wiki:** Extended documentation (if available)
-
-### External References
-- [PowerShell Best Practices](https://learn.microsoft.com/en-us/powershell/scripting/developer/cmdlet/strongly-encouraged-development-guidelines)
-- [NinjaRMM Documentation](https://www.ninjarmm.com/documentation/)
-- [Windows PowerShell Language](https://learn.microsoft.com/en-us/powershell/scripting/overview)
-
----
-
-## Support
-
-For questions or clarifications about standards:
-
-1. Check existing documentation first
-2. Review code examples in repository
-3. Ask team members
-4. Create issue for clarification if needed
+- [Framework Architecture](../../FRAMEWORK_ARCHITECTURE.md)
+- [Contributing Guide](../../CONTRIBUTING.md)
+- [Changelog](../../CHANGELOG.md)
 
 ---
 
 **Standards Directory:** `docs/standards/`  
+**Full Standards:** `archive/docs/standards/` (source files)  
 **Repository:** https://github.com/Xore/waf  
 **Maintained by:** Windows Automation Framework Team

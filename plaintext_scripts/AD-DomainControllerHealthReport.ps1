@@ -37,9 +37,9 @@
 .NOTES
     Script Name:    AD-DomainControllerHealthReport.ps1
     Author:         Windows Automation Framework
-    Version:        3.0
+    Version:        3.0.0
     Creation Date:  2024-01-15
-    Last Modified:  2026-02-09
+    Last Modified:  2026-02-10
     
     Execution Context: SYSTEM (via NinjaRMM automation)
     Execution Frequency: Daily or on-demand
@@ -86,7 +86,7 @@ param (
 # CONFIGURATION
 # ============================================================================
 
-$ScriptVersion = "3.0"
+$ScriptVersion = "3.0.0"
 $ScriptName = "AD-DomainControllerHealthReport"
 
 # NinjaRMM CLI path for fallback
@@ -107,6 +107,7 @@ $DCDiagTestsToRun = @(
 
 $StartTime = Get-Date
 $ErrorActionPreference = 'Stop'
+$script:ExitCode = 0
 $script:ErrorCount = 0
 $script:WarningCount = 0
 $script:CLIFallbackCount = 0
@@ -429,7 +430,7 @@ try {
             $_.Result | ForEach-Object { Write-Log $_ -Level INFO }
         }
         
-        exit 1
+        $script:ExitCode = 1
     } else {
         Write-Log "All Directory Server Diagnosis Tests Passed" -Level SUCCESS
     }
@@ -437,7 +438,7 @@ try {
 } catch {
     Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
     Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
-    exit 1
+    $script:ExitCode = 1
     
 } finally {
     # Calculate and log execution time
@@ -457,11 +458,6 @@ try {
     }
     
     Write-Log "========================================" -Level INFO
-}
-
-# Exit with appropriate code
-if ($script:ErrorCount -gt 0 -or $FailedTests.Count -gt 0) {
-    exit 1
-} else {
-    exit 0
+    
+    exit $script:ExitCode
 }

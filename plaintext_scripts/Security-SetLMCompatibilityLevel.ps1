@@ -36,7 +36,7 @@
 
 .NOTES
     Minimum OS Architecture Supported: Windows 10, Windows Server 2012 R2
-    Release notes: Initial release for WAF v3.0
+    Release notes: v3.0.0 - Upgraded to V3.0.0 standards (script-scoped exit code)
     User interaction: None
     Restart behavior: System restart required for changes to take effect
     Typical duration: < 1 second
@@ -69,7 +69,7 @@ begin {
 
     $RegPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa"
     $RegName = "LMCompatibilityLevel"
-    $ExitCode = 0
+    $script:ExitCode = 0
 
     $LevelDescriptions = @{
         0 = "Send LM and NTLM responses"
@@ -98,15 +98,15 @@ process {
         }
         else {
             Write-Host "[Error] Failed to set LMCompatibilityLevel. Current value: $CurrentValue"
-            $ExitCode = 1
+            $script:ExitCode = 1
         }
     }
     catch {
         Write-Host "[Error] Failed to configure LMCompatibilityLevel: $_"
-        $ExitCode = 1
+        $script:ExitCode = 1
     }
 
-    exit $ExitCode
+    exit $script:ExitCode
 }
 
 end {

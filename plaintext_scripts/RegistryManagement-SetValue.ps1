@@ -1,4 +1,5 @@
 #Requires -Version 5.1
+Set-StrictMode -Version Latest
 
 <#
 .SYNOPSIS
@@ -62,7 +63,7 @@
 
 .NOTES
     Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Release notes: Initial release for WAF v3.0
+    Release notes: Refactored to V3.0 standards with Write-Log function
     Requires: Administrator privileges for HKLM modifications
     
     WARNING: Incorrect registry modifications can cause system instability.
@@ -98,6 +99,19 @@ param(
 )
 
 begin {
+    $StartTime = Get-Date
+
+    function Write-Log {
+        param(
+            [string]$Message,
+            [ValidateSet('Info', 'Warning', 'Error')]
+            [string]$Level = 'Info'
+        )
+        $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $Output = "[$Timestamp] [$Level] $Message"
+        Write-Host $Output
+    }
+
     if ($env:registryPath -and $env:registryPath -notlike "null") {
         $RegistryPath = $env:registryPath
     }
@@ -137,30 +151,30 @@ begin {
 
 process {
     if ([string]::IsNullOrWhiteSpace($RegistryPath)) {
-        Write-Host "[Error] RegistryPath parameter is required"
+        Write-Log "RegistryPath parameter is required" -Level Error
         exit 1
     }
 
     if ([string]::IsNullOrWhiteSpace($ValueName)) {
-        Write-Host "[Error] ValueName parameter is required"
+        Write-Log "ValueName parameter is required" -Level Error
         exit 1
     }
 
     if ($RegistryPath -notmatch "^(HKLM|HKCU|HKCR|HKU|HKCC):") {
-        Write-Host "[Error] Registry path must start with a valid hive (HKLM:, HKCU:, HKCR:, HKU:, or HKCC:)"
+        Write-Log "Registry path must start with a valid hive (HKLM:, HKCU:, HKCR:, HKU:, or HKCC:)" -Level Error
         exit 1
     }
 
     try {
-        Write-Host "[Info] Setting registry value..."
+        Write-Log "Setting registry value..."
         
         if (-not (Test-Path -Path $RegistryPath)) {
             if ($Force) {
-                Write-Host "[Info] Creating registry path: $RegistryPath"
+                Write-Log "Creating registry path: $RegistryPath"
                 New-Item -Path $RegistryPath -Force -ErrorAction Stop | Out-Null
             } else {
-                Write-Host "[Error] Registry path does not exist: $RegistryPath"
-                Write-Host "[Info] Use -Force parameter to create the path"
+                Write-Log "Registry path does not exist: $RegistryPath" -Level Error
+                Write-Log "Use -Force parameter to create the path"
                 exit 1
             }
         }
@@ -172,7 +186,7 @@ process {
                 try {
                     $ConvertedData = [int]$ValueData
                 } catch {
-                    Write-Host "[Error] ValueData must be a valid integer for DWord type"
+                    Write-Log "ValueData must be a valid integer for DWord type" -Level Error
                     exit 1
                 }
             }
@@ -180,7 +194,7 @@ process {
                 try {
                     $ConvertedData = [long]$ValueData
                 } catch {
-                    Write-Host "[Error] ValueData must be a valid long integer for QWord type"
+                    Write-Log "ValueData must be a valid long integer for QWord type" -Level Error
                     exit 1
                 }
             }
@@ -188,7 +202,7 @@ process {
                 try {
                     $ConvertedData = [byte[]]($ValueData -split ',' | ForEach-Object { [byte]$_.Trim() })
                 } catch {
-                    Write-Host "[Error] ValueData must be comma-separated bytes for Binary type (e.g., '01,02,03')"
+                    Write-Log "ValueData must be comma-separated bytes for Binary type (e.g., '01,02,03')" -Level Error
                     exit 1
                 }
             }
@@ -197,17 +211,17 @@ process {
             }
         }
 
-        Write-Host "[Info] Setting value '$ValueName' to '$ValueData' ($ValueType)"
+        Write-Log "Setting value '$ValueName' to '$ValueData' ($ValueType)"
         
         Set-ItemProperty -Path $RegistryPath -Name $ValueName -Value $ConvertedData -Type $ValueType -ErrorAction Stop
         
         $VerifyValue = Get-ItemProperty -Path $RegistryPath -Name $ValueName -ErrorAction SilentlyContinue
         
         if ($VerifyValue.$ValueName -ne $null) {
-            Write-Host "[Info] Registry value set successfully"
+            Write-Log "Registry value set successfully"
             $Result = "Registry value '$ValueName' set to '$ValueData' at $RegistryPath"
         } else {
-            Write-Host "[Error] Failed to verify registry value was set"
+            Write-Log "Failed to verify registry value was set" -Level Error
             $Result = "Failed to set registry value '$ValueName' at $RegistryPath"
             $ExitCode = 1
         }
@@ -215,20 +229,26 @@ process {
         if ($SaveToCustomField) {
             try {
                 $Result | Set-NinjaProperty -Name $SaveToCustomField
-                Write-Host "[Info] Results saved to custom field '$SaveToCustomField'"
+                Write-Log "Results saved to custom field '$SaveToCustomField'"
             } catch {
-                Write-Host "[Error] Failed to save to custom field: $_"
+                Write-Log "Failed to save to custom field: $_" -Level Error
                 $ExitCode = 1
             }
         }
     }
     catch {
-        Write-Host "[Error] Failed to set registry value: $_"
+        Write-Log "Failed to set registry value: $_" -Level Error
         $ExitCode = 1
     }
-
-    exit $ExitCode
 }
 
 end {
+    $EndTime = Get-Date
+    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+    Write-Log "Script execution completed in $ExecutionTime seconds"
+    
+    [System.GC]::Collect()
+    [System.GC]::WaitForPendingFinalizers()
+    
+    exit $ExitCode
 }

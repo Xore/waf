@@ -119,7 +119,7 @@ function Write-Log {
     }
 }
 
-function Set-NinjaRMMField {
+function Set-NinjaField {
     param(
         [string]$FieldName,
         [AllowNull()]
@@ -467,17 +467,21 @@ try {
     Write-Log "$ScriptName v$ScriptVersion"
     Write-Log "========================================"
     
+    # Error tracking (MANDATORY)
+    $ErrorsEncountered = 0
+    $ErrorDetails = @()
+    
     # Check if cluster service exists
     $ClusterService = Get-Service -Name ClusSvc -ErrorAction SilentlyContinue
     if (-not $ClusterService) {
         Write-Log "Cluster service not found. This is not a cluster node." -Level WARNING
-        Set-NinjaRMMField -FieldName "$($FieldPrefix)Status" -Value "NOT_CLUSTERED"
+        Set-NinjaField -FieldName "$($FieldPrefix)Status" -Value "NOT_CLUSTERED"
         exit 1
     }
     
     if ($ClusterService.Status -ne 'Running') {
         Write-Log "Cluster service is not running" -Level ERROR
-        Set-NinjaRMMField -FieldName "$($FieldPrefix)Status" -Value "SERVICE_STOPPED"
+        Set-NinjaField -FieldName "$($FieldPrefix)Status" -Value "SERVICE_STOPPED"
         exit 1
     }
     
@@ -490,7 +494,7 @@ try {
     
     if ($HostMetrics.Count -eq 0) {
         Write-Log "Failed to collect metrics from cluster hosts" -Level ERROR
-        Set-NinjaRMMField -FieldName "$($FieldPrefix)Status" -Value "QUERY_FAILED"
+        Set-NinjaField -FieldName "$($FieldPrefix)Status" -Value "QUERY_FAILED"
         exit 2
     }
     
@@ -526,24 +530,20 @@ try {
     # Update fields
     Write-Log "Updating NinjaRMM custom fields..."
     
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)Count" -Value $HostMetrics.Count
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)VMDistribution" -Value $VMDistribution
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)ResourceBalance" -Value $BalanceScore
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)Overutilized" -Value ($UtilizationAnalysis.Overutilized -join "; ")
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)Underutilized" -Value ($UtilizationAnalysis.Underutilized -join "; ")
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)TotalVMs" -Value $TotalVMs
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)TotalCPU" -Value $TotalCPU
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)TotalMemoryGB" -Value $TotalMemoryGB
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)AvgCPUPercent" -Value $AvgCPUPercent
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)AvgMemoryPercent" -Value $AvgMemoryPercent
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)MigrationRecommendations" -Value ($MigrationRecommendations -join " | ")
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)Report" -Value $HTMLReport
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)Status" -Value $ClusterStatus
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)LastScan" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
-    
-    # Calculate execution time
-    $ExecutionEndTime = Get-Date
-    $ExecutionDuration = ($ExecutionEndTime - $ExecutionStartTime).TotalSeconds
+    Set-NinjaField -FieldName "$($FieldPrefix)Count" -Value $HostMetrics.Count
+    Set-NinjaField -FieldName "$($FieldPrefix)VMDistribution" -Value $VMDistribution
+    Set-NinjaField -FieldName "$($FieldPrefix)ResourceBalance" -Value $BalanceScore
+    Set-NinjaField -FieldName "$($FieldPrefix)Overutilized" -Value ($UtilizationAnalysis.Overutilized -join "; ")
+    Set-NinjaField -FieldName "$($FieldPrefix)Underutilized" -Value ($UtilizationAnalysis.Underutilized -join "; ")
+    Set-NinjaField -FieldName "$($FieldPrefix)TotalVMs" -Value $TotalVMs
+    Set-NinjaField -FieldName "$($FieldPrefix)TotalCPU" -Value $TotalCPU
+    Set-NinjaField -FieldName "$($FieldPrefix)TotalMemoryGB" -Value $TotalMemoryGB
+    Set-NinjaField -FieldName "$($FieldPrefix)AvgCPUPercent" -Value $AvgCPUPercent
+    Set-NinjaField -FieldName "$($FieldPrefix)AvgMemoryPercent" -Value $AvgMemoryPercent
+    Set-NinjaField -FieldName "$($FieldPrefix)MigrationRecommendations" -Value ($MigrationRecommendations -join " | ")
+    Set-NinjaField -FieldName "$($FieldPrefix)Report" -Value $HTMLReport
+    Set-NinjaField -FieldName "$($FieldPrefix)Status" -Value $ClusterStatus
+    Set-NinjaField -FieldName "$($FieldPrefix)LastScan" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
     
     Write-Log "========================================"
     Write-Log "Multi-Host Summary:"
@@ -554,7 +554,6 @@ try {
     Write-Log "  Avg CPU: $AvgCPUPercent% | Avg Memory: $AvgMemoryPercent%"
     Write-Log "  Overutilized Hosts: $($UtilizationAnalysis.Overutilized.Count)"
     Write-Log "  Underutilized Hosts: $($UtilizationAnalysis.Underutilized.Count)"
-    Write-Log "  Execution Time: $([Math]::Round($ExecutionDuration, 2)) seconds"
     Write-Log "========================================"
     Write-Log "Script completed successfully"
     
@@ -564,11 +563,20 @@ try {
     Write-Log "Unexpected error: $($_.Exception.Message)" -Level ERROR
     Write-Log "Stack Trace: $($_.ScriptStackTrace)" -Level ERROR
     
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)Status" -Value "ERROR"
+    $ErrorsEncountered++
+    $ErrorDetails += $_.Exception.Message
     
+    Set-NinjaField -FieldName "$($FieldPrefix)Status" -Value "ERROR"
+    
+    exit 99
+} finally {
+    # Calculate execution time (MANDATORY)
     $ExecutionEndTime = Get-Date
     $ExecutionDuration = ($ExecutionEndTime - $ExecutionStartTime).TotalSeconds
     Write-Log "Execution Time: $([Math]::Round($ExecutionDuration, 2)) seconds"
     
-    exit 99
+    if ($ErrorsEncountered -gt 0) {
+        Write-Log "Errors Encountered: $ErrorsEncountered"
+        Write-Log "Error Summary: $($ErrorDetails -join '; ')"
+    }
 }

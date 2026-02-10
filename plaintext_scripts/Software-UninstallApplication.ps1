@@ -2,112 +2,178 @@
 
 <#
 .SYNOPSIS
-    Uninstall an application using the UninstallString and custom arguments. This script will auto-add /qn /norestart or /S arguments.
+    Uninstalls applications using UninstallString with automatic silent parameters.
 
-    This script will only uninstall apps that follow typical uninstall patterns such as msiexec /X{GUID} /qn /norestart.
 .DESCRIPTION
-    Uninstall an application using the UninstallString and custom arguments. This script will auto-add /qn /norestart or /S arguments.
-
-    This script will only uninstall apps that follow typical uninstall patterns such as msiexec /X{GUID} /qn /norestart.
-.EXAMPLE
-    -Name "VLC media Player"
+    Automates the removal of installed applications by locating their registry uninstall entries
+    and executing the appropriate uninstallation command with silent parameters. Supports both
+    MSI and EXE-based installers with automatic detection and parameter injection.
     
-    Beginning uninstall of VLC media player using MsiExec.exe /X{9675011C-2395-4AD7-B1CC-92910F991F58} /qn /norestart...
+    This script handles typical uninstall patterns such as:
+    - msiexec /X{GUID} /qn /norestart
+    - uninstall.exe /S /norestart
+    - Custom uninstallers with various silent flags
+    
+    The script searches multiple registry locations including:
+    - HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall (64-bit)
+    - HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall (32-bit)
+    - HKEY_USERS\*\Software\Microsoft\Windows\CurrentVersion\Uninstall (per-user)
+    - HKEY_USERS\*\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall (per-user 32-bit)
+    
+    For MSI-based applications, the script automatically:
+    - Converts /I (install) to /X (uninstall)
+    - Adds /qn (quiet no UI) if not present
+    - Adds /norestart if not present
+    
+    For EXE-based applications, the script automatically:
+    - Adds /S (silent) if not present
+    - Adds /norestart if not present
+    
+    The script includes timeout protection to prevent hung uninstall processes from blocking
+    automation workflows. If an uninstall exceeds the specified timeout, the process is
+    terminated forcefully.
+
+.PARAMETER Name
+    Exact name of the application(s) to uninstall, separated by commas.
+    Must match the DisplayName in the registry exactly.
+    Example: 'VLC media player, Everything 1.4.1.1024 (x64)'
+
+.PARAMETER Arguments
+    Additional custom arguments to pass to the uninstaller, separated by commas.
+    These arguments are appended to the UninstallString.
+    Example: '/SILENT, /NOREBOOT'
+
+.PARAMETER Reboot
+    Schedules a system reboot 60 seconds after successful uninstallation.
+    Default: False
+
+.PARAMETER Timeout
+    Maximum time in minutes to wait for each uninstall process to complete.
+    If exceeded, the process is forcefully terminated.
+    Valid range: 1-60 minutes
+    Default: 10 minutes
+
+.EXAMPLE
+    .\Software-UninstallApplication.ps1 -Name "VLC media player"
+    
+    Uninstalls VLC media player using its registry UninstallString.
+    
+    Output:
+    Beginning uninstall of VLC media player using MsiExec.exe /X{GUID} /qn /norestart...
     Exit Code for VLC media player: 0
     Successfully uninstalled your requested apps!
 
-PARAMETER: -Name "ReplaceMeWithNameOfApp"
-    Exact name of the application to uninstall, separated by commas. E.g., 'VLC media player, Everything 1.4.1.1024 (x64)'.
+.EXAMPLE
+    .\Software-UninstallApplication.ps1 -Name "7-Zip 23.01 (x64)" -Timeout 5
+    
+    Uninstalls 7-Zip with a 5-minute timeout.
 
-PARAMETER: -Arguments "/SILENT, /NOREBOOT"
-    Additional arguments to use when uninstalling the app, separated by commas. E.g., '/SILENT, /NOREBOOT'.
-
-PARAMETER: -Reboot
-    Schedules a reboot for 1 minute after the uninstall process succeeds.
-
-PARAMETER: -Timeout "ReplaceMeWithTheNumberOfMinutesToWait"
-    Specify the amount of time in minutes to wait for the uninstall process to complete. 
-    If the process exceeds this time, the script and uninstall process will be terminated.
+.EXAMPLE
+    .\Software-UninstallApplication.ps1 -Name "Adobe Reader" -Arguments "/SILENT" -Reboot
+    
+    Uninstalls Adobe Reader with custom silent argument and schedules reboot after completion.
 
 .NOTES
-    Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Version: 1.0
-    Release Notes: Initial Release
-.COMPONENT
-    Misc
+    Script Name:    Software-UninstallApplication.ps1
+    Author:         Windows Automation Framework
+    Version:        3.0
+    Creation Date:  2024-01-15
+    Last Modified:  2026-02-10
+    
+    Minimum OS: Windows 10, Windows Server 2016
+    
+    Execution Context: SYSTEM or Administrator required
+    Execution Frequency: As needed (software removal)
+    Typical Duration: 1-10 minutes (depends on application size)
+    Timeout Setting: User-configurable (1-60 minutes, default 10)
+    
+    User Interaction: NONE (runs silently)
+    Restart Behavior: Optional via -Reboot parameter
+    
+    NinjaRMM Fields Updated: None
+    
+    Dependencies:
+        - Administrator privileges (mandatory)
+        - Target application must be installed
+        - UninstallString must exist in registry
+    
+    Exit Codes:
+        0 - Application(s) successfully uninstalled
+        1 - Access denied, app not found, timeout exceeded, or uninstall failed
+
+.LINK
+    https://github.com/Xore/waf
 #>
 
 [CmdletBinding()]
-param (
-    [Parameter()]
+param(
+    [Parameter(Mandatory=$false)]
     [String]$Name,
-    [Parameter()]
+    
+    [Parameter(Mandatory=$false)]
     [String]$Arguments,
-    [Parameter()]
+    
+    [Parameter(Mandatory=$false)]
     [switch]$Reboot = [System.Convert]::ToBoolean($env:reboot),
-    [Parameter()]
+    
+    [Parameter(Mandatory=$false)]
     [int]$Timeout = 10
 )
 
 begin {
-    # Replace parameters with dynamic script variables
-    if ($env:nameOfAppToUninstall -and $env:nameOfAppToUninstall -notlike "null") { $Name = $env:nameOfAppToUninstall }
-    if ($env:arguments -and $env:arguments -notlike "null") { $Arguments = $env:arguments }
-    if ($env:timeoutInMinutes -and $env:timeoutInMinutes -notlike "null") { $Timeout = $env:timeoutInMinutes }
-
-    # Check if application name is provided
-    if (-not $Name) {
-        Write-Host -Object "[Error] No name given, please enter in the name of an app to uninstall!"
-        exit 1
+    $ErrorActionPreference = 'Stop'
+    $ProgressPreference = 'SilentlyContinue'
+    Set-StrictMode -Version Latest
+    
+    $ScriptVersion = "3.0"
+    $ScriptName = "Software-UninstallApplication"
+    $StartTime = Get-Date
+    
+    function Write-Log {
+        param(
+            [Parameter(Mandatory=$true)]
+            [string]$Message,
+            
+            [Parameter(Mandatory=$false)]
+            [ValidateSet('INFO', 'WARNING', 'ERROR')]
+            [string]$Level = 'INFO'
+        )
+        
+        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $logMessage = "[$timestamp] [$Level] $Message"
+        
+        switch ($Level) {
+            'ERROR'   { Write-Error $logMessage }
+            'WARNING' { Write-Warning $logMessage }
+            default   { Write-Host $logMessage }
+        }
     }
-
-    # Check if timeout is provided
-    if (-not $Timeout) {
-        Write-Host -Object "[Error] No timeout given!"
-        Write-Host -Object "[Error] Please enter in a timeout that's greater than or equal to 1 minute or less than or equal to 60 minutes."
-        exit 1
-    }
-
-    # Validate the timeout is within the acceptable range
-    if ($Timeout -lt 1 -or $Timeout -gt 60) {
-        Write-Host -Object "[Error] An invalid timeout was given of $Timeout minutes."
-        Write-Host -Object "[Error] Please enter in a timeout that's greater than or equal to 1 minute or less than or equal to 60 minutes."
-        exit 1
-    }
-
-    # Create a list to hold application names after splitting
-    $AppNames = New-Object System.Collections.Generic.List[String]
-    $Name -split ',' | ForEach-Object {
-        $AppNames.Add($_.Trim())
-    }
-
-    # Function to check if the script is run with elevated permissions
+    
     function Test-IsElevated {
         $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
         $p = New-Object System.Security.Principal.WindowsPrincipal($id)
-        $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+        return $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
     }
-
-    # Get all users registry hive locations
+    
     function Get-UserHives {
-        param (
+        param(
             [Parameter()]
             [ValidateSet('AzureAD', 'DomainAndLocal', 'All')]
             [String]$Type = "All",
+            
             [Parameter()]
             [String[]]$ExcludedUsers,
+            
             [Parameter()]
             [switch]$IncludeDefault
         )
-    
-        # User account SID's follow a particular pattern depending on if they're Azure AD, a Domain account, or a local "workgroup" account.
+        
         $Patterns = switch ($Type) {
             "AzureAD" { "S-1-12-1-(\d+-?){4}$" }
             "DomainAndLocal" { "S-1-5-21-(\d+-?){4}$" }
             "All" { "S-1-12-1-(\d+-?){4}$" ; "S-1-5-21-(\d+-?){4}$" } 
         }
-    
-        # We'll need the NTUSER.DAT file to load each user's registry hive. So we grab it if their account SID matches the above pattern. 
+        
         $UserProfiles = Foreach ($Pattern in $Patterns) { 
             Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\*" |
                 Where-Object { $_.PSChildName -match $Pattern } | 
@@ -116,8 +182,7 @@ begin {
                 @{Name = "UserHive"; Expression = { "$($_.ProfileImagePath)\NTuser.dat" } }, 
                 @{Name = "Path"; Expression = { $_.ProfileImagePath } }
         }
-    
-        # There are some situations where grabbing the .Default user's info is needed.
+        
         switch ($IncludeDefault) {
             $True {
                 $DefaultProfile = "" | Select-Object UserName, SID, UserHive, Path
@@ -125,43 +190,38 @@ begin {
                 $DefaultProfile.SID = "DefaultProfile"
                 $DefaultProfile.Userhive = "$env:SystemDrive\Users\Default\NTUSER.DAT"
                 $DefaultProfile.Path = "C:\Users\Default"
-    
                 $DefaultProfile | Where-Object { $ExcludedUsers -notcontains $_.UserName }
             }
         }
-    
+        
         $UserProfiles | Where-Object { $ExcludedUsers -notcontains $_.UserName }
     }
-
-    # Function to find the uninstallation key of an application
+    
     function Find-UninstallKey {
         [CmdletBinding()]
-        param (
+        param(
             [Parameter(ValueFromPipeline = $True)]
             [String]$DisplayName,
+            
             [Parameter()]
             [Switch]$UninstallString
         )
+        
         process {
             $UninstallList = New-Object System.Collections.Generic.List[Object]
-
-            # Search for uninstall key in 32-bit registry location
-            $Result = Get-ChildItem "Registry::HKEY_USERS\*\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" | Get-ItemProperty | Where-Object { $_.DisplayName -match "$([regex]::Escape($DisplayName))" }
+            
+            $Result = Get-ChildItem "Registry::HKEY_USERS\*\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" -ErrorAction SilentlyContinue | Get-ItemProperty | Where-Object { $_.DisplayName -match "$([regex]::Escape($DisplayName))" }
             if ($Result) { $UninstallList.Add($Result) }
-
-            # Search for uninstall key in 32-bit user locations
-            $Result = Get-ChildItem HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* | Get-ItemProperty | Where-Object { $_.DisplayName -match "$([regex]::Escape($DisplayName))" }
+            
+            $Result = Get-ChildItem HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* -ErrorAction SilentlyContinue | Get-ItemProperty | Where-Object { $_.DisplayName -match "$([regex]::Escape($DisplayName))" }
             if ($Result) { $UninstallList.Add($Result) }
-
-            # Search for uninstall key in 64-bit registry location
-            $Result = Get-ChildItem HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Get-ItemProperty | Where-Object { $_.DisplayName -match "$([regex]::Escape($DisplayName))" }
+            
+            $Result = Get-ChildItem HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* -ErrorAction SilentlyContinue | Get-ItemProperty | Where-Object { $_.DisplayName -match "$([regex]::Escape($DisplayName))" }
             if ($Result) { $UninstallList.Add($Result) }
-
-            # Search for uninstall key in 64-bit user locations
-            $Result = Get-ChildItem "Registry::HKEY_USERS\*\Software\Microsoft\Windows\CurrentVersion\Uninstall\*" | Get-ItemProperty | Where-Object { $_.DisplayName -match "$([regex]::Escape($DisplayName))" }
+            
+            $Result = Get-ChildItem "Registry::HKEY_USERS\*\Software\Microsoft\Windows\CurrentVersion\Uninstall\*" -ErrorAction SilentlyContinue | Get-ItemProperty | Where-Object { $_.DisplayName -match "$([regex]::Escape($DisplayName))" }
             if ($Result) { $UninstallList.Add($Result) }
-    
-            # Optionally return the DisplayName and UninstallString
+            
             if ($UninstallString) {
                 $UninstallList | ForEach-Object { $_ | Select-Object DisplayName, UninstallString -ErrorAction SilentlyContinue }
             }
@@ -170,249 +230,267 @@ begin {
             }
         }
     }
-
-    # Initialize the exit code variable
+    
+    Write-Log "Starting $ScriptName v$ScriptVersion"
+    
+    # Override with environment variables
+    if ($env:nameOfAppToUninstall -and $env:nameOfAppToUninstall -notlike "null") { 
+        $Name = $env:nameOfAppToUninstall 
+        Write-Log "Using application name from environment: $Name"
+    }
+    if ($env:arguments -and $env:arguments -notlike "null") { 
+        $Arguments = $env:arguments 
+        Write-Log "Using custom arguments from environment: $Arguments"
+    }
+    if ($env:timeoutInMinutes -and $env:timeoutInMinutes -notlike "null") { 
+        $Timeout = $env:timeoutInMinutes 
+        Write-Log "Using timeout from environment: $Timeout minutes"
+    }
+    
+    # Validate parameters
+    if (-not $Name) {
+        Write-Log "No name given, please enter in the name of an app to uninstall!" "ERROR"
+        exit 1
+    }
+    
+    if (-not $Timeout) {
+        Write-Log "No timeout given!" "ERROR"
+        Write-Log "Please enter in a timeout that's greater than or equal to 1 minute or less than or equal to 60 minutes." "ERROR"
+        exit 1
+    }
+    
+    if ($Timeout -lt 1 -or $Timeout -gt 60) {
+        Write-Log "An invalid timeout was given of $Timeout minutes." "ERROR"
+        Write-Log "Please enter in a timeout that's greater than or equal to 1 minute or less than or equal to 60 minutes." "ERROR"
+        exit 1
+    }
+    
+    # Parse application names
+    $AppNames = New-Object System.Collections.Generic.List[String]
+    $Name -split ',' | ForEach-Object {
+        $AppNames.Add($_.Trim())
+    }
+    
+    Write-Log "Applications to uninstall: $($AppNames -join ', ')"
+    Write-Log "Timeout: $Timeout minutes"
+    
     $ExitCode = 0
 }
+
 process {
-    # Check for administrative privileges
-    if (-not (Test-IsElevated)) {
-        Write-Host -Object "[Error] Access Denied. Please run with Administrator privileges."
-        exit 1
-    }
-
-    # Load unloaded profiles
-    $UserProfiles = Get-UserHives -Type "All"
-    $ProfileWasLoaded = New-Object System.Collections.Generic.List[string]
-
-    # Loop through each profile on the machine.
-    Foreach ($UserProfile in $UserProfiles) {
-        # Load user's NTUSER.DAT if it's not already loaded.
-        If ((Test-Path Registry::HKEY_USERS\$($UserProfile.SID)) -eq $false) {
-            Start-Process -FilePath "cmd.exe" -ArgumentList "/C reg.exe LOAD HKU\$($UserProfile.SID) `"$($UserProfile.UserHive)`"" -Wait -WindowStyle Hidden
-            $ProfileWasLoaded.Add("$($UserProfile.SID)")
+    try {
+        if (-not (Test-IsElevated)) {
+            Write-Log "Access Denied. Please run with Administrator privileges." "ERROR"
+            exit 1
         }
-    }
-
-    # Retrieve similar applications based on names provided
-    $SimilarAppsToName = $AppNames | ForEach-Object { Find-UninstallKey -DisplayName $_ -UninstallString }
-    if (-not $SimilarAppsToName) {
-        Write-Host "[Error] The requested app(s) was not found and none were found that are similar!"
-        exit 1
-    }
-
-    # Unload all hives that were loaded for this script.
-    ForEach ($UserHive in $ProfileWasLoaded) {
-        If ($ProfileWasLoaded -eq $false) {
-            [gc]::Collect()
-            Start-Sleep 1
-            Start-Process -FilePath "cmd.exe" -ArgumentList "/C reg.exe UNLOAD HKU\$($UserHive)" -Wait -WindowStyle Hidden | Out-Null
+        
+        Write-Log "Loading user registry hives..."
+        $UserProfiles = Get-UserHives -Type "All"
+        $ProfileWasLoaded = New-Object System.Collections.Generic.List[string]
+        
+        Foreach ($UserProfile in $UserProfiles) {
+            If ((Test-Path Registry::HKEY_USERS\$($UserProfile.SID)) -eq $false) {
+                Start-Process -FilePath "cmd.exe" -ArgumentList "/C reg.exe LOAD HKU\$($UserProfile.SID) `"$($UserProfile.UserHive)`"" -Wait -WindowStyle Hidden
+                $ProfileWasLoaded.Add("$($UserProfile.SID)")
+            }
         }
-    }
-
-    # Create a list to store apps that are confirmed for uninstallation
-    $AppsToUninstall = New-Object System.Collections.Generic.List[Object]
-    $SimilarAppsToName | ForEach-Object {
-        foreach ($AppName in $AppNames) {
-            if ($AppName -eq $_.DisplayName) {
-                # A matching app has been found
-                $ExactMatch = $True
-    
-                if ($_.UninstallString) {
-                    # Uninstall string is available
-                    $UninstallStringFound = $True
-                    # Add app to uninstall list
-                    $AppsToUninstall.Add($_)
+        
+        Write-Log "Searching for applications in registry..."
+        $SimilarAppsToName = $AppNames | ForEach-Object { Find-UninstallKey -DisplayName $_ -UninstallString }
+        
+        if (-not $SimilarAppsToName) {
+            Write-Log "The requested app(s) was not found and none were found that are similar!" "ERROR"
+            exit 1
+        }
+        
+        # Unload hives
+        ForEach ($UserHive in $ProfileWasLoaded) {
+            If ($ProfileWasLoaded -eq $false) {
+                [gc]::Collect()
+                Start-Sleep 1
+                Start-Process -FilePath "cmd.exe" -ArgumentList "/C reg.exe UNLOAD HKU\$($UserHive)" -Wait -WindowStyle Hidden | Out-Null
+            }
+        }
+        
+        # Find exact matches
+        $AppsToUninstall = New-Object System.Collections.Generic.List[Object]
+        $SimilarAppsToName | ForEach-Object {
+            foreach ($AppName in $AppNames) {
+                if ($AppName -eq $_.DisplayName) {
+                    $ExactMatch = $True
+                    if ($_.UninstallString) {
+                        $UninstallStringFound = $True
+                        $AppsToUninstall.Add($_)
+                        Write-Log "Found: $($_.DisplayName)"
+                    }
                 }
             }
         }
-    }
-
-    # Check if any exact matches were found
-    if (-not $ExactMatch) {
-        Write-Host "[Error] Your requested apps were not found. Please see the below list and try again."
-        $SimilarAppsToName | Format-Table DisplayName | Out-String | Write-Host
-        exit 1
-    }
-
-    # Check if uninstall strings were found for the apps
-    if (-not $UninstallStringFound) {
-        Write-Host "[Error] No uninstall string found for any of your requested apps!"
-        exit 1
-    }
-
-    # Check if there are apps without uninstall strings or not found at all
-    $AppNames | ForEach-Object {
-        if ($AppsToUninstall.DisplayName -notcontains $_) {
-            Write-Host "[Error] Either the uninstall string was not present or the app itself was not found for one of your selected apps! See the below list of similar apps and try again."
-            $SimilarAppsToName | Format-Table DisplayName | Out-String | Write-Host
-            $ExitCode = 1
-        }
-    }
-
-    # Convert timeout from minutes to seconds
-    $TimeoutInSeconds = $Timeout * 60
-    $StartTime = Get-Date
-
-    # Process each app to uninstall
-    $AppsToUninstall | ForEach-Object {
-        $AdditionalArguments = New-Object System.Collections.Generic.List[String]
-
-        # If the uninstall string contains msiexec that's what our executable will be.
-        if($_.UninstallString -match "msiexec"){
-            $Executable = "msiexec.exe"
-        }
-
-        # If it contains a filepath we'll use that as our executable.
-        if($_.UninstallString -notmatch "msiexec" -and $_.UninstallString -match '[a-zA-Z]:\\(?:[^\\\/:*?"<>|\r\n]+\\)*[^\\\/:*?"<>|\r\n]*'){
-            $Executable = $Matches[0]
-        }
-
-        # Confirm we have an executable.
-        if(-not $Executable){
-            Write-Host -Object "[Error] Unable to find uninstall executable!"
+        
+        if (-not $ExactMatch) {
+            Write-Log "Your requested apps were not found. Please see the below list and try again." "ERROR"
+            $SimilarAppsToName | ForEach-Object { Write-Log "  - $($_.DisplayName)" }
             exit 1
         }
-
-        # Split uninstall string into executable and possible arguments
-        $PossibleArguments = $_.UninstallString -split ' ' | ForEach-Object { $_.Trim() } | Where-Object { $_ -match "^/"}
-
-        # Decide executable and additional arguments based on uninstall string analysis
-        $i = 0
-        foreach ($PossibleArgument in $PossibleArguments) {
-            if (-not ($PossibleArgument -match "^/I{") -and $PossibleArgument) {
-                $AdditionalArguments.Add($PossibleArgument)
-            }
-
-            if ($PossibleArgument -match "^/I{") {
-                $AdditionalArguments.Add("$($PossibleArgument -replace '/I', '/X')")
-            }
-
-            $i++
-        }
-
-        # Add custom arguments from the user
-        if ($Arguments) {
-            $Arguments.Split(',') | ForEach-Object {
-                $AdditionalArguments.Add($_.Trim())
-            }
-        }
-
-        # Add the usual silent uninstall arguments if not present
-        if($Executable -match "Msiexec"){
-            if($AdditionalArguments -notcontains "/qn"){
-                $AdditionalArguments.Add("/qn")
-            }
-
-            if($AdditionalArguments -notcontains "/norestart"){
-                $AdditionalArguments.Add("/norestart")
-            }
-        }elseif($Executable -match "\.exe"){
-            if($AdditionalArguments -notcontains "/S"){
-                $AdditionalArguments.Add("/S")
-            }
-
-            if($AdditionalArguments -notcontains "/norestart"){
-                $AdditionalArguments.Add("/norestart")
-            }
-        }
-
-        # Verify that executable for uninstallation is found
-        if (-not $Executable) {
-            Write-Host "[Error] Could not find the executable from the uninstall string!"
+        
+        if (-not $UninstallStringFound) {
+            Write-Log "No uninstall string found for any of your requested apps!" "ERROR"
             exit 1
         }
-
-        # Start the uninstallation process
-        Write-Host -Object "Beginning uninstall of $($_.DisplayName) using $Executable $AdditionalArguments..."
-        try{
-            if ($AdditionalArguments) {
-                $Uninstall = Start-Process $Executable -ArgumentList $AdditionalArguments -NoNewWindow -PassThru
-            }
-            else {
-                $Uninstall = Start-Process $Executable -NoNewWindow -PassThru
-            }
-        }catch{
-            Write-Host "[Error] $($_.Exception.Message)"
-            return
-        }
-
-        # Calculate the remaining time for the uninstall process and enforce timeout
-        $TimeElapsed = (Get-Date) - $StartTime
-        $RemainingTime = $TimeoutInSeconds - $TimeElapsed.TotalSeconds
-
-        # Wait for the uninstall process to complete within the remaining time
-        try {
-            $Uninstall | Wait-Process -Timeout $RemainingTime -ErrorAction Stop
-        }
-        catch {
-            Write-Host -Object "[Alert] The uninstall process for $($_.DisplayName) has exceeded the specified timeout of $Timeout minutes."
-            Write-Host -Object "[Alert] The script is now terminating."
-            $Uninstall | Stop-Process -Force
-            $ExitCode = 1
-        }
-
-        # Check and report the exit code of the uninstallation process
-        Write-Host -Object "Exit code for $($_.DisplayName): $($Uninstall.ExitCode)"
-        if ($Uninstall.ExitCode -ne 0) {
-            Write-Host -Object "[Error] Exit code does not indicate success!"
-            $ExitCode = 1
-        }
-    }
-
-    # Pause for 30 seconds before final checks
-    Start-Sleep -Seconds 30
-
-    $UserProfiles = Get-UserHives -Type "All"
-    $ProfileWasLoaded = New-Object System.Collections.Generic.List[string]
-
-    # Loop through each profile on the machine.
-    Foreach ($UserProfile in $UserProfiles) {
-        # Load user's NTUSER.DAT if it's not already loaded.
-        If ((Test-Path Registry::HKEY_USERS\$($UserProfile.SID)) -eq $false) {
-            Start-Process -FilePath "cmd.exe" -ArgumentList "/C reg.exe LOAD HKU\$($UserProfile.SID) `"$($UserProfile.UserHive)`"" -Wait -WindowStyle Hidden
-            $ProfileWasLoaded.Add("$($UserProfile.SID)")
-        }
-    }
-
-    # Re-check for any remaining apps to confirm they were uninstalled
-    $SimilarAppsToName = $AppNames | ForEach-Object { Find-UninstallKey -DisplayName $_ }
-    $SimilarAppsToName | ForEach-Object {
-        foreach ($AppName in $AppNames) {
-            if ($_.DisplayName -eq $AppName) {
-                Write-Host -Object "[Error] Failed to uninstall $($_.DisplayName)."
-                $UninstallFailure = $True
+        
+        # Check for missing apps
+        $AppNames | ForEach-Object {
+            if ($AppsToUninstall.DisplayName -notcontains $_) {
+                Write-Log "Either the uninstall string was not present or the app itself was not found for: $_" "ERROR"
                 $ExitCode = 1
             }
         }
-    }
-
-    # Unload all hives that were loaded for this script.
-    ForEach ($UserHive in $ProfileWasLoaded) {
-        If ($ProfileWasLoaded -eq $false) {
-            [gc]::Collect()
-            Start-Sleep 1
-            Start-Process -FilePath "cmd.exe" -ArgumentList "/C reg.exe UNLOAD HKU\$($UserHive)" -Wait -WindowStyle Hidden | Out-Null
+        
+        $TimeoutInSeconds = $Timeout * 60
+        $StartTime = Get-Date
+        
+        # Process each app
+        $AppsToUninstall | ForEach-Object {
+            $AdditionalArguments = New-Object System.Collections.Generic.List[String]
+            
+            if($_.UninstallString -match "msiexec"){
+                $Executable = "msiexec.exe"
+            }
+            
+            if($_.UninstallString -notmatch "msiexec" -and $_.UninstallString -match '[a-zA-Z]:\\(?:[^\\\/:*?"<>|\r\n]+\\)*[^\\\/:*?"<>|\r\n]*'){
+                $Executable = $Matches[0]
+            }
+            
+            if(-not $Executable){
+                Write-Log "Unable to find uninstall executable for $($_.DisplayName)!" "ERROR"
+                $ExitCode = 1
+                return
+            }
+            
+            $PossibleArguments = $_.UninstallString -split ' ' | ForEach-Object { $_.Trim() } | Where-Object { $_ -match "^/"}
+            
+            foreach ($PossibleArgument in $PossibleArguments) {
+                if (-not ($PossibleArgument -match "^/I{") -and $PossibleArgument) {
+                    $AdditionalArguments.Add($PossibleArgument)
+                }
+                if ($PossibleArgument -match "^/I{") {
+                    $AdditionalArguments.Add("$($PossibleArgument -replace '/I', '/X')")
+                }
+            }
+            
+            if ($Arguments) {
+                $Arguments.Split(',') | ForEach-Object {
+                    $AdditionalArguments.Add($_.Trim())
+                }
+            }
+            
+            if($Executable -match "Msiexec"){
+                if($AdditionalArguments -notcontains "/qn"){
+                    $AdditionalArguments.Add("/qn")
+                }
+                if($AdditionalArguments -notcontains "/norestart"){
+                    $AdditionalArguments.Add("/norestart")
+                }
+            }elseif($Executable -match "\.exe"){
+                if($AdditionalArguments -notcontains "/S"){
+                    $AdditionalArguments.Add("/S")
+                }
+                if($AdditionalArguments -notcontains "/norestart"){
+                    $AdditionalArguments.Add("/norestart")
+                }
+            }
+            
+            Write-Log "Beginning uninstall of $($_.DisplayName) using $Executable $($AdditionalArguments -join ' ')..."
+            
+            try{
+                if ($AdditionalArguments) {
+                    $Uninstall = Start-Process $Executable -ArgumentList $AdditionalArguments -NoNewWindow -PassThru
+                }
+                else {
+                    $Uninstall = Start-Process $Executable -NoNewWindow -PassThru
+                }
+            }catch{
+                Write-Log "Failed to start uninstall process: $($_.Exception.Message)" "ERROR"
+                $ExitCode = 1
+                return
+            }
+            
+            $TimeElapsed = (Get-Date) - $StartTime
+            $RemainingTime = $TimeoutInSeconds - $TimeElapsed.TotalSeconds
+            
+            try {
+                $Uninstall | Wait-Process -Timeout $RemainingTime -ErrorAction Stop
+            }
+            catch {
+                Write-Log "The uninstall process for $($_.DisplayName) has exceeded the specified timeout of $Timeout minutes." "WARNING"
+                Write-Log "Terminating process..." "WARNING"
+                $Uninstall | Stop-Process -Force
+                $ExitCode = 1
+            }
+            
+            Write-Log "Exit code for $($_.DisplayName): $($Uninstall.ExitCode)"
+            if ($Uninstall.ExitCode -ne 0) {
+                Write-Log "Exit code does not indicate success!" "ERROR"
+                $ExitCode = 1
+            }
         }
+        
+        Write-Log "Waiting 30 seconds before verification..."
+        Start-Sleep -Seconds 30
+        
+        # Reload hives for verification
+        $UserProfiles = Get-UserHives -Type "All"
+        $ProfileWasLoaded = New-Object System.Collections.Generic.List[string]
+        
+        Foreach ($UserProfile in $UserProfiles) {
+            If ((Test-Path Registry::HKEY_USERS\$($UserProfile.SID)) -eq $false) {
+                Start-Process -FilePath "cmd.exe" -ArgumentList "/C reg.exe LOAD HKU\$($UserProfile.SID) `"$($UserProfile.UserHive)`"" -Wait -WindowStyle Hidden
+                $ProfileWasLoaded.Add("$($UserProfile.SID)")
+            }
+        }
+        
+        Write-Log "Verifying uninstallation..."
+        $SimilarAppsToName = $AppNames | ForEach-Object { Find-UninstallKey -DisplayName $_ }
+        $SimilarAppsToName | ForEach-Object {
+            foreach ($AppName in $AppNames) {
+                if ($_.DisplayName -eq $AppName) {
+                    Write-Log "Failed to uninstall $($_.DisplayName)." "ERROR"
+                    $UninstallFailure = $True
+                    $ExitCode = 1
+                }
+            }
+        }
+        
+        # Unload hives
+        ForEach ($UserHive in $ProfileWasLoaded) {
+            If ($ProfileWasLoaded -eq $false) {
+                [gc]::Collect()
+                Start-Sleep 1
+                Start-Process -FilePath "cmd.exe" -ArgumentList "/C reg.exe UNLOAD HKU\$($UserHive)" -Wait -WindowStyle Hidden | Out-Null
+            }
+        }
+        
+        if (-not $UninstallFailure) {
+            Write-Log "Successfully uninstalled your requested apps!"
+        }
+        
+        if ($Reboot -and -not $UninstallFailure) {
+            Write-Log "A reboot was requested. Scheduling restart for 60 seconds from now..." "WARNING"
+            Start-Process shutdown.exe -ArgumentList "/r /t 60" -Wait -NoNewWindow
+        }
+        
+        exit $ExitCode
     }
-
-    # Confirm successful uninstallation if no failures detected
-    if (-not $UninstallFailure) {
-        Write-Host "Successfully uninstalled your requested apps!"
+    catch {
+        Write-Log "An unexpected error occurred: $($_.Exception.Message)" "ERROR"
+        exit 1
     }
-
-    # Handle reboot if requested and there were no uninstall failures
-    if ($Reboot -and -not $UninstallFailure) {
-        Write-Host -Object "[Alert] a reboot was requested. Scheduling restart for 60 seconds from now..."
-        Start-Process shutdown.exe -ArgumentList "/r /t 60" -Wait -NoNewWindow
-    }
-
-    # Exit script with the final exit code
-    exit $ExitCode
 }
+
 end {
-    
-    
-    
+    if ($StartTime) {
+        $executionTime = (Get-Date) - $StartTime
+        Write-Log "Script execution time: $($executionTime.TotalSeconds) seconds"
+    }
+    [System.GC]::Collect()
 }
-

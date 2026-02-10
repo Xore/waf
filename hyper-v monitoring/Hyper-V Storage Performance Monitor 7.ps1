@@ -121,7 +121,7 @@ function Write-Log {
     }
 }
 
-function Set-NinjaRMMField {
+function Set-NinjaField {
     param(
         [string]$FieldName,
         [AllowNull()]
@@ -756,11 +756,15 @@ try {
     Write-Log "$ScriptName v$ScriptVersion"
     Write-Log "========================================"
     
+    # Error tracking (MANDATORY)
+    $ErrorsEncountered = 0
+    $ErrorDetails = @()
+    
     # Check Hyper-V
     $HyperVService = Get-Service -Name vmms -ErrorAction SilentlyContinue
     if (-not $HyperVService -or $HyperVService.Status -ne 'Running') {
         Write-Log "Hyper-V service not running" -Level ERROR
-        Set-NinjaRMMField -FieldName "$($FieldPrefix)Status" -Value "NOT_AVAILABLE"
+        Set-NinjaField -FieldName "$($FieldPrefix)Status" -Value "NOT_AVAILABLE"
         exit 1
     }
     
@@ -820,24 +824,20 @@ try {
     # Update fields
     Write-Log "Updating NinjaRMM custom fields..."
     
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)VMsHighIOPS" -Value ($StorageIssues.HighIOPS -join "; ")
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)VMsHighLatency" -Value ($StorageIssues.HighLatency -join "; ")
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)VMsHighQueue" -Value ($StorageIssues.HighQueue -join "; ")
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)CSVCacheHitRate" -Value $AvgCSVCacheHitRate
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)MigrationsActive" -Value $ActiveMigrations.Count
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)FragmentedVMs" -Value $FragmentedVMs.Count
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)ThinProvisionedGB" -Value $Capacity.ThinProvisionedGB
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)OverprovisionRatio" -Value $Capacity.OverprovisionRatio
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)MaxQueueDepth" -Value $MaxQueueDepth
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)MaxLatency" -Value $MaxLatency
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)CSVStatus" -Value $(if ($CSVMetrics) { "MONITORED" } else { "NOT_CLUSTERED" })
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)PerformanceReport" -Value $HTMLReport
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)Status" -Value $StorageStatus
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)LastScan" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
-    
-    # Calculate execution time
-    $ExecutionEndTime = Get-Date
-    $ExecutionDuration = ($ExecutionEndTime - $ExecutionStartTime).TotalSeconds
+    Set-NinjaField -FieldName "$($FieldPrefix)VMsHighIOPS" -Value ($StorageIssues.HighIOPS -join "; ")
+    Set-NinjaField -FieldName "$($FieldPrefix)VMsHighLatency" -Value ($StorageIssues.HighLatency -join "; ")
+    Set-NinjaField -FieldName "$($FieldPrefix)VMsHighQueue" -Value ($StorageIssues.HighQueue -join "; ")
+    Set-NinjaField -FieldName "$($FieldPrefix)CSVCacheHitRate" -Value $AvgCSVCacheHitRate
+    Set-NinjaField -FieldName "$($FieldPrefix)MigrationsActive" -Value $ActiveMigrations.Count
+    Set-NinjaField -FieldName "$($FieldPrefix)FragmentedVMs" -Value $FragmentedVMs.Count
+    Set-NinjaField -FieldName "$($FieldPrefix)ThinProvisionedGB" -Value $Capacity.ThinProvisionedGB
+    Set-NinjaField -FieldName "$($FieldPrefix)OverprovisionRatio" -Value $Capacity.OverprovisionRatio
+    Set-NinjaField -FieldName "$($FieldPrefix)MaxQueueDepth" -Value $MaxQueueDepth
+    Set-NinjaField -FieldName "$($FieldPrefix)MaxLatency" -Value $MaxLatency
+    Set-NinjaField -FieldName "$($FieldPrefix)CSVStatus" -Value $(if ($CSVMetrics) { "MONITORED" } else { "NOT_CLUSTERED" })
+    Set-NinjaField -FieldName "$($FieldPrefix)PerformanceReport" -Value $HTMLReport
+    Set-NinjaField -FieldName "$($FieldPrefix)Status" -Value $StorageStatus
+    Set-NinjaField -FieldName "$($FieldPrefix)LastScan" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
     
     Write-Log "========================================"
     Write-Log "Storage Performance Summary:"
@@ -849,7 +849,6 @@ try {
         Write-Log "  CSV Cache Hit Rate: $($AvgCSVCacheHitRate)%"
     }
     Write-Log "  Overprovision Ratio: $($Capacity.OverprovisionRatio):1"
-    Write-Log "  Execution Time: $([Math]::Round($ExecutionDuration, 2)) seconds"
     Write-Log "========================================"
     Write-Log "Script completed successfully"
     
@@ -859,11 +858,20 @@ try {
     Write-Log "Unexpected error: $($_.Exception.Message)" -Level ERROR
     Write-Log "Stack Trace: $($_.ScriptStackTrace)" -Level ERROR
     
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)Status" -Value "ERROR"
+    $ErrorsEncountered++
+    $ErrorDetails += $_.Exception.Message
     
+    Set-NinjaField -FieldName "$($FieldPrefix)Status" -Value "ERROR"
+    
+    exit 99
+} finally {
+    # Calculate execution time (MANDATORY)
     $ExecutionEndTime = Get-Date
     $ExecutionDuration = ($ExecutionEndTime - $ExecutionStartTime).TotalSeconds
     Write-Log "Execution Time: $([Math]::Round($ExecutionDuration, 2)) seconds"
     
-    exit 99
+    if ($ErrorsEncountered -gt 0) {
+        Write-Log "Errors Encountered: $ErrorsEncountered"
+        Write-Log "Error Summary: $($ErrorDetails -join '; ')"
+    }
 }

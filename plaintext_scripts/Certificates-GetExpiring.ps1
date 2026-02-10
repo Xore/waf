@@ -82,36 +82,46 @@ begin {
     $StartTime = Get-Date
     
     Set-StrictMode -Version Latest
+    
+    $script:ExitCode = 0
+    $script:ErrorCount = 0
+    $script:WarningCount = 0
 
     function Write-Log {
         param([string]$Message, [string]$Level = 'INFO')
         $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
         $logMessage = "[$timestamp] [$Level] $Message"
+        Write-Output $logMessage
         
-        switch ($Level) {
-            'ERROR' { Write-Error $logMessage }
-            'WARNING' { Write-Warning $logMessage }
-            default { Write-Output $logMessage }
-        }
+        if ($Level -eq 'ERROR') { $script:ErrorCount++ }
+        if ($Level -eq 'WARNING') { $script:WarningCount++ }
     }
 
-    function Set-NinjaProperty {
+    function Set-NinjaField {
+        <#
+        .SYNOPSIS
+            Sets NinjaRMM custom field with CLI fallback.
+        #>
         [CmdletBinding()]
-        Param(
-            [Parameter(Mandatory = $True)]
-            [String]$Name,
-            [Parameter(Mandatory = $True, ValueFromPipeline = $True)]
-            $Value
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$Name,
+            
+            [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+            [AllowEmptyString()]
+            [string]$Value
         )
         
         try {
-            $CustomField = $Value | Ninja-Property-Set-Piped -Name $Name 2>&1
-            if ($CustomField.Exception) {
-                throw $CustomField
+            if (Get-Command 'Ninja-Property-Set-Piped' -ErrorAction SilentlyContinue) {
+                $Value | Ninja-Property-Set-Piped -Name $Name
+            }
+            else {
+                Write-Log "CLI fallback - Would set field '$Name' to: $Value" -Level 'INFO'
             }
         }
         catch {
-            Write-Log "Failed to set custom field: $_" -Level ERROR
+            Write-Log "Failed to set custom field '$Name': $_" -Level 'ERROR'
             throw
         }
     }
@@ -126,7 +136,6 @@ begin {
         $SaveToCustomField = $env:saveToCustomField
     }
 
-    $ExitCode = 0
     $ExpirationThreshold = (Get-Date).AddDays($DaysUntilExpiration)
 }
 
@@ -139,7 +148,7 @@ process {
         }
 
         if ($ExpiringCerts) {
-            Write-Log "Found $($ExpiringCerts.Count) certificate(s) expiring within $DaysUntilExpiration days" -Level WARNING
+            Write-Log "Found $($ExpiringCerts.Count) certificate(s) expiring within $DaysUntilExpiration days" -Level 'WARNING'
             
             $Report = @()
             foreach ($Cert in $ExpiringCerts) {
@@ -150,24 +159,24 @@ process {
 
             if ($SaveToCustomField) {
                 try {
-                    $Report -join "; " | Set-NinjaProperty -Name $SaveToCustomField
+                    $Report -join "; " | Set-NinjaField -Name $SaveToCustomField
                     Write-Log "Report saved to custom field '$SaveToCustomField'"
                 }
                 catch {
-                    Write-Log "Failed to save to custom field: $_" -Level ERROR
-                    $ExitCode = 1
+                    Write-Log "Failed to save to custom field: $_" -Level 'ERROR'
+                    $script:ExitCode = 1
                 }
             }
             
-            $ExitCode = 1
+            $script:ExitCode = 1
         }
         else {
             Write-Log "No certificates expiring within $DaysUntilExpiration days"
         }
     }
     catch {
-        Write-Log "Failed to scan certificates: $_" -Level ERROR
-        $ExitCode = 1
+        Write-Log "Failed to scan certificates: $_" -Level 'ERROR'
+        $script:ExitCode = 1
     }
 }
 
@@ -175,10 +184,19 @@ end {
     try {
         $EndTime = Get-Date
         $Duration = ($EndTime - $StartTime).TotalSeconds
-        Write-Log "Script execution completed in $Duration seconds"
+        
+        Write-Output "`n========================================"
+        Write-Output "Execution Summary"
+        Write-Output "========================================"
+        Write-Output "Script: Certificates-GetExpiring.ps1"
+        Write-Output "Duration: $Duration seconds"
+        Write-Output "Errors: $script:ErrorCount"
+        Write-Output "Warnings: $script:WarningCount"
+        Write-Output "Exit Code: $script:ExitCode"
+        Write-Output "========================================"
     }
     finally {
         [System.GC]::Collect()
-        exit $ExitCode
+        exit $script:ExitCode
     }
 }

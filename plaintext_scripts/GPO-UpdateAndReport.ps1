@@ -2,144 +2,113 @@
 
 <#
 .SYNOPSIS
-    Initiates a gpupdate. It will perform a gpupdate /force
+    Force Group Policy update and generate detailed report.
+
 .DESCRIPTION
-    Initiates a gpupdate. It will perform a gpupdate /force
-.EXAMPLE
-    (No Parameters)
-  
-    Computer Policy updated successfully!
-    User Policy updated successfully!
+    This script performs a forced Group Policy update (gpupdate /force) and generates
+    a comprehensive report of all applied Group Policies using gpresult. The report
+    includes domain information, applied GPOs, and policy status.
 
-    ##### Group Policy Result ##### 
+.PARAMETER CustomFieldName
+    Name of the NinjaRMM custom field to store the HTML report. Default: "groupPolicy"
 
-    Domain: test.lan 
-    Site Name: Default-First-Site-Name 
-    Slow Link?: false 
+.PARAMETER Timeout
+    Maximum time in seconds for gpupdate to wait. Default: 120 seconds
 
-    Computer Account Used: TEST\KYLE-WIN10-TEST$ 
-    User Account Used: TEST\tuser 
-
-    Name                                   Type     Enabled IsValid FilterAllowed AccessDenied
-    ----                                   ----     ------- ------- ------------- ------------
-    {1ED0F3EF-6E54-4380-8BB3-6683A8D02E59} Computer N/A     false   false         false       
-    {31B2F340-016D-11D2-945F-00C04FB984F9} User     N/A     false   false         N/A         
-    Default Domain Policy                  Computer true    true    true          false       
-    Local Group Policy                     Computer true    true    true          false       
-    Local Group Policy                     User     true    true    true          false       
-    Test GPO                               User     true    true    true          N/A         
-
-PARAMETER: -Timeout "30"
-    The amount of time in seconds gpupdate should try to update. After that time gpupdate will timeout if no update is received.
-    
-PARAMETER: -CustomFieldName "ReplaceMeWithAnyMultilineCustomField"
-
-    The name of a multiline customfield to store the results in.
-
-PARAMETER: -User "CONTOSO\jdoe"
-    The name of a user you'd like to generate a gpresult report with.
-
-PARAMETER: AllUsers
-    When the script is ran as system it will logout all logged in users upon successful gpupdate. If ran as a user it will logout only just that user if required.
-.EXAMPLE
-    Computer Policy updated successfully!
-    User Policy updated successfully!
-
-    ##### Group Policy Result ##### 
-
-    Domain: test.lan 
-    Site Name: Default-First-Site-Name 
-    Slow Link?: false 
-
-    Computer Account Used: TEST\KYLE-WIN10-TEST$ 
-    User Account Used: TEST\tuser 
-
-    Name                                   Type     Enabled IsValid FilterAllowed AccessDenied
-    ----                                   ----     ------- ------- ------------- ------------
-    {1ED0F3EF-6E54-4380-8BB3-6683A8D02E59} Computer N/A     false   false         false       
-    {31B2F340-016D-11D2-945F-00C04FB984F9} User     N/A     false   false         N/A         
-    Default Domain Policy                  Computer true    true    true          false       
-    Local Group Policy                     Computer true    true    true          false       
-    Local Group Policy                     User     true    true    true          false       
-    Test GPO                               User     true    true    true          N/A         
+.PARAMETER User
+    Specific domain user account to generate report for (requires elevation).
+    Format: DOMAIN\username
 
 .EXAMPLE
+    .\GPO-UpdateAndReport.ps1
+
     Computer Policy updated successfully!
     User Policy updated successfully!
+    Generated Group Policy report with 8 GPOs
 
-    ##### Group Policy Result ##### 
+.EXAMPLE
+    .\GPO-UpdateAndReport.ps1 -User "CONTOSO\jdoe" -Timeout 180
 
-    Domain: test.lan 
-    Site Name: Default-First-Site-Name 
-    Slow Link?: false 
+    Updates Group Policy with 180 second timeout and generates report for specified user.
 
-    Computer Account Used: TEST\KYLE-WIN10-TEST$ 
-    User Account Used: TEST\tuser 
+.OUTPUTS
+    HTML report stored in NinjaRMM custom field.
 
-    Name                                   Type     Enabled IsValid FilterAllowed AccessDenied
-    ----                                   ----     ------- ------- ------------- ------------
-    {1ED0F3EF-6E54-4380-8BB3-6683A8D02E59} Computer N/A     false   false         false       
-    {31B2F340-016D-11D2-945F-00C04FB984F9} User     N/A     false   false         N/A         
-    Default Domain Policy                  Computer true    true    true          false       
-    Local Group Policy                     Computer true    true    true          false       
-    Local Group Policy                     User     true    true    true          false       
-    Test GPO                               User     true    true    true          N/A         
-
-
-
-    WARNING: -Reboot was specified. Scheduling a reboot for 06/22/2023 13:24:16!
 .NOTES
-    Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Version: 1.1
-    Release Notes: Updated Calculated Name
+    File Name      : GPO-UpdateAndReport.ps1
+    Prerequisite   : PowerShell 5.1 or higher
+    Minimum OS     : Windows 10, Windows Server 2016
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: Upgraded to V3 standards with Write-Log function and execution tracking
+    - 1.1: Updated calculated name
 #>
 
 [CmdletBinding()]
 param (
     [Parameter()]
     [String]$CustomFieldName = "groupPolicy",
+    
     [Parameter()]
     [Int]$Timeout = 120,
+    
     [Parameter()]
     [String]$User
 )
 
 begin {
-    # If script variables are used overwrite their parameter
-    if ($env:customFieldName -and $env:customFieldName -notlike "null") { $CustomFieldName = $env:customFieldName }
-    if ($env:groupPolicyTimeout -and $env:groupPolicyTimeout -notlike "null") { $Timeout = $env:groupPolicyTimeout }
-    if ($env:user -and $env:user -notlike "null") { $User = $env:user }
+    $ErrorActionPreference = 'Stop'
+    $ProgressPreference = 'SilentlyContinue'
+    $StartTime = Get-Date
+    $ExitCode = 0
+    
+    Set-StrictMode -Version Latest
 
-    # Checks if script is running with elevated permissions
+    function Write-Log {
+        param(
+            [string]$Message,
+            [string]$Level = 'INFO'
+        )
+        $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $LogMessage = "[$Timestamp] [$Level] $Message"
+        
+        switch ($Level) {
+            'ERROR' { Write-Error $LogMessage }
+            'WARNING' { Write-Warning $LogMessage }
+            default { Write-Output $LogMessage }
+        }
+    }
+
+    if ($env:customFieldName -and $env:customFieldName -notlike "null") { 
+        $CustomFieldName = $env:customFieldName 
+    }
+    if ($env:groupPolicyTimeout -and $env:groupPolicyTimeout -notlike "null") { 
+        $Timeout = $env:groupPolicyTimeout 
+    }
+    if ($env:user -and $env:user -notlike "null") { 
+        $User = $env:user 
+    }
+
     function Test-IsElevated {
         $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
         $p = New-Object System.Security.Principal.WindowsPrincipal($id)
         $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
     }
 
-    # Checks if script is running as system
     function Test-IsSystem {
         $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
         return $id.Name -like "NT AUTHORITY*" -or $id.IsSystem
     }
 
-    # Check if the computer is domain joined (group policy is still a thing on non-domain joined machine just not normally used)
     function Test-IsDomainJoined {
-        return $(Get-CimInstance -Class Win32_ComputerSystem).PartOfDomain
+        return (Get-CimInstance -Class Win32_ComputerSystem).PartOfDomain
     }
 
-    # Check if its a domain controller running this
     function Test-IsDomainController {
-        return $(Get-CimInstance -ClassName Win32_OperatingSystem).ProductType -eq 2
+        return (Get-CimInstance -ClassName Win32_OperatingSystem).ProductType -eq 2
     }
 
-    # Outputs the currently logged in users in a more powershell friendly format
-    function Get-QUser {
-        $quser = quser.exe
-        $quser -replace '\s{2,}', ',' -replace '>' | ConvertFrom-Csv
-    }
-
-    # Simply checks if gpupdate threw any errors
     function Test-GroupPolicyResults {
         param(
             [string]$Type,
@@ -147,133 +116,125 @@ begin {
         )
 
         if ($Result | Select-String "errors") {
-            Write-Error "[Error] $Type Policy was not updated successfully!"
-            $False
+            Write-Log "$Type Policy was not updated successfully!" -Level ERROR
+            return $false
         }
         else {
-            Write-Host "$Type Policy updated successfully!"
-            $True
+            Write-Log "$Type Policy updated successfully!"
+            return $true
         }
     }
-
 }
+
 process {
-    # We don't want to exit the script for most errors as the gpresult report might still be helpful
-    $Success = $True
+    try {
+        $Success = $true
 
-    if (-not (Test-IsElevated)) {
-        Write-Warning "This script is not running with Administrator priveledges. The end report will not contain Computer GPO data."
-        if ($User) {
-            Write-Warning "Not elevated unable to create group policy result report for specified user. Will create a report for the current user instead."
+        if (-not (Test-IsElevated)) {
+            Write-Log "This script is not running with Administrator privileges. The end report will not contain Computer GPO data." -Level WARNING
+            if ($User) {
+                Write-Log "Not elevated unable to create group policy result report for specified user. Will create a report for the current user instead." -Level WARNING
+            }
         }
-    }
 
-    # Warns the end user if the computer is not-domain joined. I don't consider this a failure though just something to keep in mind.
-    if (-not (Test-IsDomainJoined)) {
-        Write-Warning "This computer is not joined to the domain!"
-    }
+        if (-not (Test-IsDomainJoined)) {
+            Write-Log "This computer is not joined to the domain!" -Level WARNING
+        }
 
-    # If a secure connection to the domain cannot be established group policy will fail to update. 
-    if ((Test-IsDomainJoined) -and -not (Test-IsDomainController) -and -not (Test-ComputerSecureChannel -ErrorAction Ignore)) {
-        Write-Warning "This device does not have a secure connection to the Domain Controller! Is the domain controller reachable?"
-        $Success = $False
-    }
+        if ((Test-IsDomainJoined) -and -not (Test-IsDomainController) -and -not (Test-ComputerSecureChannel -ErrorAction Ignore)) {
+            Write-Log "This device does not have a secure connection to the Domain Controller! Is the domain controller reachable?" -Level WARNING
+            $Success = $false
+        }
 
-    # Updates group policy. We only use /force when Logoff is specified due to gpupdate stalling the script if a logoff is needed.
-    $gpupdate = if ((Test-IsSystem)) {
-        Invoke-Command { gpupdate.exe /force /wait:$Timeout }
-    }
-    else {
-        Invoke-Command { gpupdate.exe /wait:$Timeout }
-    }
-
-    # Split up the results between Computer Policy and User Policy
-    $computerResult = $gpupdate | Select-String "Computer Policy"
-    $userResult = $gpupdate | Select-String "User Policy"
-
-    # Testing them to confirm gpupdate worked
-    $ComputerTest = Test-GroupPolicyResults -Type "Computer" -Result $computerResult
-    $UserTest = Test-GroupPolicyResults -Type "User" -Result $userResult
-
-    # If either of them are unsuccessful we'll want to exit with a status code of 1 but we'll want the result report first.
-    if (-not $UserTest -or -not $ComputerTest) {
-        $Success = $False
-    }
-
-    # If the script somehow got interupted before it had a chance to clean up its results we'll want to remove the previous results
-    if (Test-Path "$env:TEMP\gpresult.xml" -ErrorAction Ignore) { Remove-Item "$env:TEMP\gpresult.xml" -Force }
-
-    # We can't generate results with gpresult as the SYSTEM user so we'll attempt to generate results for the last logged in user.
-    if ((Test-IsSystem) -and -not $User) {
-        $LastLoggedInUser = Get-ItemPropertyValue -Path "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI" -Name "LastLoggedOnUser" -ErrorAction Ignore 
-        if ($LastLoggedInUser) {
-            Invoke-Command { gpresult.exe /USER $LastLoggedInUser /X "$env:TEMP\gpresult.xml" }
+        Write-Log "Starting Group Policy update (timeout: $Timeout seconds)"
+        
+        $gpupdate = if (Test-IsSystem) {
+            Invoke-Command { gpupdate.exe /force /wait:$Timeout }
         }
         else {
-            Write-Error "[Error] Couldn't determine the last logged on user. We cannot generate a report as System please either specify a user using -User or have one sign in. :)"
+            Invoke-Command { gpupdate.exe /wait:$Timeout }
         }
-    }
-    elseif ($User -and (Test-IsElevated)) {
-        # Of course if we were given a user to generate results for we'll want to do that instead.
-        Invoke-Command { gpresult.exe /USER $User /X "$env:TEMP\gpresult.xml" }
-    }
-    else {
-        # All other cases we'll want to generate the results as the same user the script is running as.
-        Invoke-Command { gpresult.exe /X "$env:TEMP\gpresult.xml" }
-    }
 
-    # If we failed to generate the results that's not a big deal but we'll want to alert whoever ran it that that's what happened.
-    if (-not (Test-Path "$env:TEMP\gpresult.xml" -ErrorAction Ignore) ) {
-        Write-Error "Failed to generate report with gpresult!"
-        exit 0
-    }
+        $computerResult = $gpupdate | Select-String "Computer Policy"
+        $userResult = $gpupdate | Select-String "User Policy"
 
-    # Cast the xml to an xml type
-    [xml]$resultXML = Get-Content "$env:TEMP\gpresult.xml"
+        $ComputerTest = Test-GroupPolicyResults -Type "Computer" -Result $computerResult
+        $UserTest = Test-GroupPolicyResults -Type "User" -Result $userResult
 
-    # Cleaning up after ourself
-    if (Test-Path "$env:TEMP\gpresult.xml" -ErrorAction Ignore) { Remove-Item "$env:TEMP\gpresult.xml" -Force }
+        if (-not $UserTest -or -not $ComputerTest) {
+            $Success = $false
+        }
 
-    # Lets construct an object for the active gpo's that we can format into a table later
-    $GPOs = $resultXML.DocumentElement | ForEach-Object {
-        ForEach ($GPO in $_.ComputerResults.GPO.Name) {
-            $ComputerGPO = [PSCustomObject]@{
-                Name          = $GPO
-                Type          = "Computer"
-                Enabled       = $resultXML.DocumentElement.ComputerResults.GPO | Where-Object { $_.Name -like $GPO } | Select-Object Enabled -ExpandProperty Enabled -ErrorAction Ignore
-                IsValid       = $resultXML.DocumentElement.ComputerResults.GPO | Where-Object { $_.Name -like $GPO } | Select-Object IsValid -ExpandProperty IsValid -ErrorAction Ignore
-                FilterAllowed = $resultXML.DocumentElement.ComputerResults.GPO | Where-Object { $_.Name -like $GPO } | Select-Object FilterAllowed -ExpandProperty FilterAllowed -ErrorAction Ignore
+        if (Test-Path "$env:TEMP\gpresult.xml" -ErrorAction SilentlyContinue) { 
+            Remove-Item "$env:TEMP\gpresult.xml" -Force 
+        }
+
+        Write-Log "Generating Group Policy result report"
+
+        if ((Test-IsSystem) -and -not $User) {
+            $LastLoggedInUser = Get-ItemPropertyValue -Path "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI" -Name "LastLoggedOnUser" -ErrorAction SilentlyContinue
+            if ($LastLoggedInUser) {
+                Invoke-Command { gpresult.exe /USER $LastLoggedInUser /X "$env:TEMP\gpresult.xml" }
+            }
+            else {
+                Write-Log "Couldn't determine the last logged on user. Cannot generate a report as System. Please specify a user using -User or have one sign in." -Level ERROR
+            }
+        }
+        elseif ($User -and (Test-IsElevated)) {
+            Invoke-Command { gpresult.exe /USER $User /X "$env:TEMP\gpresult.xml" }
+        }
+        else {
+            Invoke-Command { gpresult.exe /X "$env:TEMP\gpresult.xml" }
+        }
+
+        if (-not (Test-Path "$env:TEMP\gpresult.xml" -ErrorAction SilentlyContinue)) {
+            Write-Log "Failed to generate report with gpresult!" -Level ERROR
+            $ExitCode = 1
+            return
+        }
+
+        [xml]$resultXML = Get-Content "$env:TEMP\gpresult.xml"
+
+        if (Test-Path "$env:TEMP\gpresult.xml" -ErrorAction SilentlyContinue) { 
+            Remove-Item "$env:TEMP\gpresult.xml" -Force 
+        }
+
+        $GPOs = $resultXML.DocumentElement | ForEach-Object {
+            ForEach ($GPO in $_.ComputerResults.GPO.Name) {
+                $ComputerGPO = [PSCustomObject]@{
+                    Name          = $GPO
+                    Type          = "Computer"
+                    Enabled       = $resultXML.DocumentElement.ComputerResults.GPO | Where-Object { $_.Name -like $GPO } | Select-Object -ExpandProperty Enabled -ErrorAction SilentlyContinue
+                    IsValid       = $resultXML.DocumentElement.ComputerResults.GPO | Where-Object { $_.Name -like $GPO } | Select-Object -ExpandProperty IsValid -ErrorAction SilentlyContinue
+                    FilterAllowed = $resultXML.DocumentElement.ComputerResults.GPO | Where-Object { $_.Name -like $GPO } | Select-Object -ExpandProperty FilterAllowed -ErrorAction SilentlyContinue
+                }
+
+                if (-not $ComputerGPO.Enabled) { $ComputerGPO.Enabled = "N/A" }
+                if (-not $ComputerGPO.IsValid) { $ComputerGPO.IsValid = "N/A" }
+                if (-not $ComputerGPO.FilterAllowed) { $ComputerGPO.FilterAllowed = "N/A" }
+
+                $ComputerGPO
             }
 
-            # If any values are blank we'll want to replace it with N/A
-            if (-not $ComputerGPO.Enabled) { $ComputerGPO.Enabled = "N/A" }
-            if (-not $ComputerGPO.IsValid) { $ComputerGPO.IsValid = "N/A" }
-            if (-not $ComputerGPO.FilterAllowed) { $ComputerGPO.FilterAllowed = "N/A" }
+            ForEach ($GPO in $_.UserResults.GPO.Name) {
+                $UserGPO = [PSCustomObject]@{
+                    Name          = $GPO
+                    Type          = "User"
+                    Enabled       = $resultXML.DocumentElement.UserResults.GPO | Where-Object { $_.Name -like $GPO } | Select-Object -ExpandProperty Enabled -ErrorAction SilentlyContinue
+                    IsValid       = $resultXML.DocumentElement.UserResults.GPO | Where-Object { $_.Name -like $GPO } | Select-Object -ExpandProperty IsValid -ErrorAction SilentlyContinue
+                    FilterAllowed = $resultXML.DocumentElement.UserResults.GPO | Where-Object { $_.Name -like $GPO } | Select-Object -ExpandProperty FilterAllowed -ErrorAction SilentlyContinue
+                }
 
-            $ComputerGPO
-        }
+                if (-not $UserGPO.Enabled) { $UserGPO.Enabled = "N/A" }
+                if (-not $UserGPO.IsValid) { $UserGPO.IsValid = "N/A" }
+                if (-not $UserGPO.FilterAllowed) { $UserGPO.FilterAllowed = "N/A" }
 
-        ForEach ($GPO in $_.UserResults.GPO.Name) {
-            $UserGPO = [PSCustomObject]@{
-                Name          = $GPO
-                Type          = "User"
-                Enabled       = $resultXML.DocumentElement.UserResults.GPO | Where-Object { $_.Name -like $GPO } | Select-Object Enabled -ExpandProperty Enabled -ErrorAction Ignore
-                IsValid       = $resultXML.DocumentElement.UserResults.GPO | Where-Object { $_.Name -like $GPO } | Select-Object IsValid -ExpandProperty IsValid -ErrorAction Ignore
-                FilterAllowed = $resultXML.DocumentElement.UserResults.GPO | Where-Object { $_.Name -like $GPO } | Select-Object FilterAllowed -ExpandProperty FilterAllowed -ErrorAction Ignore
+                $UserGPO
             }
-
-            # If any values are blank we'll want to replace it with N/A
-            if (-not $UserGPO.Enabled) { $UserGPO.Enabled = "N/A" }
-            if (-not $UserGPO.IsValid) { $UserGPO.IsValid = "N/A" }
-            if (-not $UserGPO.FilterAllowed) { $UserGPO.FilterAllowed = "N/A" }
-
-            $UserGPO
         }
-    }
 
-    # Construct report
-    $Report = New-Object System.Collections.Generic.List[string]
-    $Report.Add("
+        $Report = New-Object System.Collections.Generic.List[string]
+        $Report.Add("
 <div class='card flex-grow-1'>
   <div class='card-title-box'>
     <div class='card-title'><i class='fas fa-building'></i>&nbsp;&nbsp;Group Policy Results</div>
@@ -297,36 +258,46 @@ process {
       </thead>
         <tbody>
   ")
-    foreach($gpo in $GPOs)
-     {
-        $Report.Add("<tr>")
-        $Report.Add("<td>$($gpo.Name)</td>")
-        $Report.Add("<td>$($gpo.Type)</td>")
-        $Report.Add("<td>$($gpo.Enabled)</td>")
-        $Report.Add("<td>$($gpo.IsValid)</td>")
-        $Report.Add("<td>$($gpo.FilterAllowed)</td>")
-        $Report.Add("</tr>")
-     }
+        
+        foreach ($gpo in $GPOs) {
+            $Report.Add("<tr>")
+            $Report.Add("<td>$($gpo.Name)</td>")
+            $Report.Add("<td>$($gpo.Type)</td>")
+            $Report.Add("<td>$($gpo.Enabled)</td>")
+            $Report.Add("<td>$($gpo.IsValid)</td>")
+            $Report.Add("<td>$($gpo.FilterAllowed)</td>")
+            $Report.Add("</tr>")
+        }
 
-     $Report.Add("
+        $Report.Add("
     </tbody>
   </table>
   </div>
 </div>
 ")
-    # Output Report
-    # $Report | Ninja-Property-Set-Piped -Name grouppolicy
-    #$Report | c:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe set $env:customFieldName --stdin
-    $Report | Ninja-Property-Set-Piped -Name $env:customFieldName
+        
+        Write-Log "Generated Group Policy report with $($GPOs.Count) GPO(s)"
+        $Report | Ninja-Property-Set-Piped -Name $CustomFieldName
+        Write-Log "Report saved to custom field: $CustomFieldName"
 
-
-    # If we had any kind of failures its best to not reboot the system or logoff any users
-    if (-not $Success) {
-        exit 1
+        if (-not $Success) {
+            $ExitCode = 1
+        }
+    }
+    catch {
+        Write-Log "Script execution failed: $_" -Level ERROR
+        $ExitCode = 1
     }
 }
+
 end {
-    
-    
-    
+    try {
+        $EndTime = Get-Date
+        $Duration = ($EndTime - $StartTime).TotalSeconds
+        Write-Log "Script execution completed in $Duration seconds"
+    }
+    finally {
+        [System.GC]::Collect()
+        exit $ExitCode
+    }
 }

@@ -5,9 +5,9 @@
     Tests network connectivity to specified hosts using ping and port tests.
 
 .DESCRIPTION
-    This script performs comprehensive network connectivity tests including ICMP ping and TCP 
-    port connectivity checks. It can test multiple hosts and ports, providing detailed results 
-    for each test. This is useful for troubleshooting network issues, verifying firewall rules, 
+    Performs comprehensive network connectivity tests including ICMP ping and TCP 
+    port connectivity checks. Tests multiple hosts and ports, providing detailed results 
+    for each test. Useful for troubleshooting network issues, verifying firewall rules, 
     and monitoring service availability.
     
     The script supports:
@@ -16,6 +16,7 @@
     - Multiple hosts and ports
     - Detailed response time reporting
     - Success/failure status for each test
+    - Custom field output for reporting
 
 .PARAMETER Hosts
     Comma-separated list of hostnames or IP addresses to test.
@@ -35,86 +36,132 @@
     Name of a custom field to save the connectivity test results.
 
 .EXAMPLE
-    -Hosts "google.com,8.8.8.8"
+    .\Network-TestConnectivity.ps1 -Hosts "google.com,8.8.8.8"
 
-    [Info] Testing connectivity to 2 host(s)...
-    Host: google.com
-      Ping: Success (4/4 replies, avg 15ms)
-    Host: 8.8.8.8
-      Ping: Success (4/4 replies, avg 12ms)
+    [2026-02-10 21:00:00] [INFO] Testing connectivity to 2 host(s)...
+    [2026-02-10 21:00:01] [INFO] Host: google.com
+    [2026-02-10 21:00:01] [SUCCESS] Ping: Success (4/4 replies, avg 15ms)
+    [2026-02-10 21:00:02] [INFO] Host: 8.8.8.8
+    [2026-02-10 21:00:02] [SUCCESS] Ping: Success (4/4 replies, avg 12ms)
 
 .EXAMPLE
-    -Hosts "webserver.local" -Ports "80,443" -PingCount 2
+    .\Network-TestConnectivity.ps1 -Hosts "webserver.local" -Ports "80,443" -PingCount 2
 
-    [Info] Testing connectivity to 1 host(s) on 2 port(s)...
-    Host: webserver.local
-      Ping: Success (2/2 replies, avg 5ms)
-      Port 80: Open (response time 2ms)
-      Port 443: Open (response time 3ms)
-
-.OUTPUTS
-    None
+    [2026-02-10 21:00:00] [INFO] Testing connectivity to 1 host(s) on 2 port(s)...
+    [2026-02-10 21:00:00] [INFO] Host: webserver.local
+    [2026-02-10 21:00:01] [SUCCESS] Ping: Success (2/2 replies, avg 5ms)
+    [2026-02-10 21:00:01] [SUCCESS] Port 80: Open (response time 2ms)
+    [2026-02-10 21:00:01] [SUCCESS] Port 443: Open (response time 3ms)
 
 .NOTES
-    Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Release notes: v3.0.0 - Upgraded to V3.0.0 standards (script-scoped exit code)
+    File Name      : Network-TestConnectivity.ps1
+    Prerequisite   : PowerShell 5.1 or higher
+    Minimum OS     : Windows 10, Windows Server 2016
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: Complete V3 standards implementation with proper logging and error handling
+    - 2.0: Added port testing capability
+    - 1.0: Initial release
     
-.COMPONENT
-    Test-Connection - PowerShell network testing cmdlet
-    System.Net.Sockets.TcpClient - TCP connectivity testing
+    Execution Context: User or SYSTEM
+    Execution Frequency: On-demand (network testing)
+    Typical Duration: 1-30 seconds (depends on host count and timeouts)
+    Timeout Setting: User-configurable per connection
     
+    User Interaction: None (automated testing)
+    Restart Behavior: N/A
+    
+    Fields Updated:
+        - Custom field specified by SaveToCustomField parameter (if provided)
+    
+    Dependencies:
+        - Internet or network connectivity
+        - Target hosts must be reachable
+        - Firewall must allow ICMP (ping) and TCP connections
+    
+    Environment Variables (Optional):
+        - hosts: Alternative to -Hosts parameter
+        - ports: Alternative to -Ports parameter
+        - pingCount: Alternative to -PingCount parameter
+        - timeout: Alternative to -Timeout parameter
+        - saveToCustomField: Alternative to -SaveToCustomField parameter
+
 .LINK
     https://github.com/Xore/waf
-
-.FUNCTIONALITY
-    - Performs ICMP ping tests to verify host reachability
-    - Tests TCP port connectivity to verify service availability
-    - Supports multiple hosts and ports
-    - Reports success rates and response times
-    - Configurable ping count and timeout values
-    - Can save comprehensive test results to custom fields
-    - Useful for network troubleshooting and monitoring
 #>
 
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string]$Hosts,
+    
+    [Parameter(Mandatory = $false)]
     [string]$Ports,
+    
+    [Parameter(Mandatory = $false)]
     [int]$PingCount = 4,
+    
+    [Parameter(Mandatory = $false)]
     [int]$Timeout = 1000,
+    
+    [Parameter(Mandatory = $false)]
     [string]$SaveToCustomField
 )
 
 begin {
-    if ($env:hosts -and $env:hosts -notlike "null") {
-        $Hosts = $env:hosts
-    }
-    if ($env:ports -and $env:ports -notlike "null") {
-        $Ports = $env:ports
-    }
-    if ($env:pingCount -and $env:pingCount -notlike "null") {
-        $PingCount = [int]$env:pingCount
-    }
-    if ($env:timeout -and $env:timeout -notlike "null") {
-        $Timeout = [int]$env:timeout
-    }
-    if ($env:saveToCustomField -and $env:saveToCustomField -notlike "null") {
-        $SaveToCustomField = $env:saveToCustomField
+    Set-StrictMode -Version Latest
+    
+    $ScriptVersion = "3.0.0"
+    $ScriptName = "Network-TestConnectivity"
+    
+    $StartTime = Get-Date
+    $ErrorActionPreference = 'Continue'
+    $ProgressPreference = 'SilentlyContinue'
+    $script:ExitCode = 0
+    $script:ErrorCount = 0
+    $script:WarningCount = 0
+
+    function Write-Log {
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory=$true)]
+            [string]$Message,
+            
+            [Parameter(Mandatory=$false)]
+            [ValidateSet('DEBUG','INFO','WARN','ERROR','SUCCESS')]
+            [string]$Level = 'INFO'
+        )
+        
+        $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $LogMessage = "[$Timestamp] [$Level] $Message"
+        Write-Output $LogMessage
+        
+        switch ($Level) {
+            'WARN'  { $script:WarningCount++ }
+            'ERROR' { $script:ErrorCount++; $script:ExitCode = 1 }
+        }
     }
 
     function Set-NinjaProperty {
         [CmdletBinding()]
-        Param(
+        param(
             [Parameter(Mandatory = $True)]
             [String]$Name,
+            
             [Parameter(Mandatory = $True, ValueFromPipeline = $True)]
             $Value
         )
-        $NinjaValue = $Value
-        $CustomField = $NinjaValue | Ninja-Property-Set-Piped -Name $Name 2>&1
-        if ($CustomField.Exception) {
-            throw $CustomField
+        
+        try {
+            $CustomField = $Value | Ninja-Property-Set-Piped -Name $Name 2>&1
+            if ($CustomField.Exception) {
+                throw $CustomField
+            }
+            Write-Log "Custom field '$Name' set successfully" -Level DEBUG
+        } catch {
+            Write-Log "Failed to set custom field '$Name': $_" -Level ERROR
+            throw
         }
     }
 
@@ -149,8 +196,30 @@ begin {
             return @{ Success = $false; Error = $_.Exception.Message }
         }
     }
-
-    $script:ExitCode = 0
+    
+    # Override with environment variables
+    if ($env:hosts -and $env:hosts -notlike "null") {
+        $Hosts = $env:hosts
+        Write-Log "Using hosts from environment: $Hosts" -Level DEBUG
+    }
+    if ($env:ports -and $env:ports -notlike "null") {
+        $Ports = $env:ports
+        Write-Log "Using ports from environment: $Ports" -Level DEBUG
+    }
+    if ($env:pingCount -and $env:pingCount -notlike "null") {
+        $PingCount = [int]$env:pingCount
+        Write-Log "Using ping count from environment: $PingCount" -Level DEBUG
+    }
+    if ($env:timeout -and $env:timeout -notlike "null") {
+        $Timeout = [int]$env:timeout
+        Write-Log "Using timeout from environment: $Timeout" -Level DEBUG
+    }
+    if ($env:saveToCustomField -and $env:saveToCustomField -notlike "null") {
+        $SaveToCustomField = $env:saveToCustomField
+        Write-Log "Using SaveToCustomField from environment: $SaveToCustomField" -Level DEBUG
+    }
+    
+    # Parse hosts and ports
     $HostArray = @()
     $PortArray = @()
     
@@ -164,23 +233,28 @@ begin {
 }
 
 process {
-    if ($HostArray.Count -eq 0) {
-        Write-Host "[Error] No hosts specified"
-        exit 1
-    }
-
     try {
+        Write-Log "========================================" -Level INFO
+        Write-Log "Starting: $ScriptName v$ScriptVersion" -Level INFO
+        Write-Log "========================================" -Level INFO
+        
+        if ($HostArray.Count -eq 0) {
+            Write-Log "No hosts specified" -Level ERROR
+            throw "No hosts to test"
+        }
+
         if ($PortArray.Count -gt 0) {
-            Write-Host "[Info] Testing connectivity to $($HostArray.Count) host(s) on $($PortArray.Count) port(s)..."
+            Write-Log "Testing connectivity to $($HostArray.Count) host(s) on $($PortArray.Count) port(s)..." -Level INFO
         } else {
-            Write-Host "[Info] Testing connectivity to $($HostArray.Count) host(s)..."
+            Write-Log "Testing connectivity to $($HostArray.Count) host(s)..." -Level INFO
         }
 
         $Report = @()
         $FailureCount = 0
 
         foreach ($Host in $HostArray) {
-            Write-Host "`nHost: $Host"
+            Write-Log "" -Level INFO
+            Write-Log "Host: $Host" -Level INFO
             $HostReport = "Host: $Host"
             
             try {
@@ -189,15 +263,15 @@ process {
                 if ($PingResult) {
                     $SuccessCount = ($PingResult | Measure-Object).Count
                     $AvgTime = [math]::Round(($PingResult | Measure-Object -Property ResponseTime -Average).Average, 0)
-                    Write-Host "  Ping: Success ($SuccessCount/$PingCount replies, avg ${AvgTime}ms)"
+                    Write-Log "Ping: Success ($SuccessCount/$PingCount replies, avg ${AvgTime}ms)" -Level SUCCESS
                     $HostReport += " | Ping: $SuccessCount/$PingCount (${AvgTime}ms)"
                 } else {
-                    Write-Host "  Ping: Failed (0/$PingCount replies)"
+                    Write-Log "Ping: Failed (0/$PingCount replies)" -Level WARN
                     $HostReport += " | Ping: Failed"
                     $FailureCount++
                 }
             } catch {
-                Write-Host "  Ping: Error - $_"
+                Write-Log "Ping: Error - $_" -Level ERROR
                 $HostReport += " | Ping: Error"
                 $FailureCount++
             }
@@ -206,10 +280,10 @@ process {
                 $PortTest = Test-TcpPort -Host $Host -Port $Port -Timeout $Timeout
                 
                 if ($PortTest.Success) {
-                    Write-Host "  Port $Port: Open (response time $($PortTest.ResponseTime)ms)"
+                    Write-Log "Port $Port: Open (response time $($PortTest.ResponseTime)ms)" -Level SUCCESS
                     $HostReport += " | Port $Port: Open ($($PortTest.ResponseTime)ms)"
                 } else {
-                    Write-Host "  Port $Port: Closed or unreachable"
+                    Write-Log "Port $Port: Closed or unreachable" -Level WARN
                     $HostReport += " | Port $Port: Closed"
                     $FailureCount++
                 }
@@ -218,30 +292,45 @@ process {
             $Report += $HostReport
         }
 
+        Write-Log "" -Level INFO
         if ($FailureCount -gt 0) {
-            Write-Host "`n[Warn] $FailureCount test(s) failed"
+            Write-Log "$FailureCount test(s) failed" -Level WARN
             $script:ExitCode = 1
         } else {
-            Write-Host "`n[Info] All connectivity tests passed"
+            Write-Log "All connectivity tests passed" -Level SUCCESS
         }
 
         if ($SaveToCustomField) {
             try {
                 $Report -join "; " | Set-NinjaProperty -Name $SaveToCustomField
-                Write-Host "[Info] Results saved to custom field '$SaveToCustomField'"
+                Write-Log "Results saved to custom field '$SaveToCustomField'" -Level INFO
             } catch {
-                Write-Host "[Error] Failed to save to custom field: $_"
-                $script:ExitCode = 1
+                Write-Log "Failed to save to custom field: $_" -Level ERROR
             }
         }
-    }
-    catch {
-        Write-Host "[Error] Failed to test connectivity: $_"
+        
+    } catch {
+        Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
+        Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
         $script:ExitCode = 1
     }
-
-    exit $script:ExitCode
 }
 
 end {
+    try {
+        $EndTime = Get-Date
+        $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+        
+        Write-Log "========================================" -Level INFO
+        Write-Log "Execution Summary:" -Level INFO
+        Write-Log "  Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
+        Write-Log "  Errors: $script:ErrorCount" -Level INFO
+        Write-Log "  Warnings: $script:WarningCount" -Level INFO
+        Write-Log "  Exit Code: $script:ExitCode" -Level INFO
+        Write-Log "========================================" -Level INFO
+    }
+    finally {
+        [System.GC]::Collect()
+        exit $script:ExitCode
+    }
 }

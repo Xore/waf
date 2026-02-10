@@ -2,17 +2,43 @@
 
 <#
 .SYNOPSIS
-    Get the current status of specified Windows firewall profiles.
+    Audits Windows Firewall profile status and configuration.
+
 .DESCRIPTION
     This script audits Windows Firewall profiles (Domain, Private, Public) and reports their
     enabled/disabled status and default inbound action settings. It can optionally save results
     to a NinjaRMM custom field.
+    
+    The script performs the following:
+    - Retrieves firewall profile status from PolicyStore
+    - Checks if profiles are enabled/disabled
+    - Verifies default inbound action (Block/Allow)
+    - Alerts on disabled profiles or permissive rules
+    - Formats results as readable table
+    - Optionally saves status to custom field
+    
+    Requires elevated privileges when setting custom fields.
+
+.PARAMETER Domain
+    Check the Domain Firewall Profile.
+
+.PARAMETER Private
+    Check the Private Firewall Profile.
+
+.PARAMETER Public
+    Check the Public Firewall Profile.
+
+.PARAMETER CustomField
+    Optional name of a text custom field to store the results in.
+    Format: "ProfileName: Status | ProfileName: Status"
+    Example: "Domain: On | Private: On | Public: On"
+
 .EXAMPLE
     .\Firewall-AuditStatus2.ps1 -Domain -Private -Public
-    
-    Retrieving current firewall status.
-    Checking for disabled firewall profiles or those that allow all inbound connections.
 
+    [2026-02-10 21:59:00] [INFO] Starting: Firewall-AuditStatus2 v3.0.0
+    [2026-02-10 21:59:00] [INFO] Retrieving current firewall status.
+    [2026-02-10 21:59:01] [INFO] Checking for disabled firewall profiles or permissive rules.
     ### Firewall Status ###
     Name    Enabled DefaultInboundAction
     ----    ------- --------------------
@@ -20,17 +46,14 @@
     Private    True                Block
     Public     True                Block
 
-PARAMETER: -Domain
-    Check the Domain Firewall Profile.
+.EXAMPLE
+    .\Firewall-AuditStatus2.ps1 -Domain -Private -Public -CustomField "firewallStatus"
 
-PARAMETER: -Private
-    Check the Private Firewall Profile.
+    Audits all three profiles and saves status summary to custom field.
 
-PARAMETER: -Public
-    Check the Public Firewall Profile.
-
-PARAMETER: -CustomField "ReplaceMeWithNameOfTextCustomField"
-    Optionally specify the name of a text custom field to store the results in.
+.OUTPUTS
+    Formatted table output to console.
+    Optional custom field update with status summary.
 
 .NOTES
     File Name      : Firewall-AuditStatus2.ps1
@@ -39,45 +62,97 @@ PARAMETER: -CustomField "ReplaceMeWithNameOfTextCustomField"
     Version        : 3.0.0
     Author         : WAF Team
     Change Log:
-    - 3.0.0: Upgraded to V3 standards with Write-Log function and execution tracking
+    - 3.0.0: V3 standards with error/warning counters and execution summary
+    - 2.0: Added Write-Log function and execution tracking
     - 1.1: Code cleanup and reorganization
+    - 1.0: Initial release
+    
+    Execution Context: Flexible (can run as user or SYSTEM)
+    Execution Frequency: On-demand or scheduled
+    Typical Duration: 1-3 seconds
+    User Interaction: None (fully automated, no prompts)
+    Restart Behavior: N/A
+    
+    Required Privileges:
+        - Standard user: Read firewall status
+        - Administrator: Set custom fields
+
+.COMPONENT
+    Get-NetFirewallProfile - Windows Firewall cmdlet
+    
+.LINK
+    https://github.com/Xore/waf
+
+.FUNCTIONALITY
+    - Audits Windows Firewall profile configuration
+    - Detects disabled firewall profiles
+    - Alerts on permissive inbound rules (Allow all)
+    - Generates formatted status reports
+    - Updates NinjaRMM custom fields
+    - Validates at least one profile is selected
 #>
 
 [CmdletBinding()]
 param (
-    [Parameter()]
+    [Parameter(Mandatory=$false, HelpMessage="Check the Domain Firewall Profile")]
     [Switch]$Domain,
     
-    [Parameter()]
+    [Parameter(Mandatory=$false, HelpMessage="Check the Private Firewall Profile")]
     [Switch]$Private,
     
-    [Parameter()]
+    [Parameter(Mandatory=$false, HelpMessage="Check the Public Firewall Profile")]
     [Switch]$Public,
     
-    [Parameter()]
+    [Parameter(Mandatory=$false, HelpMessage="Custom field name to store results")]
     [String]$CustomField
 )
 
 begin {
+    Set-StrictMode -Version Latest
+    
     $ErrorActionPreference = 'Stop'
     $ProgressPreference = 'SilentlyContinue'
     $StartTime = Get-Date
     
-    Set-StrictMode -Version Latest
+    $ScriptVersion = "3.0.0"
+    $ScriptName = "Firewall-AuditStatus2"
+    
+    $script:ErrorCount = 0
+    $script:WarningCount = 0
+    $script:ExitCode = 0
+    $script:DisabledProfileCount = 0
+    $script:PermissiveProfileCount = 0
 
     function Write-Log {
+        [CmdletBinding()]
         param(
+            [Parameter(Mandatory=$true)]
             [string]$Message,
+            
+            [Parameter(Mandatory=$false)]
+            [ValidateSet('DEBUG','INFO','WARN','ERROR','SUCCESS','ALERT')]
             [string]$Level = 'INFO'
         )
+        
         $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
         $LogMessage = "[$Timestamp] [$Level] $Message"
         
         switch ($Level) {
-            'ERROR' { Write-Error $LogMessage }
-            'WARNING' { Write-Warning $LogMessage }
-            'ALERT' { Write-Warning "ALERT: $Message" }
-            default { Write-Output $LogMessage }
+            'ERROR' { 
+                Write-Error $LogMessage
+                $script:ErrorCount++
+            }
+            'WARN' { 
+                Write-Warning $LogMessage
+                $script:WarningCount++
+            }
+            'ALERT' {
+                Write-Warning "ALERT: $Message"
+                $script:WarningCount++
+            }
+            default { 
+                Write-Output $LogMessage 
+            }
         }
     }
 
@@ -89,8 +164,10 @@ begin {
     }
 
     if (!$Domain -and !$Private -and !$Public) {
-        Write-Log "You must select the firewall profile you would like to audit." -Level ERROR
-        exit 1
+        Write-Log "You must select at least one firewall profile to audit." -Level ERROR
+        Write-Log "Use -Domain, -Private, and/or -Public parameters." -Level ERROR
+        $script:ExitCode = 1
+        exit $script:ExitCode
     }
 
     function Test-IsElevated {
@@ -100,8 +177,10 @@ begin {
     }
 
     if ($CustomField -and !(Test-IsElevated)) {
-        Write-Log "Setting a custom field requires the script to be run with Administrator privileges." -Level ERROR
-        exit 1
+        Write-Log "Setting a custom field requires Administrator privileges." -Level ERROR
+        Write-Log "Please run this script as Administrator or omit -CustomField parameter." -Level ERROR
+        $script:ExitCode = 1
+        exit $script:ExitCode
     }
     
     function Set-NinjaProperty {
@@ -177,36 +256,48 @@ begin {
             throw $CustomField
         }
     }
-
-    $ExitCode = 0
 }
 
 process {
     try {
+        Write-Log "========================================" -Level INFO
+        Write-Log "Starting: $ScriptName v$ScriptVersion" -Level INFO
+        Write-Log "========================================" -Level INFO
+        
         $ProfilesToAudit = New-Object -TypeName System.Collections.Generic.List[string]
 
         if ($Domain) { $ProfilesToAudit.Add("Domain") }
         if ($Private) { $ProfilesToAudit.Add("Private") }
         if ($Public) { $ProfilesToAudit.Add("Public") }
 
-        Write-Log "Retrieving current firewall status."
+        Write-Log "Auditing firewall profiles: $($ProfilesToAudit -join ', ')" -Level INFO
+        Write-Log "Retrieving current firewall status." -Level INFO
+        
         $NetProfile = Get-NetFirewallProfile -All -PolicyStore ActiveStore -ErrorAction Stop | 
             Select-Object "Name", "Enabled", "DefaultInboundAction" | 
             Where-Object { $ProfilesToAudit -contains $_.Name }
 
-        Write-Log "Checking for disabled firewall profiles or those that allow all inbound connections."
+        Write-Log "Checking for disabled firewall profiles or permissive rules." -Level INFO
 
         $NetProfile | ForEach-Object {
             if (!([System.Convert]::ToBoolean($_.Enabled))) {
                 Write-Log "The '$($_.Name)' firewall profile is disabled!" -Level ALERT
+                $script:DisabledProfileCount++
+                $script:ExitCode = 1
             }
 
             if ($_.DefaultInboundAction -like "Allow") {
-                Write-Log "The '$($_.Name)' firewall profile is set to allow all inbound connections!" -Level ALERT
+                Write-Log "The '$($_.Name)' firewall profile allows all inbound connections!" -Level ALERT
+                $script:PermissiveProfileCount++
+                $script:ExitCode = 1
             }
         }
 
-        Write-Output "### Firewall Status ###"
+        if ($script:DisabledProfileCount -eq 0 -and $script:PermissiveProfileCount -eq 0) {
+            Write-Log "All audited profiles are properly configured" -Level SUCCESS
+        }
+
+        Write-Output "`n### Firewall Status ###"
         $NetProfile | Format-Table -AutoSize | Out-String | Write-Output
 
         if ($CustomField) {
@@ -226,25 +317,36 @@ process {
                 }
             }
 
-            Write-Log "Attempting to set Custom Field '$CustomField'."
+            Write-Log "Attempting to set Custom Field '$CustomField'." -Level INFO
             Set-NinjaProperty -Name $CustomField -Value $CustomFieldValue
-            Write-Log "Successfully set Custom Field '$CustomField'!"
+            Write-Log "Successfully set Custom Field '$CustomField'!" -Level SUCCESS
         }
+        
+        Write-Log "Firewall audit completed successfully" -Level SUCCESS
     }
     catch {
-        Write-Log "$($_.Exception.Message)" -Level ERROR
-        $ExitCode = 1
+        Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
+        Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
+        $script:ExitCode = 1
     }
 }
 
 end {
     try {
         $EndTime = Get-Date
-        $Duration = ($EndTime - $StartTime).TotalSeconds
-        Write-Log "Script execution completed in $Duration seconds"
+        $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+        
+        Write-Log "========================================" -Level INFO
+        Write-Log "Execution Summary:" -Level INFO
+        Write-Log "  Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
+        Write-Log "  Errors: $script:ErrorCount" -Level INFO
+        Write-Log "  Warnings: $script:WarningCount" -Level INFO
+        Write-Log "  Disabled Profiles: $script:DisabledProfileCount" -Level INFO
+        Write-Log "  Permissive Profiles: $script:PermissiveProfileCount" -Level INFO
+        Write-Log "========================================" -Level INFO
     }
     finally {
         [System.GC]::Collect()
-        exit $ExitCode
+        exit $script:ExitCode
     }
 }

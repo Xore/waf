@@ -2,7 +2,7 @@
 
 **Version:** 3.0  
 **Status:** Production Ready  
-**Last Updated:** 2026-02-10
+**Last Updated:** 2026-02-11
 
 ## 📊 Overview
 
@@ -36,10 +36,10 @@ The Windows Automation Framework (WAF) is a comprehensive, production-ready coll
    cd waf
    ```
 
-2. **Review Script Requirements**
-   - Check script headers for dependencies
-   - Verify custom fields in NinjaRMM
-   - Configure execution policies
+2. **Review Standards**
+   - See [Coding Standards](archive/docs/standards/CODING_STANDARDS.md)
+   - See [Output Formatting](archive/docs/standards/OUTPUT_FORMATTING.md)
+   - See [Language-Aware Paths](archive/docs/standards/LANGUAGE_AWARE_PATHS.md)
 
 3. **Deploy Scripts**
    - Upload to NinjaRMM as Components
@@ -89,8 +89,19 @@ waf/
 │   ├── Capacity & Performance (4)
 │   └── [See full catalog]
 │
+├── docs/                       📚 Documentation
+│   ├── getting-started/        Installation guides
+│   ├── hyper-v/                Hyper-V monitoring docs
+│   ├── scripts/                Script documentation
+│   ├── standards/              Reference to standards
+│   ├── troubleshooting/        Common issues
+│   ├── reference/              API & field references
+│   └── quick-reference/        Quick guides
+│
+├── archive/                    📚 Full documentation archive
+│   └── docs/standards/         🎯 Complete standards (source)
+│
 ├── plaintext_scripts/          📤 Legacy script versions
-├── archive/                    📚 Historical documentation
 │
 ├── README.md                   📝 This file
 ├── FRAMEWORK_ARCHITECTURE.md   🏛️ Architecture overview
@@ -145,7 +156,7 @@ Comprehensive 8-script monitoring solution for Hyper-V environments:
 
 **Total Custom Fields:** 109  
 **Deployment Time:** ~1 hour  
-**Documentation:** See `/docs/hyper-v/` (coming soon)
+**Documentation:** [Hyper-V Overview](docs/hyper-v/overview.md) | [Deployment Guide](docs/hyper-v/deployment-guide.md)
 
 ---
 
@@ -200,16 +211,23 @@ Comprehensive 8-script monitoring solution for Hyper-V environments:
 
 - **[Framework Architecture](FRAMEWORK_ARCHITECTURE.md)** - System design and components
 - **[Changelog](CHANGELOG.md)** - Version history and updates
-- **[Contributing Guide](CONTRIBUTING.md)** - Development standards
+- **[Contributing Guide](CONTRIBUTING.md)** - Development standards and workflow
 - **[Progress Tracker](DOCUMENTATION_PROGRESS.md)** - Documentation status
 
-### Coming Soon
+### Standards & Guidelines
 
-- `/docs/getting-started/` - Installation and setup guides
-- `/docs/hyper-v/` - Hyper-V monitoring complete guide
-- `/docs/scripts/` - Individual script documentation
-- `/docs/troubleshooting/` - Common issues and solutions
-- `/docs/reference/` - Custom fields and API reference
+- **[Coding Standards](archive/docs/standards/CODING_STANDARDS.md)** - Complete V3 development standards
+- **[Output Formatting](archive/docs/standards/OUTPUT_FORMATTING.md)** - No emojis, plain text requirements
+- **[Language-Aware Paths](archive/docs/standards/LANGUAGE_AWARE_PATHS.md)** - German/English path handling
+- **[Script Header Template](archive/docs/standards/SCRIPT_HEADER_TEMPLATE.ps1)** - Standard script template
+- **[Refactoring Guide](archive/docs/standards/SCRIPT_REFACTORING_GUIDE.md)** - V2 to V3 migration
+- **[Standards Overview](docs/standards/README.md)** - Quick reference and checklist
+
+### Module Documentation
+
+- **[Hyper-V Overview](docs/hyper-v/overview.md)** - Complete Hyper-V suite documentation
+- **[Hyper-V Deployment Guide](docs/hyper-v/deployment-guide.md)** - Step-by-step deployment
+- **[Scripts Index](docs/scripts/README.md)** - Individual script documentation (coming soon)
 
 ---
 
@@ -222,16 +240,29 @@ Comprehensive 8-script monitoring solution for Hyper-V environments:
 ✅ **Standardized Function Names**
    - `Set-NinjaField` (not `Set-NinjaRMMField`)
    - `Write-Log` for consistent logging
+   - See [Coding Standards](archive/docs/standards/CODING_STANDARDS.md)
 
 ✅ **Error Handling**
    - `$ErrorsEncountered` counter
    - `$ErrorDetails` array
    - Comprehensive try/catch blocks
+   - See [Script Header Template](archive/docs/standards/SCRIPT_HEADER_TEMPLATE.ps1)
 
 ✅ **Execution Tracking**
    - `$ExecutionStartTime` / `$ExecutionEndTime`
    - `finally` block with execution time reporting
    - Exit code standards (0=success, 1-98=errors, 99=unexpected)
+
+✅ **Output Standards**
+   - **No emojis or Unicode symbols** (plain ASCII only)
+   - **No colors** (Write-Host with -ForegroundColor prohibited)
+   - **No progress bars** (Use milestone logging)
+   - See [Output Formatting Standards](archive/docs/standards/OUTPUT_FORMATTING.md)
+
+✅ **Multi-Language Support**
+   - German and English Windows path support
+   - Language-aware folder resolution
+   - See [Language-Aware Paths](archive/docs/standards/LANGUAGE_AWARE_PATHS.md)
 
 ✅ **Documentation**
    - Complete `.SYNOPSIS` and `.DESCRIPTION`
@@ -243,6 +274,9 @@ Comprehensive 8-script monitoring solution for Hyper-V environments:
 - Hyper-V Scripts: 8/8 (100%) V3 compliant
 - Core Scripts: Migration in progress
 - Legacy Scripts: Conversion planned
+
+**Standards Compliance Checklist:**
+See [Standards README](docs/standards/README.md) for complete checklist
 
 ---
 
@@ -306,10 +340,18 @@ Contributions are welcome! Please review our [Contributing Guide](CONTRIBUTING.m
 
 **Quick Start for Contributors:**
 1. Fork the repository
-2. Create a feature branch
-3. Follow V3 standards
-4. Test thoroughly
-5. Submit pull request
+2. Review [Coding Standards](archive/docs/standards/CODING_STANDARDS.md)
+3. Create a feature branch
+4. Follow V3 standards (see checklist)
+5. Test thoroughly (English and German Windows)
+6. Submit pull request
+
+**Critical Requirements:**
+- No emojis, Unicode symbols, or colors in output
+- Plain ASCII text only
+- German and English path support
+- Execution time tracking
+- Set-NinjaField function usage
 
 ---
 
@@ -325,7 +367,8 @@ Contributions are welcome! Please review our [Contributing Guide](CONTRIBUTING.m
 
 **Issues:** Use GitHub Issues for bug reports and feature requests  
 **Discussions:** GitHub Discussions for questions and community support  
-**Documentation:** Check `/docs/` for guides and references
+**Documentation:** Check `/docs/` for guides and references  
+**Standards:** Review `/archive/docs/standards/` for complete standards
 
 ---
 
@@ -334,11 +377,13 @@ Contributions are welcome! Please review our [Contributing Guide](CONTRIBUTING.m
 **Current Version:** 3.0  
 **Active Development:** Yes  
 **Production Ready:** Yes (Hyper-V suite)  
-**Last Update:** 2026-02-10
+**Last Update:** 2026-02-11
 
 **Recent Milestones:**
 - ✅ Hyper-V monitoring suite completed (8 scripts)
-- ✅ V3 standards established
+- ✅ V3 standards established and documented
+- ✅ Documentation structure created
+- ✅ Hyper-V complete documentation published
 - 🚧 Core scripts V3 migration in progress
 - 🚧 Documentation expansion ongoing
 
@@ -372,8 +417,17 @@ Get-Help .\script-name.ps1 -Full
 - **Priority Scripts:** `P[1-4]_[Description].ps1`
 - **Patch Rings:** `PR[1-3]_[Description].ps1`
 
+### Standards Compliance Quick Check
+
+```powershell
+# Check for prohibited patterns
+Select-String -Path .\script.ps1 -Pattern "Write-Host.*-ForegroundColor"
+Select-String -Path .\script.ps1 -Pattern "[✓✗➡⌛]"
+Select-String -Path .\script.ps1 -Pattern "Set-NinjaRMMField"
+```
+
 ---
 
 **🌟 Star this repository if you find it useful!**
 
-**[Report Issues](https://github.com/Xore/waf/issues) | [Request Features](https://github.com/Xore/waf/issues/new) | [View Documentation](DOCUMENTATION_PROGRESS.md)**
+**[Report Issues](https://github.com/Xore/waf/issues) | [Request Features](https://github.com/Xore/waf/issues/new) | [View Documentation](docs/README.md)**

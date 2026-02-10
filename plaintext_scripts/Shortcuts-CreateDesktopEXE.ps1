@@ -55,7 +55,7 @@
     Version        : 3.0.0
     Author         : WAF Team
     Change Log:
-    - 3.0.0: Upgraded to V3 format with enhanced error handling
+    - 3.0.0: Upgraded to V3.0.0 standards (script-scoped exit code, proper cleanup)
     - 1.1: Split script and improved icon support
     - 1.0: Initial version
 #>
@@ -336,6 +336,8 @@ begin {
             }
         }
     }
+
+    $script:ExitCode = 0
 }
 
 process {
@@ -361,11 +363,9 @@ process {
             throw 'Name contains invalid characters: <>:"/\|?*'
         }
 
-        $ExitCode = 0
-
         if (($Icon -or $IconUrl) -and -not $IconDirectory) {
             Write-Log 'Icon provided but no storage directory specified. Ignoring icon' -Level WARNING
-            $ExitCode = 1
+            $script:ExitCode = 1
             $Icon = $null
             $IconUrl = $null
         }
@@ -416,7 +416,7 @@ process {
         if ($IconUrl) {
             $Icon = Invoke-Download -URL $IconUrl -BaseName "$IconDirectory\$Name"
             if ($Icon -and -not (Test-Path $Icon -ErrorAction SilentlyContinue)) {
-                $ExitCode = 1
+                $script:ExitCode = 1
                 $Icon = $null
             }
         }
@@ -444,13 +444,13 @@ process {
             $ShortcutArguments['IconPath'] = $Icon
         }
         elseif ($Icon) {
-            $ExitCode = 1
+            $script:ExitCode = 1
         }
 
         $ShortcutPath | New-Shortcut @ShortcutArguments
 
         Write-Log "Successfully created $($ShortcutPath.Count) shortcut(s)"
-        exit $ExitCode
+        exit $script:ExitCode
     }
     catch {
         Write-Log "Script failed: $_" -Level ERROR
@@ -459,5 +459,5 @@ process {
 }
 
 end {
-    [GC]::Collect()
+    [System.GC]::Collect()
 }

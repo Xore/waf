@@ -1,4 +1,5 @@
 #Requires -Version 5.1
+#Requires -RunAsAdministrator
 
 <#
 .SYNOPSIS
@@ -67,13 +68,15 @@
     Installs Office 365 using a custom configuration file from the specified URL.
 
 .NOTES
-    Script Name:    Software-InstallOffice365.ps1
-    Author:         Windows Automation Framework
-    Version:        3.0
-    Creation Date:  2024-01-15
-    Last Modified:  2026-02-10
-    
-    Minimum OS: Windows 10, Windows Server 2016
+    File Name      : Software-InstallOffice365.ps1
+    Prerequisite   : PowerShell 5.1 or higher, Administrator privileges
+    Minimum OS     : Windows 10, Windows Server 2016
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: Complete V3 standards with enhanced logging
+    - 3.0: Added comprehensive installation automation
+    - 1.0: Initial release
     
     Execution Context: SYSTEM or Administrator required
     Execution Frequency: As needed (software deployment)
@@ -83,67 +86,67 @@
     User Interaction: May show installation progress UI
     Restart Behavior: Optional via -Restart parameter
     
-    NinjaRMM Fields Updated: None
+    Fields Updated: None
     
     Dependencies:
         - Administrator privileges (mandatory)
         - Internet connectivity (to download ODT and Office files)
         - 10+ GB free disk space
     
-    Exit Codes:
-        0 - Office 365 successfully installed
-        1 - Access denied, download failed, or installation failed
+    Environment Variables (Optional):
+        - linkToConfigurationXml: Alternative to -ConfigurationXMLFile
+        - restartComputer: Alternative to -Restart
+        - officeversionToInstall: Alternative to -officeVersionToInstall
 
 .LINK
     https://github.com/Xore/waf
-    
-.LINK
-    https://docs.microsoft.com/en-us/deployoffice/overview-office-deployment-tool
+    https://docs.microsoft.com/deployoffice/overview-office-deployment-tool
 #>
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory=$false, HelpMessage="URL to custom Office configuration XML")]
     [String]$ConfigurationXMLFile,
     
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory=$false, HelpMessage="Download path for installation files")]
     [String]$OfficeInstallDownloadPath = "C:\Temp\Office365Install",
     
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory=$false, HelpMessage="Predefined Office version to install")]
     [String]$officeVersionToInstall,
     
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory=$false, HelpMessage="Restart computer after installation")]
     [String]$Restart
 )
 
 begin {
+    Set-StrictMode -Version Latest
     $ErrorActionPreference = 'Stop'
     $ProgressPreference = 'SilentlyContinue'
-    $VerbosePreference = 'Continue'
-    Set-StrictMode -Version Latest
     
-    $ScriptVersion = "3.0"
+    $ScriptVersion = "3.0.0"
     $ScriptName = "Software-InstallOffice365"
     $StartTime = Get-Date
     $CleanUpInstallFiles = $True
+    $script:ErrorCount = 0
+    $script:WarningCount = 0
     
     function Write-Log {
+        [CmdletBinding()]
         param(
             [Parameter(Mandatory=$true)]
             [string]$Message,
-            
             [Parameter(Mandatory=$false)]
-            [ValidateSet('INFO', 'WARNING', 'ERROR')]
+            [ValidateSet('DEBUG','INFO','WARN','ERROR','SUCCESS')]
             [string]$Level = 'INFO'
         )
         
-        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-        $logMessage = "[$timestamp] [$Level] $Message"
+        $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $LogMessage = "[$Timestamp] [$Level] $Message"
+        Write-Output $LogMessage
         
         switch ($Level) {
-            'ERROR'   { Write-Error $logMessage }
-            'WARNING' { Write-Warning $logMessage }
-            default   { Write-Host $logMessage }
+            'WARN'  { $script:WarningCount++ }
+            'ERROR' { $script:ErrorCount++ }
         }
     }
     
@@ -397,15 +400,15 @@ begin {
                 $OfficeXML = Write-OfficeXMLFile @config
                 $xmlPath = "$OfficeInstallDownloadPath\OfficeInstall.xml"
                 $OfficeXML.Save($xmlPath)
-                Write-Log "$officeVersionToInstall Office configuration created: $xmlPath"
+                Write-Log "$officeVersionToInstall configuration created" -Level SUCCESS
             }
             default {
-                Write-Log "Unknown Office version: $officeVersionToInstall, using Standard English" "WARNING"
+                Write-Log "Unknown version: $officeVersionToInstall, using Standard English" -Level WARN
                 $config = $OfficeConfigurations["Standard English"]
                 $OfficeXML = Write-OfficeXMLFile @config
                 $xmlPath = "$OfficeInstallDownloadPath\OfficeInstall.xml"
                 $OfficeXML.Save($xmlPath)
-                Write-Log "Standard English Office configuration created: $xmlPath"
+                Write-Log "Standard English configuration created" -Level SUCCESS
             }
         }
     }
@@ -419,16 +422,16 @@ begin {
                 $MSWebPage = Invoke-WebRequest -Uri $Uri -UseBasicParsing -MaximumRedirection 10
                 $DownloadURL = $MSWebPage.Links | Where-Object { $_.href -like "*officedeploymenttool*.exe" } | Select-Object -ExpandProperty href -First 1
                 if ($DownloadURL) { break }
-                Write-Log "Unable to find the download link for the Office Deployment Tool. Attempt $i of 3." "WARNING"
+                Write-Log "Unable to find ODT download link. Attempt $i of 3" -Level WARN
                 Start-Sleep -Seconds $($i * 30)
             }
             catch {
-                Write-Log "Unable to connect to the Microsoft website. Attempt $i of 3." "WARNING"
+                Write-Log "Unable to connect to Microsoft. Attempt $i of 3" -Level WARN
             }
         }
         
         if (-not $DownloadURL) {
-            Write-Log "Unable to find the download link for the Office Deployment Tool at: $Uri" "ERROR"
+            Write-Log "Unable to find ODT download link at: $Uri" -Level ERROR
             exit 1
         }
         return $DownloadURL
@@ -442,14 +445,12 @@ begin {
     
     function Invoke-Download {
         param(
-            [Parameter()][String]$URL,
-            [Parameter()][String]$Path,
-            [Parameter()][int]$Attempts = 3,
-            [Parameter()][Switch]$SkipSleep
+            [Parameter(Mandatory=$true)][String]$URL,
+            [Parameter(Mandatory=$true)][String]$Path,
+            [Parameter(Mandatory=$false)][int]$Attempts = 3
         )
         
-        Write-Log "URL '$URL' was given."
-        Write-Log "Downloading the file..."
+        Write-Log "Downloading from: $URL" -Level DEBUG
         
         $SupportedTLSversions = [enum]::GetValues('Net.SecurityProtocolType')
         if ( ($SupportedTLSversions -contains 'Tls13') -and ($SupportedTLSversions -contains 'Tls12') ) {
@@ -458,60 +459,41 @@ begin {
         elseif ( $SupportedTLSversions -contains 'Tls12' ) {
             [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
         }
-        else {
-            Write-Log "TLS 1.2 and/or TLS 1.3 are not supported on this system. This download may fail!" "WARNING"
-        }
         
         $i = 1
         While ($i -le $Attempts) {
-            if (!($SkipSleep)) {
-                $SleepTime = Get-Random -Minimum 3 -Maximum 15
-                Write-Log "Waiting for $SleepTime seconds."
-                Start-Sleep -Seconds $SleepTime
-            }
+            Write-Log "Download attempt $i of $Attempts" -Level DEBUG
             
-            Write-Log "Download Attempt $i"
-            
-            $PreviousProgressPreference = $ProgressPreference
-            $ProgressPreference = 'SilentlyContinue'
             try {
-                if ($PSVersionTable.PSVersion.Major -lt 4) {
-                    $WebClient = New-Object System.Net.WebClient
-                    $WebClient.DownloadFile($URL, $Path)
+                $WebRequestArgs = @{
+                    Uri                = $URL
+                    OutFile            = $Path
+                    MaximumRedirection = 10
+                    UseBasicParsing    = $true
                 }
-                else {
-                    $WebRequestArgs = @{
-                        Uri                = $URL
-                        OutFile            = $Path
-                        MaximumRedirection = 10
-                        UseBasicParsing    = $true
-                    }
-                    Invoke-WebRequest @WebRequestArgs
-                }
+                Invoke-WebRequest @WebRequestArgs
                 $File = Test-Path -Path $Path -ErrorAction SilentlyContinue
             }
             catch {
-                Write-Log "An error has occurred while downloading!" "WARNING"
-                Write-Log $_.Exception.Message "WARNING"
+                Write-Log "Download failed: $($_.Exception.Message)" -Level WARN
                 if (Test-Path -Path $Path -ErrorAction SilentlyContinue) {
                     Remove-Item $Path -Force -Confirm:$false -ErrorAction SilentlyContinue
                 }
                 $File = $False
             }
             
-            $ProgressPreference = $PreviousProgressPreference
             if ($File) {
+                Write-Log "Download successful" -Level SUCCESS
                 $i = $Attempts
             }
             else {
-                Write-Log "File failed to download." "WARNING"
+                Write-Log "File failed to download" -Level WARN
             }
             $i++
         }
         
         if (!(Test-Path $Path)) {
-            Write-Log "Failed to download file." "ERROR"
-            Write-Log "Please verify the URL of '$URL'." "ERROR"
+            Write-Log "Failed to download file after $Attempts attempts" -Level ERROR
             exit 1
         }
         else {
@@ -546,30 +528,28 @@ begin {
         }
     }
     
-    Write-Log "Starting $ScriptName v$ScriptVersion"
+    Write-Log "========================================" -Level INFO
+    Write-Log "Starting: $ScriptName v$ScriptVersion" -Level INFO
+    Write-Log "========================================" -Level INFO
     
-    # Override with environment variables
     if ($env:linkToConfigurationXml -and $env:linkToConfigurationXml -notlike "null") { 
         $ConfigurationXMLFile = $env:linkToConfigurationXml 
-        Write-Log "Using ConfigurationXMLFile from environment: $ConfigurationXMLFile"
+        Write-Log "Using ConfigurationXMLFile from environment" -Level INFO
     }
     if ($env:restartComputer -like "true") { 
         $Restart = $True 
-        Write-Log "Restart enabled from environment variable"
+        Write-Log "Restart enabled from environment" -Level INFO
     }
     if ($env:officeversionToInstall -and $env:officeversionToInstall -notlike "null") { 
         $officeVersionToInstall = $env:officeversionToInstall 
-        Write-Log "Using Office version from environment: $officeVersionToInstall"
+        Write-Log "Using Office version from environment: $officeVersionToInstall" -Level INFO
     }
     
-    # URL validation
     if ($ConfigurationXMLFile -and $ConfigurationXMLFile -notmatch "^http(s)?://") {
-        Write-Log "http(s):// is required to download the file. Adding https:// to your input...." "WARNING"
+        Write-Log "Adding https:// prefix to URL" -Level WARN
         $ConfigurationXMLFile = "https://$ConfigurationXMLFile"
-        Write-Log "New Url $ConfigurationXMLFile."
     }
     
-    # TLS configuration
     $SupportedTLSversions = [enum]::GetValues('Net.SecurityProtocolType')
     if ( ($SupportedTLSversions -contains 'Tls13') -and ($SupportedTLSversions -contains 'Tls12') ) {
         [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol::Tls13 -bor [System.Net.SecurityProtocolType]::Tls12
@@ -577,35 +557,33 @@ begin {
     elseif ( $SupportedTLSversions -contains 'Tls12' ) {
         [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
     }
-    else {
-        Write-Log "TLS 1.2 and or TLS 1.3 are not supported on this system. This script may fail!" "WARNING"
-    }
 }
 
 process {
     try {
         if (-not (Test-IsElevated)) {
-            Write-Log "Access Denied. Please run with Administrator privileges." "ERROR"
-            exit 1
+            throw "Administrator privileges required"
         }
+        Write-Log "Administrator privileges verified" -Level INFO
         
-        Write-Log "Creating download directory: $OfficeInstallDownloadPath"
+        Write-Log "Creating download directory: $OfficeInstallDownloadPath" -Level INFO
         if (-not (Test-Path $OfficeInstallDownloadPath)) {
             New-Item -Path $OfficeInstallDownloadPath -ItemType Directory | Out-Null
         }
         
         if (-not ($ConfigurationXMLFile)) {
-            Write-Log "Using predefined configuration"
+            Write-Log "Using predefined configuration" -Level INFO
             Set-XMLFile
         }
         else {
-            Write-Log "Downloading custom configuration file"
+            Write-Log "Downloading custom configuration" -Level INFO
             Invoke-Download -URL $ConfigurationXMLFile -Path "$OfficeInstallDownloadPath\OfficeInstall.xml"
             try {
                 [xml]::new().Load("$OfficeInstallDownloadPath\OfficeInstall.xml")
+                Write-Log "XML configuration validated" -Level SUCCESS
             }
             catch {
-                Write-Log "The XML file is not valid. Please check the file and try again." "ERROR"
+                Write-Log "XML file is not valid" -Level ERROR
                 exit 1
             }
         }
@@ -613,52 +591,61 @@ process {
         $ConfigurationXMLPath = "$OfficeInstallDownloadPath\OfficeInstall.xml"
         $ODTInstallLink = Get-ODTURL
         
-        Write-Log "Downloading the Office Deployment Tool..."
+        Write-Log "Downloading Office Deployment Tool" -Level INFO
         Invoke-Download -URL $ODTInstallLink -Path "$OfficeInstallDownloadPath\ODTSetup.exe"
         
-        Write-Log "Extracting the Office Deployment Tool..."
+        Write-Log "Extracting Office Deployment Tool" -Level INFO
         Start-Process "$OfficeInstallDownloadPath\ODTSetup.exe" -ArgumentList "/quiet /extract:$OfficeInstallDownloadPath" -Wait -NoNewWindow
         
-        Write-Log "Downloading and installing Microsoft 365..."
-        Write-Log "This may take 10-30 minutes depending on network speed"
+        Write-Log "Starting Office 365 installation" -Level INFO
+        Write-Log "This may take 10-30 minutes" -Level INFO
         $Install = Start-Process "$OfficeInstallDownloadPath\Setup.exe" -ArgumentList "/configure $ConfigurationXMLPath" -Wait -PassThru -NoNewWindow
         
         if ($Install.ExitCode -ne 0) {
-            Write-Log "Exit Code does not indicate success! Exit Code: $($Install.ExitCode)" "ERROR"
-            exit 1
+            throw "Installation failed with exit code: $($Install.ExitCode)"
         }
         
-        Write-Log "Verifying installation..."
+        Write-Log "Verifying installation" -Level INFO
         $OfficeInstalled = Find-UninstallKey -DisplayName "Microsoft 365"
         
         if ($CleanUpInstallFiles) {
-            Write-Log "Cleaning up install files..."
+            Write-Log "Cleaning up installation files" -Level INFO
             Remove-Item -Path $OfficeInstallDownloadPath -Force -Recurse -ErrorAction SilentlyContinue
         }
         
         if ($OfficeInstalled) {
-            Write-Log "$($OfficeInstalled.DisplayName) installed successfully!"
+            Write-Log "$($OfficeInstalled.DisplayName) installed successfully" -Level SUCCESS
             if ($Restart -eq 'true') {
-                Write-Log "Restarting the computer in 60 seconds..." "WARNING"
+                Write-Log "Restarting computer in 60 seconds" -Level WARN
                 Start-Process shutdown.exe -ArgumentList "-r -t 60" -Wait -NoNewWindow
             }
-            exit 0
+            $ExitCode = 0
         }
         else {
-            Write-Log "Microsoft 365 was not detected after the install ran!" "ERROR"
-            exit 1
+            throw "Microsoft 365 not detected after installation"
         }
     }
     catch {
-        Write-Log "An unexpected error occurred: $($_.Exception.Message)" "ERROR"
-        exit 1
+        Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
+        Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
+        $ExitCode = 1
     }
 }
 
 end {
-    if ($StartTime) {
-        $executionTime = (Get-Date) - $StartTime
-        Write-Log "Script execution time: $($executionTime.TotalSeconds) seconds"
+    try {
+        $EndTime = Get-Date
+        $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+        
+        Write-Log "========================================" -Level INFO
+        Write-Log "Execution Summary:" -Level INFO
+        Write-Log "  Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
+        Write-Log "  Errors: $script:ErrorCount" -Level INFO
+        Write-Log "  Warnings: $script:WarningCount" -Level INFO
+        Write-Log "========================================" -Level INFO
     }
-    [System.GC]::Collect()
+    finally {
+        [System.GC]::Collect()
+        exit $ExitCode
+    }
 }

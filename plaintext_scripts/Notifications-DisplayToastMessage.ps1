@@ -11,70 +11,100 @@
     Creates or updates registry entries to enable toast notifications for the
     specified ApplicationId. The ApplicationId defaults to NINJA_COMPANY_NAME
     environment variable or 'NinjaOne RMM' if not set.
+    
+    Toast notifications support:
+    - Custom title and message text
+    - Urgent scenario for immediate display
+    - Auto-expiration after 1 minute
+    - Custom application identification
 
 .PARAMETER Title
-    The toast notification title (max 42 characters recommended).
+    The toast notification title.
+    Maximum 42 characters recommended for proper display.
+    Required parameter.
 
 .PARAMETER Message
-    The toast notification message body (max 254 characters recommended).
+    The toast notification message body.
+    Maximum 254 characters recommended for proper display.
+    Required parameter.
 
 .PARAMETER ApplicationId
     Optional application identifier for the toast notification.
     Defaults to NINJA_COMPANY_NAME environment variable or 'NinjaOne RMM'.
+    Spaces in the ApplicationId are replaced with dots for registry compatibility.
 
 .EXAMPLE
-    Notifications-DisplayToastMessage.ps1 -Title "Update Available" -Message "Please restart your computer"
-    Displays a toast notification with the specified title and message.
+    .\Notifications-DisplayToastMessage.ps1 -Title "Update Available" -Message "Please restart your computer"
+    
+    [2026-02-11 00:07:00] [INFO] Display Name: NinjaOne RMM
+    [2026-02-11 00:07:00] [INFO] Application ID: NinjaOne.RMM
+    [2026-02-11 00:07:01] [INFO] Sending toast notification
+    [2026-02-11 00:07:01] [INFO] Toast notification sent successfully
 
 .EXAMPLE
-    Notifications-DisplayToastMessage.ps1 -Title "Alert" -Message "System maintenance required" -ApplicationId "MyCompany"
+    .\Notifications-DisplayToastMessage.ps1 -Title "Alert" -Message "System maintenance required" -ApplicationId "MyCompany"
+    
     Displays a toast notification with a custom ApplicationId.
 
 .OUTPUTS
-    System.Int32
-    Exit code 0 on success, 1 on failure.
+    None. Status information is written to the console.
 
 .NOTES
     File Name      : Notifications-DisplayToastMessage.ps1
-    Prerequisite   : PowerShell 5.1, Windows 10 or higher
+    Prerequisite   : PowerShell 5.1 or higher, Windows 10 or higher
+    Minimum OS     : Windows 10, Windows Server 2016
     Version        : 3.0.0
     Author         : WAF Team
     Change Log:
-    - 3.0.0: Upgraded to V3 format with enhanced error handling
+    - 3.0.0: Upgraded to V3 standards with Write-Output only logging
     - 1.0: Initial release
     
 .LINK
     https://docs.microsoft.com/en-us/windows/uwp/design/shell/tiles-and-notifications/
+
+.FUNCTIONALITY
+    - Displays Windows toast notifications to logged-in users
+    - Creates registry entries for notification permissions
+    - Validates user context (must not run as SYSTEM)
+    - Supports custom application branding
+    - Auto-expires notifications after 1 minute
+    - Validates message length constraints
 #>
 
 [CmdletBinding()]
 param (
-    [Parameter(Mandatory = $false)]
+    [Parameter(Mandatory = $false, HelpMessage = "Toast notification title (max 42 chars)")]
     [string]$Title,
     
-    [Parameter(Mandatory = $false)]
+    [Parameter(Mandatory = $false, HelpMessage = "Toast notification message (max 254 chars)")]
     [string]$Message,
     
-    [Parameter(Mandatory = $false)]
+    [Parameter(Mandatory = $false, HelpMessage = "Application identifier")]
     [string]$ApplicationId
 )
 
 begin {
     $ErrorActionPreference = 'Stop'
     $ProgressPreference = 'SilentlyContinue'
+    $StartTime = Get-Date
     
     Set-StrictMode -Version Latest
+    
+    $script:ExitCode = 0
+    $script:ErrorCount = 0
+    $script:WarningCount = 0
 
     function Write-Log {
-        param([string]$Message, [string]$Level = 'INFO')
-        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-        $logMessage = "[$timestamp] [$Level] $Message"
+        param(
+            [string]$Message,
+            [string]$Level = 'INFO'
+        )
+        $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $LogMessage = "[$Timestamp] [$Level] $Message"
+        Write-Output $LogMessage
         
-        switch ($Level) {
-            'ERROR' { Write-Error $logMessage }
-            'WARNING' { Write-Warning $logMessage }
-            default { Write-Host $logMessage }
-        }
+        if ($Level -eq 'ERROR') { $script:ErrorCount++ }
+        if ($Level -eq 'WARNING') { $script:WarningCount++ }
     }
 
     function Test-IsSystem {
@@ -83,11 +113,11 @@ begin {
             Checks if the current process is running as SYSTEM.
         #>
         try {
-            $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-            return ($identity.Name -like 'NT AUTHORITY*' -or $identity.IsSystem)
+            $Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+            return ($Identity.Name -like 'NT AUTHORITY*' -or $Identity.IsSystem)
         }
         catch {
-            Write-Log "Failed to determine user context: $_" -Level WARNING
+            Write-Log "Failed to determine user context: $_" -Level 'WARNING'
             return $false
         }
     }
@@ -115,19 +145,19 @@ begin {
         try {
             if (-not (Test-Path -Path $Path)) {
                 New-Item -Path $Path -Force | Out-Null
-                Write-Log "Created registry path: $Path"
+                Write-Log "Created registry path: $Path" -Level 'DEBUG'
             }
 
-            $existingValue = Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue
+            $ExistingValue = Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue
             
-            if ($existingValue) {
-                $currentValue = $existingValue.$Name
+            if ($ExistingValue) {
+                $CurrentValue = $ExistingValue.$Name
                 Set-ItemProperty -Path $Path -Name $Name -Value $Value -Force -ErrorAction Stop | Out-Null
-                Write-Log "Updated $Path\$Name from '$currentValue' to '$Value'"
+                Write-Log "Updated $Path\$Name from '$CurrentValue' to '$Value'" -Level 'DEBUG'
             }
             else {
                 New-ItemProperty -Path $Path -Name $Name -Value $Value -PropertyType $PropertyType -Force -ErrorAction Stop | Out-Null
-                Write-Log "Created $Path\$Name with value '$Value'"
+                Write-Log "Created $Path\$Name with value '$Value'" -Level 'DEBUG'
             }
         }
         catch {
@@ -196,37 +226,46 @@ begin {
 
 process {
     try {
+        # Verify not running as SYSTEM
         if (Test-IsSystem) {
-            Write-Log "This script must run as 'Current Logged on User', not SYSTEM" -Level ERROR
-            exit 1
+            Write-Log "This script must run as 'Current Logged on User', not SYSTEM" -Level 'ERROR'
+            $script:ExitCode = 1
+            return
         }
 
+        # Environment variable overrides
         if ($env:title -and $env:title -notlike 'null') { $Title = $env:title }
         if ($env:message -and $env:message -notlike 'null') { $Message = $env:message }
         if ($env:applicationId -and $env:applicationId -notlike 'null') { $ApplicationId = $env:applicationId }
 
+        # Set default ApplicationId
         if (-not $ApplicationId) {
             $ApplicationId = if ($env:NINJA_COMPANY_NAME) { $env:NINJA_COMPANY_NAME } else { 'NinjaOne RMM' }
         }
 
+        # Validate required parameters
         if ([string]::IsNullOrWhiteSpace($Title)) {
-            Write-Log 'Title parameter is required' -Level ERROR
-            exit 1
+            Write-Log 'Title parameter is required' -Level 'ERROR'
+            $script:ExitCode = 1
+            return
         }
 
         if ([string]::IsNullOrWhiteSpace($Message)) {
-            Write-Log 'Message parameter is required' -Level ERROR
-            exit 1
+            Write-Log 'Message parameter is required' -Level 'ERROR'
+            $script:ExitCode = 1
+            return
         }
 
+        # Validate length constraints
         if ($Title.Length -gt 42) {
-            Write-Log 'Title exceeds 42 characters and may be truncated by Windows' -Level WARNING
+            Write-Log 'Title exceeds 42 characters and may be truncated by Windows' -Level 'WARNING'
         }
 
         if ($Message.Length -gt 254) {
-            Write-Log 'Message exceeds 254 characters and may be truncated by Windows' -Level WARNING
+            Write-Log 'Message exceeds 254 characters and may be truncated by Windows' -Level 'WARNING'
         }
 
+        # Prepare application identity
         $Application = [PSCustomObject]@{
             DisplayName = $ApplicationId
             AppId       = $ApplicationId -replace '\s+', '.'
@@ -235,6 +274,7 @@ process {
         Write-Log "Display Name: $($Application.DisplayName)"
         Write-Log "Application ID: $($Application.AppId)"
 
+        # Configure registry for toast notifications
         Set-RegKey -Path "HKCU:\SOFTWARE\Classes\AppUserModelId\$($Application.AppId)" `
                    -Name 'DisplayName' `
                    -Value $Application.DisplayName `
@@ -245,25 +285,41 @@ process {
                    -Value 1 `
                    -PropertyType DWord
 
-        Write-Log 'Sending toast notification...'
+        Write-Log 'Sending toast notification'
         
-        $notificationParams = @{
+        $NotificationParams = @{
             ToastTitle    = $Title
             ToastText     = $Message
             ApplicationId = $Application.AppId
         }
         
-        Show-Notification @notificationParams
+        Show-Notification @NotificationParams
         
         Write-Log 'Toast notification sent successfully'
-        exit 0
     }
     catch {
-        Write-Log "Failed to send toast notification: $_" -Level ERROR
-        exit 1
+        Write-Log "Failed to send toast notification: $_" -Level 'ERROR'
+        $script:ExitCode = 1
     }
 }
 
 end {
-    [System.GC]::Collect()
+    try {
+        $EndTime = Get-Date
+        $Duration = ($EndTime - $StartTime).TotalSeconds
+        
+        Write-Output "`n========================================"
+        Write-Output "Execution Summary"
+        Write-Output "========================================"
+        Write-Output "Script: Notifications-DisplayToastMessage.ps1"
+        Write-Output "Duration: $Duration seconds"
+        Write-Output "Errors: $script:ErrorCount"
+        Write-Output "Warnings: $script:WarningCount"
+        Write-Output "Exit Code: $script:ExitCode"
+        Write-Output "========================================"
+    }
+    finally {
+        [System.GC]::Collect()
+        exit $script:ExitCode
+    }
 }

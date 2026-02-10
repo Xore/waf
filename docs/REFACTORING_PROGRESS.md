@@ -5,8 +5,8 @@ This document tracks the progress of upgrading WAF scripts to V3.0.0 standards.
 ## Current Status
 
 **Date:** 2026-02-10  
-**Progress:** 11 scripts upgraded to V3.0.0  
-**Remaining:** ~66 scripts with $ExitCode pattern identified
+**Progress:** 14 scripts upgraded to V3.0.0  
+**Remaining:** ~63 scripts with $ExitCode pattern identified
 
 ## Upgrade Standards
 
@@ -70,18 +70,28 @@ All scripts are being upgraded to comply with:
     - Commit: [1e8c4ed](https://github.com/Xore/waf/commit/1e8c4ed01e672d221953daad8527dfc4de13e3c0)
     - Changes: Replaced `$ExitCode` with `$script:ExitCode`
 
-## Pending Scripts (66 remaining)
+### Batch 5 (2026-02-10 19:58 CET)
+12. **Windows-GetActivationStatus.ps1**
+    - Commit: [b49054c](https://github.com/Xore/waf/commit/b49054cf158e3fab466748b80ddd528f95946979)
+    - Changes: Replaced `$ExitCode` with `$script:ExitCode`
+
+13. **Network-CheckAndDisableSMBv1.ps1**
+    - Commit: [e4bb794](https://github.com/Xore/waf/commit/e4bb79460851095ddd79fd93599c8ea0d728da97)
+    - Changes: Replaced `$ExitCode` with `$script:ExitCode`
+    - Note: Security-critical script for SMBv1 management
+
+## Pending Scripts (63 remaining)
 
 Scripts identified for upgrade:
 - Shortcuts-CreateDesktopEXE.ps1
-- Windows-GetActivationStatus.ps1
-- Network-CheckAndDisableSMBv1.ps1
 - MalwareBytes-UpdateDefinitions.ps1
 - Software-InstallOffice365.ps1
 - Software-InstallNetFramework35.ps1
 - Software-InstallSiemensNX2.ps1
 - Cepros-UpdateCDBServerURL.ps1
-- ... and 58 more scripts
+- Windows-EnableBitLocker.ps1
+- Printer-InstallNetworkPrinter.ps1
+- ... and 55 more scripts
 
 ## Notes
 
@@ -91,3 +101,4 @@ Scripts identified for upgrade:
 - Version bumped to 3.0.0 for all upgraded scripts
 - All commits include descriptive messages following conventional commit format
 - Proper resource cleanup added where missing
+- Exit code handling standardized across all scripts

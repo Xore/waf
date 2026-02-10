@@ -1,5 +1,5 @@
 # WAF Documentation Implementation Tracker
-**Last Updated:** 2026-02-10 23:51 CET  
+**Last Updated:** 2026-02-11 00:02 CET  
 **Status:** 🚧 In Progress
 
 ## Quick Status Overview
@@ -11,6 +11,7 @@
 | Phase 3: Hyper-V Docs | ⏳ Pending | 0% | Hyper-V monitoring guide |
 | Phase 4: Script Catalog | ⏳ Pending | 0% | Complete script inventory |
 | Phase 5: Operational | ⏳ Pending | 0% | Deployment & troubleshooting |
+| Phase 6: Visual Docs | ⏳ Pending | 0% | Diagrams & references |
 
 **Legend:** ✅ Complete | 🚧 In Progress | ⏳ Pending | ❌ Blocked
 
@@ -81,6 +82,18 @@
   - [ ] Debug Procedures
   - [ ] FAQ
 
+- [ ] `/docs/diagrams/`
+  - [ ] Architecture Diagrams
+  - [ ] Workflow Diagrams
+  - [ ] Network Topology
+  - [ ] Process Flow Charts
+
+- [ ] `/docs/quick-reference/`
+  - [ ] Script Quick Reference Cards
+  - [ ] Custom Field Reference
+  - [ ] Alert Code Reference
+  - [ ] Command Syntax Guide
+
 ---
 
 ## Phase 3: Hyper-V Monitoring Documentation
@@ -137,17 +150,22 @@
 
 ---
 
-## Phase 4: Script Catalog
+## Phase 4: Complete Script Inventory
 
-### Script Inventory
+### Script Catalog Coverage
 
-#### Core Scripts (`/scripts/`)
-- **Total Scripts:** 44
-- **Documented:** 0/44
+#### 1. Hyper-V Monitoring (`/hyper-v monitoring/`)
+- **Total Scripts:** 8
+- **V3 Compliant:** 8/8 ✅
+- **Documentation Files:** 4 (README.md, SCRIPT_SUMMARY.md, DEVELOPMENT_LOG.md, MONITORING_ROADMAP.md)
+
+#### 2. Core Scripts (`/scripts/`)
+- **Total Scripts:** 47
+- **Documented:** 0/47
 - **V3 Compliant:** TBD
-- **Needs Upgrade:** TBD
+- **README Status:** Exists with categorization
 
-#### Categories:
+**Categories:**
 1. **Health & Monitoring** (10 scripts)
 2. **Server-Specific** (8 scripts)
 3. **Security** (6 scripts)
@@ -158,14 +176,25 @@
 8. **Emergency Tools** (2 scripts)
 9. **Telemetry** (3 scripts)
 
-### Documentation Tasks
+#### 3. Plaintext Scripts (`/plaintext_scripts/`)
+- **Total Scripts:** 170+ scripts
+- **Categories:** AD, Browser, Certificates, DHCP, DNS, Disk, Entra, EventLog, Exchange, Explorer, FileOps, Firewall, GPO, Hardware, HyperV, IIS, Licensing, LocalAdmin, Monitoring, Network, Patching, PowerShell, Printers, Registry, Security, Services, Software, SQL, Storage, System, Taskbar, Updates, Users, WSUS
+- **Documentation Files:** SCRIPT_INDEX.md, BATCH_TO_POWERSHELL_CONVERSION.md, MIGRATION_PROGRESS.md, COMPREHENSIVE_COMPLIANCE_ACTION_PLAN.md
 
-- [ ] Create script catalog template
-- [ ] Document each script category
-- [ ] Create usage examples
-- [ ] Map dependencies
-- [ ] Define execution order
-- [ ] Document NinjaRMM integration
+### Script Inventory Tasks
+
+- [ ] Create comprehensive script catalog (all 3 folders)
+- [ ] Document each script with:
+  - [ ] Purpose and description
+  - [ ] Parameters and configuration
+  - [ ] Prerequisites and dependencies
+  - [ ] Custom fields updated
+  - [ ] NinjaRMM integration points
+  - [ ] V3 compliance status
+  - [ ] Usage examples
+- [ ] Map script relationships and dependencies
+- [ ] Define recommended execution schedules
+- [ ] Create migration paths for V2 → V3 upgrades
 
 ---
 
@@ -176,26 +205,156 @@
 - [ ] **Deployment Guide**
   - Initial setup
   - NinjaRMM configuration
-  - Custom field creation
-  - Script scheduling
+  - Custom field creation (all 109+ fields)
+  - Script scheduling recommendations
+  - Multi-site deployment considerations
 
-- [ ] **Troubleshooting**
-  - Common issues
+- [ ] **Troubleshooting Guides**
+  - Common issues by category
   - Debug procedures
-  - Log analysis
-  - Support escalation
+  - Log analysis techniques
+  - Support escalation workflows
+  - **Using WAF for diagnostics:**
+    - Which scripts to run for specific symptoms
+    - Interpreting custom field data
+    - Root cause analysis methodology
+    - Correlation techniques across data points
 
 - [ ] **Best Practices**
   - Script execution patterns
   - Performance optimization
   - Security considerations
   - Maintenance schedules
+  - Data retention policies
 
 - [ ] **Migration Guides**
-  - V2 to V3 upgrade
+  - V2 to V3 upgrade path
   - Legacy script conversion
-  - Breaking changes
+  - Breaking changes documentation
   - Rollback procedures
+
+---
+
+## Phase 6: Visual Documentation & References
+
+### Visual Diagrams
+
+- [ ] **Architecture Diagrams**
+  - [ ] WAF component relationships and data flow
+  - [ ] NinjOne RMM integration architecture
+  - [ ] Script execution hierarchy and dependencies
+  - [ ] Custom field data model and relationships
+
+- [ ] **Workflow Diagrams**
+  - [ ] Monitoring script execution flow
+  - [ ] Alert escalation pathways
+  - [ ] Remediation decision trees
+  - [ ] Patch management ring deployment sequence
+
+- [ ] **Network Topology**
+  - [ ] Multi-site deployment visualization
+  - [ ] Data collection and aggregation paths
+  - [ ] RMM communication architecture
+
+- [ ] **Process Flow Charts**
+  - [ ] Health score calculation methodology
+  - [ ] Compliance attestation workflow
+  - [ ] Drift detection and remediation process
+
+### Troubleshooting Guides (Enhanced)
+
+- [ ] **Using WAF for Diagnostics**
+  - [ ] Script selection matrix by symptom
+  - [ ] Custom field interpretation guide
+  - [ ] Root cause analysis workflows
+  - [ ] Multi-point correlation techniques
+
+- [ ] **Common Scenario Guides**
+  - [ ] Performance degradation investigation
+  - [ ] Security alert triage and response
+  - [ ] Patch deployment failures
+  - [ ] Replication and backup issues
+  - [ ] Network connectivity problems
+  - [ ] Service degradation patterns
+
+- [ ] **Script-Specific Troubleshooting**
+  - [ ] Expected outputs vs. error conditions
+  - [ ] Permission and prerequisite requirements
+  - [ ] Known limitations and workarounds
+  - [ ] Debugging techniques per script type
+
+- [ ] **Integration Issues**
+  - [ ] NinjOne RMM connectivity problems
+  - [ ] Custom field update failures
+  - [ ] API timeout and retry strategies
+  - [ ] Authentication and authorization issues
+
+### Quick References
+
+- [ ] **Script Quick Reference Cards**
+  - [ ] One-page summaries per script
+  - [ ] Script name, purpose, parameters
+  - [ ] Execution requirements and timing
+  - [ ] Output locations and formats
+  - [ ] Related custom fields
+  - [ ] Common troubleshooting steps
+
+- [ ] **Custom Field Reference**
+  - [ ] Complete field catalog (109+ fields)
+  - [ ] Field names, types, and purposes
+  - [ ] Update frequency and data sources
+  - [ ] Alert thresholds and conditions
+  - [ ] Dependencies and relationships
+  - [ ] Retention policies
+
+- [ ] **Alert Code Reference**
+  - [ ] Alert severity levels and meanings
+  - [ ] Recommended response actions
+  - [ ] Escalation criteria and workflows
+  - [ ] Historical context and patterns
+
+- [ ] **Command Syntax Guide**
+  - [ ] Common PowerShell patterns in WAF
+  - [ ] NinjOne CLI commands
+  - [ ] Script parameter templates
+  - [ ] Custom field update syntax
+  - [ ] Error handling patterns
+
+### Comprehensive References
+
+- [ ] **Script Reference Index**
+  - [ ] Complete inventory with descriptions (225+ scripts)
+  - [ ] Categorized by function and priority
+  - [ ] Version history and changelog
+  - [ ] Cross-references to related scripts
+  - [ ] Dependency maps
+
+- [ ] **Custom Field Reference Manual**
+  - [ ] Complete field catalog with purposes
+  - [ ] Data validation rules
+  - [ ] Retention and archival policies
+  - [ ] Field usage in automation logic
+  - [ ] Historical tracking and trends
+
+- [ ] **API Reference**
+  - [ ] NinjOne RMM API endpoints used
+  - [ ] Authentication and authorization methods
+  - [ ] Rate limits and best practices
+  - [ ] Error codes and handling strategies
+  - [ ] Example API calls
+
+- [ ] **Configuration Reference**
+  - [ ] All configurable parameters
+  - [ ] Default values and acceptable ranges
+  - [ ] Environment-specific settings
+  - [ ] Security considerations
+  - [ ] Performance tuning options
+
+- [ ] **Terminology Glossary**
+  - [ ] WAF-specific terms and acronyms
+  - [ ] Industry standard definitions
+  - [ ] Relationship mappings
+  - [ ] Context and usage examples
 
 ---
 
@@ -209,11 +368,17 @@ waf/
 │   ├── README.md
 │   ├── CHANGELOG.md
 │   └── CONTRIBUTING.md
-├── hyper-v monitoring/         # 8 scripts (V3, COMPLETE)
-├── scripts/                    # 44 scripts (mixed V2/V3)
-├── plaintext_scripts/          # Legacy scripts
-└── [DOCUMENTATION NEEDED]
+├── hyper-v monitoring/         # 8 scripts (V3, COMPLETE) + 4 docs
+├── scripts/                    # 47 scripts (mixed V2/V3) + README.md
+├── plaintext_scripts/          # 170+ scripts + 4 documentation files
+└── [NEW DOCUMENTATION NEEDED]
 ```
+
+### Total Script Count
+- **Hyper-V Monitoring:** 8 scripts
+- **Core Scripts:** 47 scripts
+- **Plaintext Scripts:** 170+ scripts
+- **Total:** 225+ operational scripts
 
 ### Standards Compliance
 
@@ -238,21 +403,32 @@ waf/
 ✅ **Phase 1:** All 4 core files created  
 ✅ **Phase 2:** Documentation structure established  
 ✅ **Phase 3:** Hyper-V monitoring fully documented  
-✅ **Phase 4:** Complete script catalog available  
+✅ **Phase 4:** Complete script catalog available (225+ scripts)  
 ✅ **Phase 5:** Operational guides published  
+✅ **Phase 6:** Visual diagrams and references complete  
 
 ### Quality Metrics
 
 - [ ] Clear navigation structure
-- [ ] Consistent formatting
+- [ ] Consistent formatting across all docs
 - [ ] Complete code examples
-- [ ] Troubleshooting coverage
+- [ ] Comprehensive troubleshooting coverage
 - [ ] Migration path clarity
 - [ ] NinjaRMM integration clarity
+- [ ] Visual diagram accuracy
+- [ ] Quick reference usability
+- [ ] Searchable and indexed content
 
 ---
 
 ## Recent Updates
+
+### 2026-02-11
+- **00:02 CET:** Added Phase 6 (Visual Documentation & References)
+- **00:02 CET:** Expanded script inventory to include all 3 folders (225+ scripts)
+- **00:02 CET:** Added comprehensive troubleshooting guides structure
+- **00:02 CET:** Added quick reference cards and reference manual plans
+- **00:02 CET:** Added visual diagram requirements (architecture, workflow, topology, process flows)
 
 ### 2026-02-10
 - **23:51 CET:** Documentation tracker created
@@ -266,21 +442,31 @@ waf/
 
 **Documentation Sources:**
 - Current codebase (primary source)
-- `archive/docs/` (reference material)
+- `archive/docs/` (reference material for structure)
 - Recent script upgrades
 - V3 standards definition
+- Existing folder documentation (SCRIPT_INDEX.md, README.md files)
 
 **Focus Areas:**
 1. **Immediate:** Core documentation (README, ARCHITECTURE, CHANGELOG, CONTRIBUTING)
-2. **Priority:** Hyper-V monitoring (showcase V3 standards)
-3. **Important:** Script catalog & migration guides
-4. **Ongoing:** Operational documentation
+2. **Priority:** Complete script inventory (225+ scripts across 3 folders)
+3. **Important:** Visual diagrams and troubleshooting guides
+4. **Essential:** Quick references and comprehensive reference manuals
+5. **Ongoing:** Operational documentation and maintenance
 
 **Constraints:**
 - Ignore `archive/random/` folder
 - Focus on current state (not historical)
 - Emphasize V3 standards
 - Practical, actionable documentation
+- Mirror professional standards from archive folder
+
+**Archive Reference Structure (Model):**
+- Visual diagrams for architecture
+- Troubleshooting guides with workflows
+- Quick reference cards
+- Comprehensive API and configuration references
+- Terminology glossaries
 
 ---
 
@@ -291,10 +477,11 @@ waf/
 | Phase 1 | 2-3 hours | 2026-02-11 |
 | Phase 2 | 1-2 hours | 2026-02-11 |
 | Phase 3 | 2-3 hours | 2026-02-12 |
-| Phase 4 | 3-4 hours | 2026-02-13 |
-| Phase 5 | 2-3 hours | 2026-02-14 |
-| **Total** | **10-15 hours** | **Week 1** |
+| Phase 4 | 5-6 hours | 2026-02-13 |
+| Phase 5 | 3-4 hours | 2026-02-14 |
+| Phase 6 | 4-5 hours | 2026-02-15 |
+| **Total** | **17-23 hours** | **Week 1-2** |
 
 ---
 
-**Next Steps:** Begin Phase 1 - Create core documentation files
+**Next Steps:** Begin Phase 1 - Create core documentation files (README.md, FRAMEWORK_ARCHITECTURE.md, CHANGELOG.md, CONTRIBUTING.md)

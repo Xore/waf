@@ -51,44 +51,50 @@ param(
 begin {
     $ErrorActionPreference = 'Stop'
     $ProgressPreference = 'SilentlyContinue'
+    $StartTime = Get-Date
     
     Set-StrictMode -Version Latest
+    
+    $script:ExitCode = 0
+    $script:ErrorCount = 0
+    $script:WarningCount = 0
 
     function Write-Log {
         param([string]$Message, [string]$Level = 'INFO')
         $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
         $logMessage = "[$timestamp] [$Level] $Message"
+        Write-Output $logMessage
         
-        switch ($Level) {
-            'ERROR' { Write-Error $logMessage }
-            'WARNING' { Write-Warning $logMessage }
-            default { Write-Host $logMessage }
-        }
+        if ($Level -eq 'ERROR') { $script:ErrorCount++ }
+        if ($Level -eq 'WARNING') { $script:WarningCount++ }
     }
 
-    function Set-NinjaProperty {
+    function Set-NinjaField {
         <#
         .SYNOPSIS
-            Sets NinjaRMM custom field value using piped input.
+            Sets NinjaRMM custom field with CLI fallback.
         #>
         [CmdletBinding()]
-        Param(
-            [Parameter(Mandatory = $True)]
-            [String]$Name,
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$Name,
             
-            [Parameter(Mandatory = $True, ValueFromPipeline = $True)]
-            $Value
+            [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+            [AllowEmptyString()]
+            [string]$Value
         )
         
         try {
-            $CustomField = $Value | Ninja-Property-Set-Piped -Name $Name 2>&1
-            
-            if ($CustomField.Exception) {
-                throw $CustomField
+            if (Get-Command 'Ninja-Property-Set-Piped' -ErrorAction SilentlyContinue) {
+                $Value | Ninja-Property-Set-Piped -Name $Name
+            }
+            else {
+                Write-Log "CLI fallback - Would set field '$Name' to: $Value" -Level 'INFO'
             }
         }
         catch {
-            throw "Failed to set custom field '$Name': $_"
+            Write-Log "Failed to set custom field '$Name': $_" -Level 'ERROR'
+            throw
         }
     }
 }
@@ -116,23 +122,38 @@ process {
             Write-Log "Location detected: $Location"
             
             Write-Log 'Updating device location in NinjaRMM...'
-            $Location | Set-NinjaProperty -Name $CustomFieldName
+            $Location | Set-NinjaField -Name $CustomFieldName
             Write-Log 'Device location updated successfully'
-            
-            exit 0
         }
         else {
-            Write-Log 'Incomplete geolocation data received' -Level WARNING
-            Write-Log "Received data: City=$($GeoData.city), Region=$($GeoData.region), Country=$($GeoData.country_name)" -Level WARNING
-            exit 1
+            Write-Log 'Incomplete geolocation data received' -Level 'WARNING'
+            Write-Log "Received data: City=$($GeoData.city), Region=$($GeoData.region), Country=$($GeoData.country_name)" -Level 'WARNING'
+            $script:ExitCode = 1
         }
     }
     catch {
-        Write-Log "Failed to update device location: $_" -Level ERROR
-        exit 1
+        Write-Log "Failed to update device location: $_" -Level 'ERROR'
+        $script:ExitCode = 1
     }
 }
 
 end {
-    [System.GC]::Collect()
+    try {
+        $EndTime = Get-Date
+        $Duration = ($EndTime - $StartTime).TotalSeconds
+        
+        Write-Output "`n========================================"
+        Write-Output "Execution Summary"
+        Write-Output "========================================"
+        Write-Output "Script: Device-UpdateLocation.ps1"
+        Write-Output "Duration: $Duration seconds"
+        Write-Output "Errors: $script:ErrorCount"
+        Write-Output "Warnings: $script:WarningCount"
+        Write-Output "Exit Code: $script:ExitCode"
+        Write-Output "========================================"
+    }
+    finally {
+        [System.GC]::Collect()
+        exit $script:ExitCode
+    }
 }

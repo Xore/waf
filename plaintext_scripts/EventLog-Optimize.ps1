@@ -1,56 +1,26 @@
-#Requires -Version 5.1 -RunAsAdministrator
+#Requires -Version 5.1
+Set-StrictMode -Version Latest
 
 <#
 .SYNOPSIS
-    Optimizes Windows Event Logs by clearing old logs and adjusting log size limits.
-
+    Optimizes Windows Event Logs.
 .DESCRIPTION
-    This script optimizes Windows Event Log performance by clearing specified event logs and 
-    optionally adjusting maximum log file sizes. This prevents log files from consuming excessive 
-    disk space and improves event log query performance.
-    
-    Large event logs can slow down system performance and consume significant disk space. Regular 
-    optimization ensures logs remain manageable while retaining important recent events.
-
+    Optimizes Windows Event Logs by clearing old logs and adjusting log size limits.
+    Prevents log files from consuming excessive disk space and improves event log query performance.
 .PARAMETER LogsToOptimize
     Array of log names to optimize. Default: System, Application, Security
-
 .PARAMETER MaxLogSizeMB
-    Maximum log file size in MB. If specified, adjusts all optimized logs to this size. Default: Not set (keeps existing sizes)
-
+    Maximum log file size in MB. If specified, adjusts all optimized logs to this size.
 .PARAMETER ClearLogs
-    If specified, clears the event logs after backing up. Default: False
-
+    If specified, clears the event logs after backing up.
 .EXAMPLE
     -LogsToOptimize System,Application -MaxLogSizeMB 512
-
-    [Info] Optimizing event logs: System, Application
-    [Info] Setting maximum log size to 512 MB
-    [Info] Processing log: System
-    [Info] Current size: 256 MB, setting to 512 MB
-    [Info] System log optimized successfully
-    [Info] Event log optimization complete
-
+    Optimizes System and Application logs with 512MB max size.
 .OUTPUTS
     None
-
 .NOTES
-    Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Release notes: Initial release for WAF v3.0
-    Requires: Administrator privileges
-    
-.COMPONENT
-    wevtutil.exe - Windows event log utility
-    
-.LINK
-    https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/wevtutil
-
-.FUNCTIONALITY
-    - Clears specified Windows Event Logs
-    - Adjusts maximum log file sizes
-    - Validates log existence before processing
-    - Provides optimization status for each log
-    - Prevents log fragmentation and performance degradation
+    Minimum OS Architecture Supported: Windows 10
+    Release Notes: Refactored to V3.0 standards with Write-Log function
 #>
 
 [CmdletBinding()]
@@ -61,6 +31,25 @@ param(
 )
 
 begin {
+    $StartTime = Get-Date
+
+    function Write-Log {
+        param(
+            [string]$Message,
+            [ValidateSet('Info', 'Warning', 'Error')]
+            [string]$Level = 'Info'
+        )
+        $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $Output = "[$Timestamp] [$Level] $Message"
+        Write-Host $Output
+    }
+
+    function Test-IsElevated {
+        $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        $p = New-Object System.Security.Principal.WindowsPrincipal($id)
+        $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+    }
+
     if ($env:logsToOptimize -and $env:logsToOptimize -notlike "null") {
         $LogsToOptimize = $env:logsToOptimize -split ','
     }
@@ -70,32 +59,26 @@ begin {
     if ($env:clearLogs -and $env:clearLogs -eq "true") {
         $ClearLogs = $true
     }
-
-    function Test-IsElevated {
-        $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-        $p = New-Object System.Security.Principal.WindowsPrincipal($id)
-        $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
-    }
-
-    $ExitCode = 0
 }
 
 process {
     if (-not (Test-IsElevated)) {
-        Write-Host "[Error] Access Denied. Please run with Administrator privileges"
+        Write-Log "Access Denied. Please run with Administrator privileges." -Level Error
         exit 1
     }
 
     try {
-        Write-Host "[Info] Optimizing event logs: $($LogsToOptimize -join ', ')"
+        Write-Log "Optimizing event logs: $($LogsToOptimize -join ', ')"
         
         if ($MaxLogSizeMB) {
-            Write-Host "[Info] Setting maximum log size to $MaxLogSizeMB MB"
+            Write-Log "Setting maximum log size to $MaxLogSizeMB MB"
         }
+
+        $ErrorCount = 0
 
         foreach ($LogName in $LogsToOptimize) {
             try {
-                Write-Host "[Info] Processing log: $LogName"
+                Write-Log "Processing log: $LogName"
                 
                 $Log = Get-WinEvent -ListLog $LogName -ErrorAction Stop
                 
@@ -103,32 +86,43 @@ process {
                     $MaxSizeBytes = $MaxLogSizeMB * 1MB
                     $Log.MaximumSizeInBytes = $MaxSizeBytes
                     $Log.SaveChanges()
-                    Write-Host "[Info] Set maximum size to $MaxLogSizeMB MB"
+                    Write-Log "Set maximum size to $MaxLogSizeMB MB"
                 }
 
                 if ($ClearLogs) {
-                    Write-Host "[Info] Clearing log: $LogName"
+                    Write-Log "Clearing log: $LogName"
                     wevtutil.exe cl $LogName
-                    Write-Host "[Info] $LogName cleared successfully"
+                    Write-Log "$LogName cleared successfully"
                 }
                 
-                Write-Host "[Info] $LogName optimized successfully"
+                Write-Log "$LogName optimized successfully"
             }
             catch {
-                Write-Host "[Error] Failed to optimize $LogName: $_"
-                $ExitCode = 1
+                Write-Log "Failed to optimize $LogName: $_" -Level Error
+                $ErrorCount++
             }
         }
 
-        Write-Host "[Info] Event log optimization complete"
+        if ($ErrorCount -gt 0) {
+            Write-Log "Event log optimization completed with $ErrorCount errors" -Level Warning
+            exit 1
+        }
+
+        Write-Log "Event log optimization completed successfully"
     }
     catch {
-        Write-Host "[Error] Event log optimization failed: $_"
-        $ExitCode = 1
+        Write-Log "Event log optimization failed: $_" -Level Error
+        exit 1
     }
-
-    exit $ExitCode
 }
 
 end {
+    $EndTime = Get-Date
+    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+    Write-Log "Script execution completed in $ExecutionTime seconds"
+    
+    [System.GC]::Collect()
+    [System.GC]::WaitForPendingFinalizers()
+    
+    exit 0
 }

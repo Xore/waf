@@ -1,4 +1,5 @@
 #Requires -Version 5.1
+Set-StrictMode -Version Latest
 
 <#
 .SYNOPSIS
@@ -29,7 +30,7 @@
 
 .NOTES
     Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Release notes: Initial release for WAF v3.0
+    Release notes: Refactored to V3.0 standards with Write-Log function
     
 .COMPONENT
     SoftwareLicensingProduct - WMI class for license information
@@ -52,6 +53,19 @@ param(
 )
 
 begin {
+    $StartTime = Get-Date
+
+    function Write-Log {
+        param(
+            [string]$Message,
+            [ValidateSet('Info', 'Warning', 'Error')]
+            [string]$Level = 'Info'
+        )
+        $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $Output = "[$Timestamp] [$Level] $Message"
+        Write-Host $Output
+    }
+
     if ($env:saveToCustomField -and $env:saveToCustomField -notlike "null") {
         $SaveToCustomField = $env:saveToCustomField
     }
@@ -76,7 +90,7 @@ begin {
 
 process {
     try {
-        Write-Host "[Info] Querying Windows activation status..."
+        Write-Log "Querying Windows activation status..."
         
         $LicenseInfo = Get-CimInstance -ClassName SoftwareLicensingProduct | Where-Object { $_.PartialProductKey -and $_.Name -like "Windows*" }
 
@@ -92,35 +106,41 @@ process {
             }
 
             $Status = $StatusMap[$LicenseInfo.LicenseStatus]
-            Write-Host "License Status: $Status"
-            Write-Host "Product Name: $($LicenseInfo.Name)"
-            Write-Host "Description: $($LicenseInfo.Description)"
-            Write-Host "Partial Product Key: $($LicenseInfo.PartialProductKey)"
+            Write-Log "License Status: $Status"
+            Write-Log "Product Name: $($LicenseInfo.Name)"
+            Write-Log "Description: $($LicenseInfo.Description)"
+            Write-Log "Partial Product Key: $($LicenseInfo.PartialProductKey)"
 
             $Output = "Status: $Status | Product: $($LicenseInfo.Name) | Key: $($LicenseInfo.PartialProductKey)"
 
             if ($SaveToCustomField) {
                 try {
                     $Output | Set-NinjaProperty -Name $SaveToCustomField
-                    Write-Host "[Info] Activation status saved to custom field '$SaveToCustomField'"
+                    Write-Log "Activation status saved to custom field '$SaveToCustomField'"
                 }
                 catch {
-                    Write-Host "[Error] Failed to save to custom field: $_"
+                    Write-Log "Failed to save to custom field: $_" -Level Error
                     $ExitCode = 1
                 }
             }
         }
         else {
-            Write-Host "[Warn] Could not retrieve Windows license information"
+            Write-Log "Could not retrieve Windows license information" -Level Warning
         }
     }
     catch {
-        Write-Host "[Error] Failed to query activation status: $_"
+        Write-Log "Failed to query activation status: $_" -Level Error
         $ExitCode = 1
     }
-
-    exit $ExitCode
 }
 
 end {
+    $EndTime = Get-Date
+    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+    Write-Log "Script execution completed in $ExecutionTime seconds"
+    
+    [System.GC]::Collect()
+    [System.GC]::WaitForPendingFinalizers()
+    
+    exit $ExitCode
 }

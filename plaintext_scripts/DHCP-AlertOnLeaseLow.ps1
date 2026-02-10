@@ -23,51 +23,60 @@
     Name of a custom field to save the DHCP utilization report.
 
 .EXAMPLE
-    -ThresholdPercent 10
-
-    [Info] Monitoring DHCP scopes for utilization threshold: 10%
-    [Alert] Scope 192.168.1.0: 5% available (245/250 addresses in use)
-    [Info] Scope 192.168.2.0: 35% available (65/100 addresses in use)
+    .\DHCP-AlertOnLeaseLow.ps1 -ThresholdPercent 10
+    
+    Monitoring DHCP scopes for utilization threshold: 10%
+    Scope 192.168.1.0: 5% available (245/250 addresses in use)
 
 .OUTPUTS
-    None
+    None. Status information is written to the console.
 
 .NOTES
-    Minimum OS Architecture Supported: Windows Server 2012 R2
-    Release notes: Initial release for WAF v3.0
-    Requires: DHCP Server role and DhcpServer PowerShell module
+    File Name      : DHCP-AlertOnLeaseLow.ps1
+    Prerequisite   : PowerShell 5.1 or higher, DHCP Server role, DhcpServer module
+    Minimum OS     : Windows Server 2012 R2
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: Upgraded to V3 standards with Write-Log function and execution tracking
+    - 1.0: Initial release
     
 .COMPONENT
     DhcpServer - Windows DHCP Server management module
     
 .LINK
     https://learn.microsoft.com/en-us/powershell/module/dhcpserver/
-
-.FUNCTIONALITY
-    - Queries DHCP server scope statistics
-    - Calculates percentage of available IP addresses
-    - Alerts when utilization exceeds threshold
-    - Reports scope ID, total addresses, used addresses, percentage available
-    - Can save utilization report to custom fields
-    - Supports monitoring all scopes or specific scope by ID
 #>
 
 [CmdletBinding()]
 param(
+    [Parameter()]
     [int]$ThresholdPercent = 10,
+    
+    [Parameter()]
     [string]$ScopeId,
+    
+    [Parameter()]
     [string]$SaveToCustomField
 )
 
 begin {
-    if ($env:thresholdPercent -and $env:thresholdPercent -notlike "null") {
-        $ThresholdPercent = [int]$env:thresholdPercent
-    }
-    if ($env:scopeId -and $env:scopeId -notlike "null") {
-        $ScopeId = $env:scopeId
-    }
-    if ($env:saveToCustomField -and $env:saveToCustomField -notlike "null") {
-        $SaveToCustomField = $env:saveToCustomField
+    $ErrorActionPreference = 'Stop'
+    $ProgressPreference = 'SilentlyContinue'
+    $StartTime = Get-Date
+    
+    Set-StrictMode -Version Latest
+
+    function Write-Log {
+        param([string]$Message, [string]$Level = 'INFO')
+        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $logMessage = "[$timestamp] [$Level] $Message"
+        
+        switch ($Level) {
+            'ERROR' { Write-Error $logMessage }
+            'WARNING' { Write-Warning $logMessage }
+            default { Write-Output $logMessage }
+        }
     }
 
     function Set-NinjaProperty {
@@ -78,11 +87,27 @@ begin {
             [Parameter(Mandatory = $True, ValueFromPipeline = $True)]
             $Value
         )
-        $NinjaValue = $Value
-        $CustomField = $NinjaValue | Ninja-Property-Set-Piped -Name $Name 2>&1
-        if ($CustomField.Exception) {
-            throw $CustomField
+        
+        try {
+            $CustomField = $Value | Ninja-Property-Set-Piped -Name $Name 2>&1
+            if ($CustomField.Exception) {
+                throw $CustomField
+            }
         }
+        catch {
+            Write-Log "Failed to set custom field: $_" -Level ERROR
+            throw
+        }
+    }
+
+    if ($env:thresholdPercent -and $env:thresholdPercent -notlike "null") {
+        $ThresholdPercent = [int]$env:thresholdPercent
+    }
+    if ($env:scopeId -and $env:scopeId -notlike "null") {
+        $ScopeId = $env:scopeId
+    }
+    if ($env:saveToCustomField -and $env:saveToCustomField -notlike "null") {
+        $SaveToCustomField = $env:saveToCustomField
     }
 
     $ExitCode = 0
@@ -90,7 +115,7 @@ begin {
 
 process {
     try {
-        Write-Host "[Info] Monitoring DHCP scopes for utilization threshold: $ThresholdPercent%"
+        Write-Log "Monitoring DHCP scopes for utilization threshold: $ThresholdPercent%"
         
         if ($ScopeId) {
             $Scopes = Get-DhcpServerv4Scope -ScopeId $ScopeId -ErrorAction Stop
@@ -116,11 +141,11 @@ process {
             $ScopeInfo = "Scope $($Scope.ScopeId): $PercentAvailable% available ($($Stats.AddressesInUse)/$TotalAddresses addresses in use)"
             
             if ($PercentAvailable -lt $ThresholdPercent) {
-                Write-Host "[Alert] $ScopeInfo"
+                Write-Log $ScopeInfo -Level WARNING
                 $AlertTriggered = $true
             }
             else {
-                Write-Host "[Info] $ScopeInfo"
+                Write-Log $ScopeInfo
             }
             
             $Report += $ScopeInfo
@@ -129,10 +154,10 @@ process {
         if ($SaveToCustomField) {
             try {
                 $Report -join "; " | Set-NinjaProperty -Name $SaveToCustomField
-                Write-Host "[Info] Report saved to custom field '$SaveToCustomField'"
+                Write-Log "Report saved to custom field '$SaveToCustomField'"
             }
             catch {
-                Write-Host "[Error] Failed to save to custom field: $_"
+                Write-Log "Failed to save to custom field: $_" -Level ERROR
                 $ExitCode = 1
             }
         }
@@ -142,12 +167,19 @@ process {
         }
     }
     catch {
-        Write-Host "[Error] Failed to monitor DHCP scopes: $_"
+        Write-Log "Failed to monitor DHCP scopes: $_" -Level ERROR
         $ExitCode = 1
     }
-
-    exit $ExitCode
 }
 
 end {
+    try {
+        $EndTime = Get-Date
+        $Duration = ($EndTime - $StartTime).TotalSeconds
+        Write-Log "Script execution completed in $Duration seconds"
+    }
+    finally {
+        [System.GC]::Collect()
+        exit $ExitCode
+    }
 }

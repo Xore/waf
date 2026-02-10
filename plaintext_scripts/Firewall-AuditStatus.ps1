@@ -73,6 +73,10 @@ begin {
     $StartTime = Get-Date
     
     Set-StrictMode -Version Latest
+    
+    $script:ExitCode = 0
+    $script:ErrorCount = 0
+    $script:WarningCount = 0
 
     function Write-Log {
         param(
@@ -81,35 +85,44 @@ begin {
         )
         $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
         $LogMessage = "[$Timestamp] [$Level] $Message"
+        Write-Output $LogMessage
         
-        switch ($Level) {
-            'ERROR' { Write-Error $LogMessage }
-            'WARNING' { Write-Warning $LogMessage }
-            'ALERT' { Write-Warning "ALERT: $Message" }
-            default { Write-Output $LogMessage }
+        if ($Level -eq 'ERROR') { $script:ErrorCount++ }
+        if ($Level -eq 'WARNING') { $script:WarningCount++ }
+    }
+
+    function Set-NinjaField {
+        <#
+        .SYNOPSIS
+            Sets NinjaRMM custom field with CLI fallback.
+        #>
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$Name,
+            
+            [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+            [AllowEmptyString()]
+            [string]$Value
+        )
+        
+        try {
+            if (Get-Command 'Ninja-Property-Set-Piped' -ErrorAction SilentlyContinue) {
+                $Value | Ninja-Property-Set-Piped -Name $Name
+            }
+            else {
+                Write-Log "CLI fallback - Would set field '$Name' to: $Value" -Level 'INFO'
+            }
+        }
+        catch {
+            Write-Log "Failed to set custom field '$Name': $_" -Level 'ERROR'
+            throw
         }
     }
 
     if ($env:saveToCustomField -and $env:saveToCustomField -notlike "null") {
         $SaveToCustomField = $env:saveToCustomField
     }
-
-    function Set-NinjaProperty {
-        [CmdletBinding()]
-        Param(
-            [Parameter(Mandatory = $True)]
-            [String]$Name,
-            [Parameter(Mandatory = $True, ValueFromPipeline = $True)]
-            $Value
-        )
-        $NinjaValue = $Value
-        $CustomField = $NinjaValue | Ninja-Property-Set-Piped -Name $Name 2>&1
-        if ($CustomField.Exception) {
-            throw $CustomField
-        }
-    }
-
-    $ExitCode = 0
 }
 
 process {
@@ -128,9 +141,9 @@ process {
             $Report += $ProfileInfo
 
             if (-not $Profile.Enabled) {
-                Write-Log "$($Profile.Name) profile is DISABLED - security risk detected" -Level ALERT
+                Write-Log "$($Profile.Name) profile is DISABLED - security risk detected" -Level 'WARNING'
                 $AllEnabled = $false
-                $ExitCode = 1
+                $script:ExitCode = 1
             }
         }
 
@@ -140,18 +153,18 @@ process {
 
         if ($SaveToCustomField) {
             try {
-                $Report -join "; " | Set-NinjaProperty -Name $SaveToCustomField
+                $Report -join "; " | Set-NinjaField -Name $SaveToCustomField
                 Write-Log "Results saved to custom field '$SaveToCustomField'"
             }
             catch {
-                Write-Log "Failed to save to custom field: $_" -Level ERROR
-                $ExitCode = 1
+                Write-Log "Failed to save to custom field: $_" -Level 'ERROR'
+                $script:ExitCode = 1
             }
         }
     }
     catch {
-        Write-Log "Failed to audit firewall status: $_" -Level ERROR
-        $ExitCode = 1
+        Write-Log "Failed to audit firewall status: $_" -Level 'ERROR'
+        $script:ExitCode = 1
     }
 }
 
@@ -159,10 +172,19 @@ end {
     try {
         $EndTime = Get-Date
         $Duration = ($EndTime - $StartTime).TotalSeconds
-        Write-Log "Script execution completed in $Duration seconds"
+        
+        Write-Output "`n========================================"
+        Write-Output "Execution Summary"
+        Write-Output "========================================"
+        Write-Output "Script: Firewall-AuditStatus.ps1"
+        Write-Output "Duration: $Duration seconds"
+        Write-Output "Errors: $script:ErrorCount"
+        Write-Output "Warnings: $script:WarningCount"
+        Write-Output "Exit Code: $script:ExitCode"
+        Write-Output "========================================"
     }
     finally {
         [System.GC]::Collect()
-        exit $ExitCode
+        exit $script:ExitCode
     }
 }

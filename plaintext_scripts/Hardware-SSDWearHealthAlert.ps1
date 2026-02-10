@@ -43,7 +43,7 @@
     Version        : 3.0.0
     Author         : WAF Team
     Change Log:
-    - 3.0.0: Upgraded to V3 standards with Write-Log function and execution tracking
+    - 3.0.0: Upgraded to V3.0.0 standards (script-scoped exit code)
     - 1.1: Updated calculated name
     - 1.0: Initial release
 #>
@@ -58,7 +58,6 @@ begin {
     $ErrorActionPreference = 'Stop'
     $ProgressPreference = 'SilentlyContinue'
     $StartTime = Get-Date
-    $ExitCode = 0
     
     Set-StrictMode -Version Latest
 
@@ -107,13 +106,15 @@ begin {
             } | Measure-Object -Sum | Select-Object -ExpandProperty Sum
         }
     }
+    
+    $script:ExitCode = 0
 }
 
 process {
     try {
         if (-not (Test-IsElevated)) {
             Write-Log "Access Denied. Please run with Administrator privileges." -Level ERROR
-            $ExitCode = 1
+            $script:ExitCode = 1
             return
         }
 
@@ -139,7 +140,7 @@ process {
 
         if ($DeviceIds.Count -and $DriveCount) {
             Write-Log "Found $($DeviceIds.Count) disk(s) with wear level above $WearLevelPercentMax%" -Level WARNING
-            $ExitCode = 1
+            $script:ExitCode = 1
         }
         else {
             Write-Log "No disks were found with wear level above $WearLevelPercentMax%"
@@ -147,7 +148,7 @@ process {
     }
     catch {
         Write-Log "An unexpected error occurred: $_" -Level ERROR
-        $ExitCode = 1
+        $script:ExitCode = 1
     }
 }
 
@@ -159,6 +160,6 @@ end {
     }
     finally {
         [System.GC]::Collect()
-        exit $ExitCode
+        exit $script:ExitCode
     }
 }

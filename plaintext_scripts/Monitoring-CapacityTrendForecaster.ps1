@@ -29,20 +29,23 @@
     Default: $false (normal operation)
 
 .EXAMPLE
-    Monitoring-CapacityTrendForecaster.ps1
+    .\Monitoring-CapacityTrendForecaster.ps1
     Runs capacity analysis with current system metrics and updates forecasts.
 
 .EXAMPLE
-    Monitoring-CapacityTrendForecaster.ps1 -Testrun "True"
+    .\Monitoring-CapacityTrendForecaster.ps1 -Testrun "True"
     Runs in test mode using only historical data from Base64 fields.
 
 .NOTES
-    Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Version: 3.0
-    Release Notes:
-        - V4.3: Adjusted thresholds to reduce false positives
-        - V3.0: Added Write-Log function, execution tracking, enhanced error handling, structured helper functions
-        - V1.0: Initial Release
+    File Name      : Monitoring-CapacityTrendForecaster.ps1
+    Prerequisite   : PowerShell 5.1 or higher
+    Minimum OS     : Windows 10, Windows Server 2016
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: V3 standards with exit code management in end block
+    - 3.0: Added Write-Log function, execution tracking, enhanced error handling
+    - 1.0: Initial release
     
     Exit Codes:
         0 = Success
@@ -57,19 +60,9 @@
         - capCPUUtilizationTrend (Dropdown) - CPU trend classification
         - capCapacityHealthScore (Number) - Composite health score (0-100)
         - capCapacityAlert (Checkbox) - Alert when health < 50 or disk < 30 days
-    
-    Trend Classification:
-        - Stable: Normal fluctuations within acceptable ranges
-        - Increasing: Sustained growth trend detected
-        - Decreasing: Sustained decline trend detected
-        - Volatile: High variability, unpredictable patterns
-    
-    Algorithm Details:
-        - Uses linear regression for disk growth forecasting
-        - Coefficient of Variation (CV) for volatility detection
-        - Weekly growth rate percentage for trend classification
-        - Maintains rolling 30-day history for each metric
-        - Requires minimum 7 days for trend analysis
+
+.LINK
+    https://github.com/Xore/waf
 #>
 
 [CmdletBinding()]
@@ -80,38 +73,40 @@ param (
 )
 
 begin {
-    $ErrorActionPreference = 'Stop'
-    $ProgressPreference = 'SilentlyContinue'
     Set-StrictMode -Version Latest
     
-    $ScriptStartTime = Get-Date
+    $ScriptVersion = "3.0.0"
+    $ScriptName = "Monitoring-CapacityTrendForecaster"
+    
+    $StartTime = Get-Date
+    $ErrorActionPreference = 'Continue'
+    $ProgressPreference = 'SilentlyContinue'
+    $script:ErrorCount = 0
+    $script:WarningCount = 0
+    $script:ExitCode = 0
+    
     $isTestMode = ($Testrun -eq 'True')
 
     function Write-Log {
+        [CmdletBinding()]
         param(
-            [Parameter(Mandatory = $true)]
+            [Parameter(Mandatory=$true)]
             [string]$Message,
-            
-            [Parameter(Mandatory = $false)]
-            [ValidateSet('INFO', 'WARNING', 'ERROR')]
+            [Parameter(Mandatory=$false)]
+            [ValidateSet('DEBUG','INFO','WARN','ERROR','SUCCESS')]
             [string]$Level = 'INFO'
         )
         
-        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-        $logMessage = "[$timestamp] [$Level] $Message"
+        $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        Write-Output "[$Timestamp] [$Level] $Message"
         
         switch ($Level) {
-            'ERROR'   { Write-Error $logMessage }
-            'WARNING' { Write-Warning $logMessage }
-            default   { Write-Host $logMessage }
+            'WARN'  { $script:WarningCount++ }
+            'ERROR' { $script:ErrorCount++ }
         }
     }
 
     function Write-Base64Field {
-        <#
-        .SYNOPSIS
-            Encodes data as Base64 JSON and saves to NinjaRMM custom field.
-        #>
         param(
             [Parameter(Mandatory = $true)]
             [string]$FieldName,
@@ -121,7 +116,7 @@ begin {
         )
         
         if ($isTestMode) {
-            Write-Log "[TESTRUN] Skipped saving $FieldName"
+            Write-Log "Skipped saving $FieldName (test mode)" -Level DEBUG
             return
         }
         
@@ -129,7 +124,7 @@ begin {
             $json = $Data | ConvertTo-Json -Compress -Depth 10
             $base64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($json))
             Ninja-Property-Set $FieldName $base64
-            Write-Log "Saved $FieldName ($($json.Length) bytes)"
+            Write-Log "Saved $FieldName ($($json.Length) bytes)" -Level DEBUG
         }
         catch {
             Write-Log "Failed to save $FieldName: $($_.Exception.Message)" -Level ERROR
@@ -138,10 +133,6 @@ begin {
     }
 
     function Read-Base64Field {
-        <#
-        .SYNOPSIS
-            Reads and decodes Base64 JSON from NinjaRMM custom field.
-        #>
         param(
             [Parameter(Mandatory = $true)]
             [string]$FieldName
@@ -158,16 +149,12 @@ begin {
             return ($json | ConvertFrom-Json)
         }
         catch {
-            Write-Log "Failed to read $FieldName: $($_.Exception.Message)" -Level WARNING
+            Write-Log "Failed to read $FieldName: $($_.Exception.Message)" -Level WARN
             return $null
         }
     }
 
     function Get-LinearRegression {
-        <#
-        .SYNOPSIS
-            Calculates linear regression slope from data points.
-        #>
         param(
             [Parameter(Mandatory = $true)]
             [array]$Points
@@ -202,10 +189,6 @@ begin {
     }
 
     function Get-CPUUtilization {
-        <#
-        .SYNOPSIS
-            Gets current CPU utilization with multi-language counter support.
-        #>
         try {
             $cpuUtil = [math]::Round((
                     Get-Counter '\Processor(_Total)\% Processor Time' -SampleInterval 2 -MaxSamples 3 -ErrorAction Stop | 
@@ -226,7 +209,7 @@ begin {
                 return $cpuUtil
             }
             catch {
-                Write-Log 'Could not read CPU performance counter. Using 0% as fallback.' -Level WARNING
+                Write-Log 'Could not read CPU performance counter. Using 0% as fallback.' -Level WARN
                 return 0
             }
         }
@@ -245,33 +228,31 @@ begin {
         'Decreasing' = '1badb13a-e32c-4a30-8f5a-915c7918d212'
         'Volatile'   = '257619b0-8955-478c-b9d5-b8aaea0fa15c'
     }
-    
-    Write-Log '=== Capacity Trend Forecaster (v3.0) ==='
-    
-    if ($isTestMode) {
-        Write-Log '=========================================' -Level WARNING
-        Write-Log 'TESTRUN MODE ENABLED' -Level WARNING
-        Write-Log 'Using only Base64 test data' -Level WARNING
-        Write-Log "Today's real values will be ignored" -Level WARNING
-        Write-Log '=========================================' -Level WARNING
-    }
 }
 
 process {
     try {
+        Write-Log "========================================" -Level INFO
+        Write-Log "Starting: $ScriptName v$ScriptVersion" -Level INFO
+        Write-Log "========================================" -Level INFO
+        
+        if ($isTestMode) {
+            Write-Log "TESTRUN MODE ENABLED - Using only Base64 test data" -Level WARN
+        }
+        
         $disk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'"
         $diskFreeGB = [math]::Round($disk.FreeSpace / 1GB, 2)
         $diskSizeGB = [math]::Round($disk.Size / 1GB, 2)
         $diskUsedGB = $diskSizeGB - $diskFreeGB
         $diskFreePercent = [math]::Round(($diskFreeGB / $diskSizeGB) * 100, 2)
         
-        Write-Log "Current Disk: $diskUsedGB GB used / $diskSizeGB GB total ($diskFreePercent% free)"
+        Write-Log "Current Disk: $diskUsedGB GB used / $diskSizeGB GB total ($diskFreePercent% free)" -Level INFO
         
         $diskHistory = Read-Base64Field 'capHistoricalDiskUsage'
         
         if ($null -eq $diskHistory) {
             $diskHistory = @(@{ Date = (Get-Date -Format 'yyyy-MM-dd'); UsedGB = $diskUsedGB })
-            Write-Log 'Initialized disk history with first entry'
+            Write-Log 'Initialized disk history with first entry' -Level INFO
         }
         else {
             if ($diskHistory -isnot [array]) { 
@@ -286,23 +267,23 @@ process {
                     if ($diskHistory[$i].Date -eq $today) {
                         $diskHistory[$i].UsedGB = $diskUsedGB
                         $found = $true
-                        Write-Log "Updated disk entry for $today"
+                        Write-Log "Updated disk entry for $today" -Level DEBUG
                         break
                     }
                 }
                 
                 if (-not $found) {
                     $diskHistory += @{ Date = $today; UsedGB = $diskUsedGB }
-                    Write-Log "Added new disk entry for $today"
+                    Write-Log "Added new disk entry for $today" -Level DEBUG
                 }
                 
                 if ($diskHistory.Count -gt 30) {
                     $diskHistory = $diskHistory | Select-Object -Last 30
-                    Write-Log 'Trimmed disk history to last 30 days'
+                    Write-Log 'Trimmed disk history to last 30 days' -Level DEBUG
                 }
             }
             else {
-                Write-Log "[TESTRUN] Using Base64 disk data as-is ($($diskHistory.Count) records)"
+                Write-Log "Using Base64 disk data as-is ($($diskHistory.Count) records)" -Level DEBUG
             }
         }
         
@@ -340,14 +321,14 @@ process {
                     $daysUntilFull = 999 
                 }
                 
-                Write-Log "Disk growth rate: $([math]::Round($diskGrowth, 3)) GB/day, predicted full in $daysUntilFull days"
+                Write-Log "Disk growth rate: $([math]::Round($diskGrowth, 3)) GB/day, predicted full in $daysUntilFull days" -Level INFO
             }
             else {
-                Write-Log 'Disk growth rate too low or invalid for prediction'
+                Write-Log 'Disk growth rate too low or invalid for prediction' -Level DEBUG
             }
         }
         else {
-            Write-Log 'Insufficient disk history for growth prediction'
+            Write-Log 'Insufficient disk history for growth prediction' -Level DEBUG
         }
         
         Write-Base64Field 'capHistoricalDiskUsage' $diskHistory
@@ -355,7 +336,7 @@ process {
         $os = Get-CimInstance Win32_OperatingSystem
         $memUtil = [math]::Round((($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / $os.TotalVisibleMemorySize) * 100, 2)
         
-        Write-Log "Current Memory Utilization: $memUtil%"
+        Write-Log "Current Memory Utilization: $memUtil%" -Level INFO
         
         $memHistory = Read-Base64Field 'capHistoricalMemUsage'
         
@@ -363,7 +344,7 @@ process {
             $memHistory = @(@{ Date = (Get-Date -Format 'yyyy-MM-dd'); Utilization = $memUtil })
             $memTrend = 'Stable'
             $memAvg = $memUtil
-            Write-Log 'Initialized memory history with first entry'
+            Write-Log 'Initialized memory history with first entry' -Level INFO
         }
         else {
             if ($memHistory -isnot [array]) { 
@@ -414,32 +395,32 @@ process {
                 
                 if ($cv -gt 30) { 
                     $memTrend = 'Volatile'
-                    Write-Log "Memory: Volatile detected (CV=$([math]::Round($cv, 2))%)"
+                    Write-Log "Memory: Volatile detected (CV=$([math]::Round($cv, 2))%)" -Level INFO
                 }
                 elseif ($weeklyGrowth -gt 5) { 
                     $memTrend = 'Increasing'
-                    Write-Log "Memory: Increasing detected (Weekly growth=$([math]::Round($weeklyGrowth, 2))%)"
+                    Write-Log "Memory: Increasing detected (Weekly growth=$([math]::Round($weeklyGrowth, 2))%)" -Level INFO
                 }
                 elseif ($weeklyGrowth -lt -5) { 
                     $memTrend = 'Decreasing'
-                    Write-Log "Memory: Decreasing detected (Weekly decline=$([math]::Round($weeklyGrowth, 2))%)"
+                    Write-Log "Memory: Decreasing detected (Weekly decline=$([math]::Round($weeklyGrowth, 2))%)" -Level INFO
                 }
                 else { 
                     $memTrend = 'Stable'
-                    Write-Log "Memory: Stable (CV=$([math]::Round($cv, 2))%, Weekly=$([math]::Round($weeklyGrowth, 2))%)"
+                    Write-Log "Memory: Stable (CV=$([math]::Round($cv, 2))%, Weekly=$([math]::Round($weeklyGrowth, 2))%)" -Level INFO
                 }
             }
             else {
                 $memTrend = 'Stable'
                 $memAvg = $memUtil
-                Write-Log "Memory: Insufficient data ($($memHistory.Count) days, need 7+)"
+                Write-Log "Memory: Insufficient data ($($memHistory.Count) days, need 7+)" -Level DEBUG
             }
         }
         
         Write-Base64Field 'capHistoricalMemUsage' $memHistory
         
         $cpuUtil = Get-CPUUtilization
-        Write-Log "Current CPU Utilization: $cpuUtil%"
+        Write-Log "Current CPU Utilization: $cpuUtil%" -Level INFO
         
         $cpuHistory = Read-Base64Field 'capHistoricalCPUUsage'
         
@@ -447,7 +428,7 @@ process {
             $cpuHistory = @(@{ Date = (Get-Date -Format 'yyyy-MM-dd'); Utilization = $cpuUtil })
             $cpuTrend = 'Stable'
             $cpuAvg = $cpuUtil
-            Write-Log 'Initialized CPU history with first entry'
+            Write-Log 'Initialized CPU history with first entry' -Level INFO
         }
         else {
             if ($cpuHistory -isnot [array]) { 
@@ -498,25 +479,25 @@ process {
                 
                 if ($cv -gt 40) { 
                     $cpuTrend = 'Volatile'
-                    Write-Log "CPU: Volatile detected (CV=$([math]::Round($cv, 2))%)"
+                    Write-Log "CPU: Volatile detected (CV=$([math]::Round($cv, 2))%)" -Level INFO
                 }
                 elseif ($weeklyGrowth -gt 8) { 
                     $cpuTrend = 'Increasing'
-                    Write-Log "CPU: Increasing detected (Weekly growth=$([math]::Round($weeklyGrowth, 2))%)"
+                    Write-Log "CPU: Increasing detected (Weekly growth=$([math]::Round($weeklyGrowth, 2))%)" -Level INFO
                 }
                 elseif ($weeklyGrowth -lt -8) { 
                     $cpuTrend = 'Decreasing'
-                    Write-Log "CPU: Decreasing detected (Weekly decline=$([math]::Round($weeklyGrowth, 2))%)"
+                    Write-Log "CPU: Decreasing detected (Weekly decline=$([math]::Round($weeklyGrowth, 2))%)" -Level INFO
                 }
                 else { 
                     $cpuTrend = 'Stable'
-                    Write-Log "CPU: Stable (CV=$([math]::Round($cv, 2))%, Weekly=$([math]::Round($weeklyGrowth, 2))%)"
+                    Write-Log "CPU: Stable (CV=$([math]::Round($cv, 2))%, Weekly=$([math]::Round($weeklyGrowth, 2))%)" -Level INFO
                 }
             }
             else {
                 $cpuTrend = 'Stable'
                 $cpuAvg = $cpuUtil
-                Write-Log "CPU: Insufficient data ($($cpuHistory.Count) days, need 7+)"
+                Write-Log "CPU: Insufficient data ($($cpuHistory.Count) days, need 7+)" -Level DEBUG
             }
         }
         
@@ -551,7 +532,7 @@ process {
         
         $alert = ($daysUntilFull -lt 30 -or $health -lt 50)
         
-        Write-Log "Capacity Health Score: $health/100 (Alert: $alert)"
+        Write-Log "Capacity Health Score: $health/100 (Alert: $alert)" -Level INFO
         
         if (-not $isTestMode) {
             Ninja-Property-Set capDaysUntilDiskFull $daysUntilFull
@@ -560,36 +541,40 @@ process {
             Ninja-Property-Set capCapacityHealthScore $health
             Ninja-Property-Set capCapacityAlert $alert
             
-            Write-Log 'Successfully updated all NinjaRMM custom fields'
+            Write-Log 'Successfully updated all NinjaRMM custom fields' -Level SUCCESS
         }
         else {
-            Write-Log '[TESTRUN] Would update custom fields:'
-            Write-Log "  capDaysUntilDiskFull = $daysUntilFull"
-            Write-Log "  capMemoryUtilizationTrend = $memTrend ($($memTrendGuid[$memTrend]))"
-            Write-Log "  capCPUUtilizationTrend = $cpuTrend ($($cpuTrendGuid[$cpuTrend]))"
-            Write-Log "  capCapacityHealthScore = $health"
-            Write-Log "  capCapacityAlert = $alert"
+            Write-Log "Would update: DaysUntilFull=$daysUntilFull, MemTrend=$memTrend, CPUTrend=$cpuTrend, Health=$health, Alert=$alert" -Level DEBUG
         }
         
-        Write-Log ''
-        Write-Log '=== SUMMARY ==='
-        Write-Log "Disk: $diskFreeGB GB free ($diskFreePercent%), Growth: $([math]::Round($diskGrowth, 3)) GB/day, Days until full: $daysUntilFull"
-        Write-Log "Memory: $memTrend trend, Avg: $([math]::Round($memAvg, 2))%, Records: $($memHistory.Count)"
-        Write-Log "CPU: $cpuTrend trend, Avg: $([math]::Round($cpuAvg, 2))%, Records: $($cpuHistory.Count)"
-        Write-Log "Health: $health/100, Alert: $alert"
+        Write-Log "Disk: $diskFreeGB GB free ($diskFreePercent%), Growth: $([math]::Round($diskGrowth, 3)) GB/day, Days until full: $daysUntilFull" -Level INFO
+        Write-Log "Memory: $memTrend trend, Avg: $([math]::Round($memAvg, 2))%, Records: $($memHistory.Count)" -Level INFO
+        Write-Log "CPU: $cpuTrend trend, Avg: $([math]::Round($cpuAvg, 2))%, Records: $($cpuHistory.Count)" -Level INFO
+        Write-Log "Health: $health/100, Alert: $alert" -Level INFO
         
-        exit 0
+        Write-Log 'Capacity forecasting completed successfully' -Level SUCCESS
+        $script:ExitCode = 0
+        
     }
     catch {
-        Write-Log "Unexpected error: $($_.Exception.Message)" -Level ERROR
-        Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level ERROR
-        exit 1
+        Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
+        Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
+        $script:ExitCode = 1
     }
 }
 
 end {
-    $executionTime = (Get-Date) - $ScriptStartTime
-    Write-Log "Script execution completed in $($executionTime.TotalSeconds) seconds."
-    
-    [System.GC]::Collect()
+    try {
+        $EndTime = Get-Date
+        $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+        
+        Write-Log "========================================" -Level INFO
+        Write-Log "Execution Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
+        Write-Log "Warnings: $script:WarningCount, Errors: $script:ErrorCount" -Level INFO
+        Write-Log "========================================" -Level INFO
+    }
+    finally {
+        [System.GC]::Collect()
+        exit $script:ExitCode
+    }
 }

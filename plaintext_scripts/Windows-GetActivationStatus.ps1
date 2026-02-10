@@ -30,7 +30,7 @@ Set-StrictMode -Version Latest
 
 .NOTES
     Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Release notes: Refactored to V3.0 standards with Write-Log function
+    Release notes: v3.0.0 - Upgraded to V3.0.0 standards (script-scoped exit code)
     
 .COMPONENT
     SoftwareLicensingProduct - WMI class for license information
@@ -85,7 +85,7 @@ begin {
         }
     }
 
-    $ExitCode = 0
+    $script:ExitCode = 0
 }
 
 process {
@@ -120,7 +120,7 @@ process {
                 }
                 catch {
                     Write-Log "Failed to save to custom field: $_" -Level Error
-                    $ExitCode = 1
+                    $script:ExitCode = 1
                 }
             }
         }
@@ -130,7 +130,7 @@ process {
     }
     catch {
         Write-Log "Failed to query activation status: $_" -Level Error
-        $ExitCode = 1
+        $script:ExitCode = 1
     }
 }
 
@@ -142,5 +142,5 @@ end {
     [System.GC]::Collect()
     [System.GC]::WaitForPendingFinalizers()
     
-    exit $ExitCode
+    exit $script:ExitCode
 }

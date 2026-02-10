@@ -29,7 +29,7 @@
 
 .NOTES
     Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Release notes: Initial release for WAF v3.0
+    Release notes: v3.0.0 - Upgraded to V3.0.0 standards (script-scoped exit code)
     User interaction: None - fully automated process
     Restart behavior: N/A - Service restart only, no system reboot
     Typical duration: 5-15 seconds to initiate (rebuild takes hours in background)
@@ -110,7 +110,7 @@ begin {
         $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
     }
 
-    $ExitCode = 0
+    $script:ExitCode = 0
 }
 
 process {
@@ -183,7 +183,7 @@ process {
     Write-Host "[Info] Successfully started Windows Search service"
     Write-Host "[Info] Windows Search Index rebuild initiated. This process will continue in the background and may take several hours to complete."
 
-    exit $ExitCode
+    exit $script:ExitCode
 }
 
 end {

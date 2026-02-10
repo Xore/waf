@@ -27,7 +27,7 @@
     Hours to look back for Group Policy errors in event log. Default: 24
 
 .EXAMPLE
-    No Parameters (default settings)
+    .\GPO-Monitor.ps1
 
     [2026-02-10 00:59:00] [INFO] Starting: GPO-Monitor v3.0
     [2026-02-10 00:59:01] [INFO] Computer is domain-joined: contoso.com
@@ -36,16 +36,23 @@
     [2026-02-10 00:59:02] [SUCCESS] Group Policy monitoring completed: 12 GPO(s), Errors: false
 
 .EXAMPLE
-    -ErrorWindowHours 48
+    .\GPO-Monitor.ps1 -ErrorWindowHours 48
 
     Checks for errors in last 48 hours instead of default 24.
 
 .OUTPUTS
-    None
+    None. Status is written to console and NinjaRMM custom fields.
 
 .NOTES
-    Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Release notes: Upgraded to WAF v3.0 standards with full original functionality
+    File Name      : GPO-Monitor.ps1
+    Prerequisite   : PowerShell 5.1 or higher, Domain-joined computer
+    Minimum OS     : Windows 10, Windows Server 2016
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: Upgraded to V3 standards with Set-StrictMode and finally block
+    - 2.0: Enhanced with Write-Log and error tracking
+    - 1.0: Initial release
     
     Execution Context: SYSTEM (via NinjaRMM automation)
     Execution Frequency: Daily
@@ -87,16 +94,21 @@ param (
 )
 
 begin {
-    $ScriptVersion = "3.0"
+    $ErrorActionPreference = 'Stop'
+    $ProgressPreference = 'SilentlyContinue'
+    $StartTime = Get-Date
+    
+    Set-StrictMode -Version Latest
+    
+    $ScriptVersion = "3.0.0"
     $ScriptName = "GPO-Monitor"
     $ReportPath = "$env:TEMP\gpresult_$(Get-Date -Format 'yyyyMMddHHmmss').xml"
     $NinjaRMMCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
     
-    $StartTime = Get-Date
-    $ErrorActionPreference = 'Stop'
     $script:ErrorCount = 0
     $script:WarningCount = 0
     $script:CLIFallbackCount = 0
+    $script:ExitCode = 0
 
     if ($env:maxErrors -and $env:maxErrors -notlike "null") {
         $MaxErrors = [int]$env:maxErrors
@@ -120,11 +132,18 @@ begin {
         $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
         $LogMessage = "[$Timestamp] [$Level] $Message"
         
-        Write-Output $LogMessage
-        
         switch ($Level) {
-            'WARN'  { $script:WarningCount++ }
-            'ERROR' { $script:ErrorCount++ }
+            'ERROR' { 
+                Write-Error $LogMessage
+                $script:ErrorCount++ 
+            }
+            'WARN' { 
+                Write-Warning $LogMessage
+                $script:WarningCount++ 
+            }
+            default { 
+                Write-Output $LogMessage 
+            }
         }
     }
 
@@ -264,7 +283,7 @@ process {
             Set-NinjaField -FieldName "gpoAppliedList" -Value "Computer is not domain-joined"
             
             Write-Log "Group Policy monitoring not applicable for workgroup computer" -Level SUCCESS
-            exit 0
+            return
         }
         
         Write-Log "Computer is domain-joined: $($ComputerSystem.Domain)" -Level INFO
@@ -373,29 +392,33 @@ $($HTMLRows -join "`n")
         Set-NinjaField -FieldName "gpoLastError" -Value "Monitor script error: $($_.Exception.Message)"
         Set-NinjaField -FieldName "gpoAppliedList" -Value "Script execution failed"
         
-        exit 1
+        $script:ExitCode = 1
     }
 }
 
 end {
-    $EndTime = Get-Date
-    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
-    
-    Write-Log "========================================" -Level INFO
-    Write-Log "Execution Summary:" -Level INFO
-    Write-Log "  Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
-    Write-Log "  Errors: $script:ErrorCount" -Level INFO
-    Write-Log "  Warnings: $script:WarningCount" -Level INFO
-    
-    if ($script:CLIFallbackCount -gt 0) {
-        Write-Log "  CLI Fallbacks: $script:CLIFallbackCount" -Level INFO
+    try {
+        $EndTime = Get-Date
+        $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+        
+        Write-Log "========================================" -Level INFO
+        Write-Log "Execution Summary:" -Level INFO
+        Write-Log "  Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
+        Write-Log "  Errors: $script:ErrorCount" -Level INFO
+        Write-Log "  Warnings: $script:WarningCount" -Level INFO
+        
+        if ($script:CLIFallbackCount -gt 0) {
+            Write-Log "  CLI Fallbacks: $script:CLIFallbackCount" -Level INFO
+        }
+        
+        Write-Log "========================================" -Level INFO
+        
+        if ($script:ErrorCount -gt 0) {
+            $script:ExitCode = 1
+        }
     }
-    
-    Write-Log "========================================" -Level INFO
-    
-    if ($script:ErrorCount -gt 0) {
-        exit 1
-    } else {
-        exit 0
+    finally {
+        [System.GC]::Collect()
+        exit $script:ExitCode
     }
 }

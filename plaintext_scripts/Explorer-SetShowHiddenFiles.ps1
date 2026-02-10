@@ -1,4 +1,5 @@
 #Requires -Version 5.1
+Set-StrictMode -Version Latest
 
 <#
 .SYNOPSIS
@@ -41,7 +42,7 @@
 
 .NOTES
     Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Release notes: Initial release for WAF v3.0
+    Release notes: Refactored to V3.0 standards with Write-Log function
     
 .COMPONENT
     Registry - HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced
@@ -65,6 +66,19 @@ param(
 )
 
 begin {
+    $StartTime = Get-Date
+
+    function Write-Log {
+        param(
+            [string]$Message,
+            [ValidateSet('Info', 'Warning', 'Error')]
+            [string]$Level = 'Info'
+        )
+        $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $Output = "[$Timestamp] [$Level] $Message"
+        Write-Host $Output
+    }
+
     if ($env:showHidden -eq "true") {
         $Show = $true
     }
@@ -83,15 +97,15 @@ process {
     try {
         if ($Show) {
             $HiddenValue = 1
-            Write-Host "[Info] Configuring Explorer to show hidden files and folders..."
+            Write-Log "Configuring Explorer to show hidden files and folders..."
         }
         else {
             $HiddenValue = 2
-            Write-Host "[Info] Configuring Explorer to hide hidden files and folders..."
+            Write-Log "Configuring Explorer to hide hidden files and folders..."
         }
 
         if ($ApplyToAllUsers) {
-            Write-Host "[Info] Applying settings to all user profiles..."
+            Write-Log "Applying settings to all user profiles..."
             $UserProfiles = Get-ChildItem "Registry::HKEY_USERS" | Where-Object { $_.Name -match "S-1-5-21" }
             
             foreach ($Profile in $UserProfiles) {
@@ -108,26 +122,32 @@ process {
             
             if ($ShowSystemFiles) {
                 Set-ItemProperty -Path "HKCU:\$RegPath" -Name "ShowSuperHidden" -Value 1 -Type DWord -Force -Confirm:$false
-                Write-Host "[Info] System files visibility enabled"
+                Write-Log "System files visibility enabled"
             }
         }
 
         if ($Show) {
-            Write-Host "[Info] Hidden files visibility enabled"
+            Write-Log "Hidden files visibility enabled"
         }
         else {
-            Write-Host "[Info] Hidden files visibility disabled"
+            Write-Log "Hidden files visibility disabled"
         }
         
-        Write-Host "[Info] Explorer restart required for changes to take effect"
+        Write-Log "Explorer restart required for changes to take effect"
     }
     catch {
-        Write-Host "[Error] Failed to configure Explorer settings: $_"
+        Write-Log "Failed to configure Explorer settings: $_" -Level Error
         $ExitCode = 1
     }
-
-    exit $ExitCode
 }
 
 end {
+    $EndTime = Get-Date
+    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+    Write-Log "Script execution completed in $ExecutionTime seconds"
+    
+    [System.GC]::Collect()
+    [System.GC]::WaitForPendingFinalizers()
+    
+    exit $ExitCode
 }

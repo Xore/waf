@@ -57,7 +57,7 @@
 
 .NOTES
     Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Release notes: Initial release for WAF v3.0
+    Release notes: v3.0.0 - Upgraded to V3.0.0 standards (script-scoped exit code)
     
 .COMPONENT
     Test-Connection - PowerShell network testing cmdlet
@@ -150,7 +150,7 @@ begin {
         }
     }
 
-    $ExitCode = 0
+    $script:ExitCode = 0
     $HostArray = @()
     $PortArray = @()
     
@@ -220,7 +220,7 @@ process {
 
         if ($FailureCount -gt 0) {
             Write-Host "`n[Warn] $FailureCount test(s) failed"
-            $ExitCode = 1
+            $script:ExitCode = 1
         } else {
             Write-Host "`n[Info] All connectivity tests passed"
         }
@@ -231,16 +231,16 @@ process {
                 Write-Host "[Info] Results saved to custom field '$SaveToCustomField'"
             } catch {
                 Write-Host "[Error] Failed to save to custom field: $_"
-                $ExitCode = 1
+                $script:ExitCode = 1
             }
         }
     }
     catch {
         Write-Host "[Error] Failed to test connectivity: $_"
-        $ExitCode = 1
+        $script:ExitCode = 1
     }
 
-    exit $ExitCode
+    exit $script:ExitCode
 }
 
 end {

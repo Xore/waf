@@ -17,7 +17,7 @@ This document tracks the progress of refactoring WAF scripts to v3.0.0 standards
 - Error/warning/CLI fallback counters
 - Language-aware paths where applicable
 
-## Refactored Scripts (29 total)
+## Refactored Scripts (32 total)
 
 ### Batch 1 (Feb 10, 2026 - Earlier)
 
@@ -45,24 +45,31 @@ This document tracks the progress of refactoring WAF scripts to v3.0.0 standards
 22. ✅ Explorer-SetWindowsExplorerCustomization.ps1
 23. ✅ FileManagement-BulkRename.ps1
 24. ✅ Hardware-SSDWearHealthAlert.ps1 - [Commit](https://github.com/Xore/waf/commit/77155ba65a78625eeaba1a8b9873368189e68283)
-
-### Batch 2 (Feb 10, 2026 - 20:25 CET)
-
 25. ✅ Certificates-LocalExpirationAlert.ps1 - [Commit](https://github.com/Xore/waf/commit/105fc1ecf5ce8a28636cab8b0b4084a9656fcf38)
+
+### Batch 2 (Feb 10, 2026 - 20:25-20:28 CET)
+
 26. ✅ User-GetLoggedOnUsers.ps1 - [Commit](https://github.com/Xore/waf/commit/f8f6d600bfd2cc0607b6da69ff34590c03925949)
 27. ✅ Hardware-USBDriveAlert.ps1 - [Commit](https://github.com/Xore/waf/commit/fff4372d655291558e740c4ecf1b0d435590a71e)
 28. ✅ Hardware-GetCPUTemp.ps1 - [Commit](https://github.com/Xore/waf/commit/f982c6f905e5e095b34f76dc58312376f68bcc64)
+
+### Batch 3 (Feb 10, 2026 - 20:29-20:31 CET)
+
+29. ✅ Exchange-VersionCheck.ps1 - [Commit](https://github.com/Xore/waf/commit/8662ed8d228d485e408a60e304490d5d4110a5b3)
+30. ✅ Services-RestartService.ps1 - [Commit](https://github.com/Xore/waf/commit/50fe38f8b94f5764d32df7a985e2f34e006acacf)
+31. ✅ OneDrive-CopyFileToDesktop.ps1 - [Commit](https://github.com/Xore/waf/commit/3de655cfd2f30c88b493214039e670f5e0c8683d)
+
+### Progress Document
+
+32. ✅ docs/progress/REFACTORING_PROGRESS.md - [Commit](https://github.com/Xore/waf/commit/806402070e9e361fecd667c6a86b64aeddadc547)
 
 ## Scripts Requiring Refactoring
 
 Found 53 scripts with non-scoped `$ExitCode` variables that need updating.
 
-### High Priority Scripts
+### High Priority Scripts (Next Batch)
 
-- Exchange-VersionCheck.ps1
-- OneDrive-CopyFileToDesktop.ps1
 - Software-InstallSysmon.ps1
-- Services-RestartService.ps1
 - Certificates-GetExpiring.ps1
 - Software-TreesizeUltimate.ps1
 - Explorer-SetShowHiddenFiles.ps1
@@ -75,7 +82,30 @@ Found 53 scripts with non-scoped `$ExitCode` variables that need updating.
 - IIS-RestartAppPool.ps1
 - EventLog-BackupToLocalDisk.ps1
 - DHCP-AlertOnLeaseLow.ps1
-- And 37 more...
+- Network-GetPublicIPAddress.ps1
+- System-GetUptime.ps1
+- And 38 more...
+
+## Recent Refactoring Highlights
+
+### Batch 3 Improvements
+
+**Exchange-VersionCheck.ps1:**
+- Fixed Write-Log to use plain text output only
+- Added support for Exchange 2007 and 2010 detection
+- Improved version detection logic
+- Added comprehensive logging
+
+**Services-RestartService.ps1:**
+- Fixed `$ExitCode` to use proper `$script:ExitCode` scoping
+- Already had excellent structure and error handling
+- Minor formatting improvements for consistency
+
+**OneDrive-CopyFileToDesktop.ps1:**
+- Fixed Write-Log to remove Write-Error/Write-Warning calls
+- Added file size verification
+- Improved OneDrive detection error messages
+- Enhanced validation logic
 
 ## Refactoring Guidelines
 
@@ -90,13 +120,28 @@ When refactoring scripts, follow these standards:
 7. **NinjaRMM Fields**: Use Set-NinjaField with CLI fallback
 8. **Parameter Validation**: Add proper ValidateNotNullOrEmpty, ValidateLength
 9. **Never Change Functionality**: Only improve structure, robustness, and standards compliance
+10. **Plain Text Only**: No color codes, no emojis, no special characters in output
 
 ## Progress Statistics
 
-- **Total Scripts Refactored**: 29
-- **Scripts Remaining**: 53+
-- **Completion Rate**: ~35%
-- **Last Updated**: 2026-02-10 20:28 CET
+- **Total Scripts Refactored**: 32
+- **Scripts Remaining**: 50+
+- **Completion Rate**: ~39%
+- **Last Updated**: 2026-02-10 20:31 CET
+- **Scripts Refactored This Session**: 7
+
+## Quality Metrics
+
+All refactored scripts include:
+- ✅ `$script:ExitCode` scoping
+- ✅ Write-Log function (plain text)
+- ✅ Try-catch-finally blocks
+- ✅ Comprehensive headers
+- ✅ Configuration sections
+- ✅ Execution summaries
+- ✅ Set-NinjaField with CLI fallback
+- ✅ Parameter validation
+- ✅ Error/warning tracking
 
 ## References
 

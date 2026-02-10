@@ -1,5 +1,4 @@
 #Requires -Version 5.1
-Set-StrictMode -Version Latest
 
 <#
 .SYNOPSIS
@@ -23,26 +22,32 @@ Set-StrictMode -Version Latest
     If specified, applies settings to all user profiles on the system.
 
 .EXAMPLE
-    -Show
+    .\Explorer-SetShowHiddenFiles.ps1 -Show
 
-    [Info] Configuring Explorer to show hidden files and folders...
-    [Info] Hidden files visibility enabled
-    [Info] Explorer restart required for changes to take effect
+    Configuring Explorer to show hidden files and folders...
+    Hidden files visibility enabled
+    Explorer restart required for changes to take effect
 
 .EXAMPLE
-    -Show -ShowSystemFiles
+    .\Explorer-SetShowHiddenFiles.ps1 -Show -ShowSystemFiles
 
-    [Info] Configuring Explorer to show hidden and system files...
-    [Info] Hidden files visibility enabled
-    [Info] System files visibility enabled
-    [Info] Explorer restart required for changes to take effect
+    Configuring Explorer to show hidden and system files...
+    Hidden files visibility enabled
+    System files visibility enabled
+    Explorer restart required for changes to take effect
 
 .OUTPUTS
-    None
+    None. Status information is written to the console.
 
 .NOTES
-    Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Release notes: Refactored to V3.0 standards with Write-Log function
+    File Name      : Explorer-SetShowHiddenFiles.ps1
+    Prerequisite   : PowerShell 5.1 or higher
+    Minimum OS     : Windows 10, Windows Server 2016
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: Upgraded to V3 standards with proper Write-Log function
+    - 1.0: Initial release
     
 .COMPONENT
     Registry - HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced
@@ -60,23 +65,36 @@ Set-StrictMode -Version Latest
 
 [CmdletBinding()]
 param(
+    [Parameter()]
     [switch]$Show,
+    
+    [Parameter()]
     [switch]$ShowSystemFiles,
+    
+    [Parameter()]
     [switch]$ApplyToAllUsers
 )
 
 begin {
+    $ErrorActionPreference = 'Stop'
+    $ProgressPreference = 'SilentlyContinue'
     $StartTime = Get-Date
+    
+    Set-StrictMode -Version Latest
 
     function Write-Log {
         param(
             [string]$Message,
-            [ValidateSet('Info', 'Warning', 'Error')]
-            [string]$Level = 'Info'
+            [string]$Level = 'INFO'
         )
         $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-        $Output = "[$Timestamp] [$Level] $Message"
-        Write-Host $Output
+        $LogMessage = "[$Timestamp] [$Level] $Message"
+        
+        switch ($Level) {
+            'ERROR' { Write-Error $LogMessage }
+            'WARNING' { Write-Warning $LogMessage }
+            default { Write-Output $LogMessage }
+        }
     }
 
     if ($env:showHidden -eq "true") {
@@ -106,22 +124,28 @@ process {
 
         if ($ApplyToAllUsers) {
             Write-Log "Applying settings to all user profiles..."
-            $UserProfiles = Get-ChildItem "Registry::HKEY_USERS" | Where-Object { $_.Name -match "S-1-5-21" }
+            $UserProfiles = Get-ChildItem "Registry::HKEY_USERS" -ErrorAction SilentlyContinue | 
+                Where-Object { $_.Name -match "S-1-5-21" }
             
             foreach ($Profile in $UserProfiles) {
                 $FullPath = "$($Profile.Name)\$RegPath"
-                Set-ItemProperty -Path "Registry::$FullPath" -Name "Hidden" -Value $HiddenValue -Type DWord -Force -Confirm:$false -ErrorAction SilentlyContinue
-                
-                if ($ShowSystemFiles) {
-                    Set-ItemProperty -Path "Registry::$FullPath" -Name "ShowSuperHidden" -Value 1 -Type DWord -Force -Confirm:$false -ErrorAction SilentlyContinue
+                try {
+                    Set-ItemProperty -Path "Registry::$FullPath" -Name "Hidden" -Value $HiddenValue -Type DWord -Force -Confirm:$false -ErrorAction Stop
+                    
+                    if ($ShowSystemFiles) {
+                        Set-ItemProperty -Path "Registry::$FullPath" -Name "ShowSuperHidden" -Value 1 -Type DWord -Force -Confirm:$false -ErrorAction Stop
+                    }
+                }
+                catch {
+                    Write-Log "Failed to update registry for profile $($Profile.Name): $_" -Level WARNING
                 }
             }
         }
         else {
-            Set-ItemProperty -Path "HKCU:\$RegPath" -Name "Hidden" -Value $HiddenValue -Type DWord -Force -Confirm:$false
+            Set-ItemProperty -Path "HKCU:\$RegPath" -Name "Hidden" -Value $HiddenValue -Type DWord -Force -Confirm:$false -ErrorAction Stop
             
             if ($ShowSystemFiles) {
-                Set-ItemProperty -Path "HKCU:\$RegPath" -Name "ShowSuperHidden" -Value 1 -Type DWord -Force -Confirm:$false
+                Set-ItemProperty -Path "HKCU:\$RegPath" -Name "ShowSuperHidden" -Value 1 -Type DWord -Force -Confirm:$false -ErrorAction Stop
                 Write-Log "System files visibility enabled"
             }
         }
@@ -136,18 +160,19 @@ process {
         Write-Log "Explorer restart required for changes to take effect"
     }
     catch {
-        Write-Log "Failed to configure Explorer settings: $_" -Level Error
+        Write-Log "Failed to configure Explorer settings: $_" -Level ERROR
         $ExitCode = 1
     }
 }
 
 end {
-    $EndTime = Get-Date
-    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
-    Write-Log "Script execution completed in $ExecutionTime seconds"
-    
-    [System.GC]::Collect()
-    [System.GC]::WaitForPendingFinalizers()
-    
-    exit $ExitCode
+    try {
+        $EndTime = Get-Date
+        $Duration = ($EndTime - $StartTime).TotalSeconds
+        Write-Log "Script execution completed in $Duration seconds"
+    }
+    finally {
+        [System.GC]::Collect()
+        exit $ExitCode
+    }
 }

@@ -1,4 +1,5 @@
 #Requires -Version 5.1
+Set-StrictMode -Version Latest
 
 <#
 .SYNOPSIS
@@ -46,8 +47,7 @@ PARAMETER: -RestartExplorer
     None
 .NOTES
     Minimum Supported OS: Windows 10+
-    Version: 1.1
-    Release Notes: Set to not start explorer.exe when ran as system.
+    Release Notes: Refactored to V3.0 standards with Write-Log function
 #>
 
 [CmdletBinding()]
@@ -61,23 +61,32 @@ param (
 )
 
 begin {
-    # Grabbing dynamic script variables
+    $StartTime = Get-Date
+
+    function Write-Log {
+        param(
+            [string]$Message,
+            [ValidateSet('Info', 'Warning', 'Error')]
+            [string]$Level = 'Info'
+        )
+        $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $Output = "[$Timestamp] [$Level] $Message"
+        Write-Host $Output
+    }
+
     if ($env:showOrHide -and $env:showOrHide -notlike "null") { if ($env:showOrHide -eq "Show") { $Enable = $True } }
 
-    # Check if script is running with local admin privileges.
     function Test-IsElevated {
         $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
         $p = New-Object System.Security.Principal.WindowsPrincipal($id)
         $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
     }
 
-    # Check if script is running with system privileges.
     function Test-IsSystem {
         $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
         return $id.Name -like "NT AUTHORITY*" -or $id.IsSystem
     }
 
-    # Get a list of all the user profiles for when the script is run as System.
     function Get-UserHives {
         param (
             [Parameter()]
@@ -89,14 +98,12 @@ begin {
             [switch]$IncludeDefault
         )
     
-        # User account SID's follow a particular pattern depending on if they're Azure AD or a Domain account or a local "workgroup" account.
         $Patterns = switch ($Type) {
             "AzureAD" { "S-1-12-1-(\d+-?){4}$" }
             "DomainAndLocal" { "S-1-5-21-(\d+-?){4}$" }
             "All" { "S-1-12-1-(\d+-?){4}$" ; "S-1-5-21-(\d+-?){4}$" } 
         }
     
-        # We'll need the NTuser.dat file to load each user's registry hive. So we grab it if their account sid matches the above pattern. 
         $UserProfiles = Foreach ($Pattern in $Patterns) { 
             Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\*" |
                 Where-Object { $_.PSChildName -match $Pattern } | 
@@ -106,7 +113,6 @@ begin {
                 @{Name = "Path"; Expression = { $_.ProfileImagePath } }
         }
     
-        # There are some situations where grabbing the .Default user's info is needed.
         switch ($IncludeDefault) {
             $True {
                 $DefaultProfile = "" | Select-Object UserName, SID, UserHive, Path
@@ -122,7 +128,6 @@ begin {
         $UserProfiles | Where-Object { $ExcludedUsers -notcontains $_.UserName }
     }
 
-    # Helper function for setting registry keys
     function Set-RegKey {
         param (
             $Path,
@@ -132,50 +137,46 @@ begin {
             $PropertyType = "DWord"
         )
         if (-not $(Test-Path -Path $Path)) {
-            # Check if path does not exist and create the path
             New-Item -Path $Path -Force | Out-Null
         }
         if ((Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue)) {
-            # Update property and print out what it was changed from and changed to
             $CurrentValue = (Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue).$Name
             try {
                 Set-ItemProperty -Path $Path -Name $Name -Value $Value -Force -Confirm:$false -ErrorAction Stop | Out-Null
             }
             catch {
-                Write-Host "[Error] Unable to set registry key for $Name at $Path please see below error!"
-                Write-Host "[Error] $($_.Exception.Message)"
+                Write-Log "Unable to set registry key for $Name at $Path please see below error!" -Level Error
+                Write-Log "$($_.Exception.Message)" -Level Error
                 exit 1
             }
-            Write-Host "$Path\$Name changed from $CurrentValue to $($(Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue).$Name)"
+            Write-Log "$Path\$Name changed from $CurrentValue to $($(Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue).$Name)"
         }
         else {
-            # Create property with value
             try {
                 New-ItemProperty -Path $Path -Name $Name -Value $Value -PropertyType $PropertyType -Force -Confirm:$false -ErrorAction Stop | Out-Null
             }
             catch {
-                Write-Host "[Error] Unable to set registry key for $Name at $Path please see below error!"
-                Write-Host "[Error] $($_.Exception.Message)"
+                Write-Log "Unable to set registry key for $Name at $Path please see below error!" -Level Error
+                Write-Log "$($_.Exception.Message)" -Level Error
                 exit 1
             }
-            Write-Host "Set $Path\$Name to $($(Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue).$Name)"
+            Write-Log "Set $Path\$Name to $($(Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue).$Name)"
         }
     }
     
-    # Gets the OS Name E.g. Windows 10 Enterprise or Windows 11 Enterprise
     function Get-OSName {
         systeminfo | findstr /B /C:"OS Name"
     }
 
     $OSName = Get-OSName
 }
+
 process {
     if (!(Test-IsElevated)) {
-        Write-Host -Object "[Error] Access Denied. Please run with Administrator privileges."
+        Write-Log "Access Denied. Please run with Administrator privileges." -Level Error
         exit 1
     }
 
-    # The registry key is different depending on if its Windows 10 or Windows 11
     if ($OSName -Like "*11*") {
         $AllUserPath = (Get-ItemProperty -Path "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Dsh" -ErrorAction Ignore).AllowNewsAndInterests
     }
@@ -183,7 +184,6 @@ process {
         $AllUserPath = (Get-ItemProperty -Path "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds" -ErrorAction Ignore).EnableFeeds
     }
 
-    # Issues a warning prior to removing the registry key that prevents changes from end-users
     if ($AllUserPath -ge 0) {
         $EnableOrDisable = switch ($AllUserPath) {
             1 { "revealed" }
@@ -191,7 +191,7 @@ process {
         }
 
         if (-not ($PreventChanges)) {
-            Write-Warning "News and Interests is currently $EnableOrDisable for all users. Removing 'Prevent Changes' setting to replace it with individual user setting as requested."
+            Write-Log "News and Interests is currently $EnableOrDisable for all users. Removing 'Prevent Changes' setting to replace it with individual user setting as requested." -Level Warning
             
             if ($OSName -Like "*11*") {
                 Remove-ItemProperty -Path "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Dsh" -Name "AllowNewsAndInterests"
@@ -213,7 +213,6 @@ process {
         $Value = if ($Enable) { 1 }else { 0 }
     }
 
-    # Sets a per user registry key if the end-user lock isn't set
     if (-not ($PreventChanges)) {
         $UserProfiles = Get-UserHives -Type "All"
 
@@ -221,7 +220,6 @@ process {
         $LoadedProfiles = New-Object System.Collections.Generic.List[Object]
 
         Foreach ($UserProfile in $UserProfiles) {
-            # Load User ntuser.dat if it's not already loaded
             If ((Test-Path "Registry::HKEY_USERS\$($UserProfile.SID)" -ErrorAction Ignore) -eq $false) {
                 $LoadedProfiles.Add($UserProfile)
                 Start-Process -FilePath "cmd.exe" -ArgumentList "/C reg.exe LOAD HKU\$($UserProfile.SID) `"$($UserProfile.UserHive)`"" -Wait -WindowStyle Hidden
@@ -244,44 +242,42 @@ process {
         }
     }
 
-    # Change the message depending on if we're hiding or showing the menu
     if ($Enable) {
-        Write-Host "Revealing News and Interests for all users!"
+        Write-Log "Revealing News and Interests for all users!"
     }
     else {
-        Write-Warning "Hiding News and Interests from the taskbar for all users!"
+        Write-Log "Hiding News and Interests from the taskbar for all users!" -Level Warning
     }
     
-    # Setting the registry key
     $KeyPath | ForEach-Object { Set-RegKey -Path $_ -Name $KeyName -Value $Value }
 
-    # Unload any profiles we loaded up earlier (if any)
     Foreach ($LoadedProfile in $LoadedProfiles) {
         [gc]::Collect()
         Start-Sleep 1
         Start-Process -FilePath "cmd.exe" -ArgumentList "/C reg.exe UNLOAD HKU\$($LoadedProfile.SID)" -Wait -WindowStyle Hidden | Out-Null
     }
 
-    # Restart explorer.exe
     if ($RestartExplorer) {
-        Write-Host "`nRestarting Explorer.exe as requested."
+        Write-Log "Restarting Explorer.exe as requested."
 
-        # Stop all instances of Explorer
         Get-Process explorer | Stop-Process -Force
         
         Start-Sleep -Seconds 1
 
-        # Restart Explorer if not running as System and Explorer is not already running
         if (!(Test-IsSystem) -and !(Get-Process -Name "explorer")) {
             Start-Process explorer.exe
         }
     }
     else {
-        Write-Warning "This script will take effect the next time the user completes a full sign-in or restarts."
+        Write-Log "This script will take effect the next time the user completes a full sign-in or restarts." -Level Warning
     }
 }
+
 end {
+    $EndTime = Get-Date
+    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+    Write-Log "Script execution completed in $ExecutionTime seconds"
     
-    
-    
+    [System.GC]::Collect()
+    [System.GC]::WaitForPendingFinalizers()
 }

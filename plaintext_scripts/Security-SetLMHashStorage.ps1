@@ -41,6 +41,8 @@
     - CIS Microsoft Windows Benchmark: 2.3.11.6
     - NIST 800-53: IA-5(1)
     - DISA STIG: WN10-SO-000145
+    
+    This script runs unattended without user interaction.
 
 .PARAMETER Enable
     If specified, ENABLES LM hash storage (sets NoLMHash=0, INSECURE).
@@ -56,14 +58,17 @@
     
     Enables LM hash storage (insecure, legacy compatibility only).
 
+.OUTPUTS
+    None. Configuration status is written to console.
+
 .NOTES
     Script Name:    Security-SetLMHashStorage.ps1
     Author:         Windows Automation Framework
-    Version:        3.0
+    Version:        3.0.0
     Creation Date:  2024-01-15
     Last Modified:  2026-02-10
     
-    Execution Context: Administrator (required for LSA registry modification)
+    Execution Context: Administrator (required)
     Execution Frequency: One-time or policy enforcement
     Typical Duration: Less than 1 second
     Timeout Setting: 30 seconds recommended
@@ -76,8 +81,11 @@
     
     Dependencies:
         - Windows PowerShell 5.1 or higher
-        - Administrator privileges
-        - Windows 10 or Server 2016 minimum
+        - Administrator privileges (required)
+        - Windows 10, Windows Server 2016 or higher
+    
+    Environment Variables (Optional):
+        - enableOrDisable: "Enable" or "Disable" alternative to -Enable parameter
     
     Security Impact:
         - HIGH when disabling (improves security)
@@ -104,11 +112,11 @@ param (
 # CONFIGURATION
 # ============================================================================
 
-$ScriptVersion = "3.0"
+$ScriptVersion = "3.0.0"
 $ScriptName = "Security-SetLMHashStorage"
 
 # Support NinjaRMM environment variable
-if ($env:enableOrDisable -and $env:enableOrDisable -ne "null") {
+if ($env:enableOrDisable -and $env:enableOrDisable -notlike "null") {
     switch ($env:enableOrDisable) {
         "Enable"  { $Enable = $true }
         "Disable" { $Enable = $false }
@@ -126,8 +134,11 @@ $RegistryValue = if ($Enable) { 0 } else { 1 }
 
 $StartTime = Get-Date
 $ErrorActionPreference = 'Stop'
+$script:ExitCode = 0
 $script:ErrorCount = 0
 $script:WarningCount = 0
+
+Set-StrictMode -Version Latest
 
 # ============================================================================
 # FUNCTIONS
@@ -151,8 +162,10 @@ function Write-Log {
     $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
     $LogMessage = "[$Timestamp] [$Level] $Message"
     
+    # Plain text output only - no colors
     Write-Output $LogMessage
     
+    # Track counts
     switch ($Level) {
         'WARN'  { $script:WarningCount++ }
         'ERROR' { $script:ErrorCount++ }
@@ -162,7 +175,7 @@ function Write-Log {
 function Test-IsElevated {
     <#
     .SYNOPSIS
-        Checks if script is running with Administrator privileges
+        Checks if script is running with administrator privileges
     #>
     $Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
     $Principal = New-Object System.Security.Principal.WindowsPrincipal($Identity)
@@ -242,8 +255,10 @@ try {
     
     # Check administrator privileges
     if (-not (Test-IsElevated)) {
-        throw "Administrator privileges required for LSA registry modification"
+        Write-Log "ERROR: This script requires administrator privileges" -Level ERROR
+        throw "Access Denied"
     }
+    
     Write-Log "Administrator privileges confirmed" -Level SUCCESS
     
     # Determine action
@@ -251,10 +266,11 @@ try {
     $SecurityImpact = if ($Enable) { "REDUCES security (allows weak LM hashes)" } else { "IMPROVES security (blocks weak LM hashes)" }
     
     Write-Log "" -Level INFO
-    Write-Log "Action: $Action LM hash storage" -Level INFO
-    Write-Log "Registry: $RegistryPath\$RegistryName" -Level INFO
-    Write-Log "New Value: $RegistryValue" -Level INFO
-    Write-Log "Security Impact: $SecurityImpact" -Level INFO
+    Write-Log "Configuration Details:" -Level INFO
+    Write-Log "  Action: $Action LM hash storage" -Level INFO
+    Write-Log "  Registry: $RegistryPath\$RegistryName" -Level INFO
+    Write-Log "  New Value: $RegistryValue" -Level INFO
+    Write-Log "  Security Impact: $SecurityImpact" -Level INFO
     Write-Log "" -Level INFO
     
     # Warn if enabling (insecure)
@@ -266,20 +282,25 @@ try {
     }
     
     # Set the registry value
-    Write-Log "Setting registry value..." -Level INFO
+    Write-Log "Applying registry configuration..." -Level INFO
     $Success = Set-RegistryValue -Path $RegistryPath -Name $RegistryName -Value $RegistryValue -Type 'DWord'
     
     if ($Success) {
         Write-Log "" -Level INFO
-        Write-Log "LM hash storage successfully $(if ($Enable) {'enabled'} else {'disabled'})" -Level SUCCESS
-        Write-Log "Changes apply to new passwords only" -Level INFO
-        Write-Log "No system restart required" -Level INFO
+        Write-Log "========================================" -Level INFO
+        Write-Log "Configuration Complete" -Level SUCCESS
+        Write-Log "========================================" -Level INFO
+        Write-Log "LM hash storage: $(if ($Enable) {'ENABLED (insecure)'} else {'DISABLED (secure)'})" -Level INFO
+        Write-Log "Changes apply to: New passwords only" -Level INFO
+        Write-Log "Restart required: No" -Level INFO
+        Write-Log "" -Level INFO
         
         if (-not $Enable) {
-            Write-Log "Recommendation: Force password change for all users to remove existing LM hashes" -Level INFO
+            Write-Log "RECOMMENDATION: Force password change for all users to remove existing LM hashes" -Level INFO
+            Write-Log "Compliance: CIS 2.3.11.6, NIST IA-5(1), DISA STIG WN10-SO-000145" -Level INFO
         }
         
-        exit 0
+        $script:ExitCode = 0
     } else {
         throw "Registry value verification failed"
     }
@@ -287,16 +308,24 @@ try {
 } catch {
     Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
     Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
-    exit 1
+    $script:ExitCode = 1
     
 } finally {
     $EndTime = Get-Date
     $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
     
+    Write-Log "" -Level INFO
     Write-Log "========================================" -Level INFO
     Write-Log "Execution Summary:" -Level INFO
     Write-Log "  Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
     Write-Log "  Errors: $script:ErrorCount" -Level INFO
     Write-Log "  Warnings: $script:WarningCount" -Level INFO
+    Write-Log "  Exit Code: $script:ExitCode" -Level INFO
     Write-Log "========================================" -Level INFO
+    
+    # Cleanup
+    [System.GC]::Collect()
+    [System.GC]::WaitForPendingFinalizers()
+    
+    exit $script:ExitCode
 }

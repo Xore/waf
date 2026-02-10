@@ -122,7 +122,7 @@ function Write-Log {
     }
 }
 
-function Set-NinjaRMMField {
+function Set-NinjaField {
     param(
         [string]$FieldName,
         [AllowNull()]
@@ -654,19 +654,23 @@ try {
     Write-Log "$ScriptName v$ScriptVersion"
     Write-Log "========================================"
     
+    # Error tracking (MANDATORY)
+    $ErrorsEncountered = 0
+    $ErrorDetails = @()
+    
     # Check if cluster service exists
     $ClusterService = Get-Service -Name ClusSvc -ErrorAction SilentlyContinue
     if (-not $ClusterService) {
         Write-Log "Cluster service not found. This is not a cluster node." -Level WARNING
-        Set-NinjaRMMField -FieldName "$($FieldPrefix)MigrationStatus" -Value "NOT_CLUSTERED"
-        Set-NinjaRMMField -FieldName "$($FieldPrefix)FailoverStatus" -Value "NOT_CLUSTERED"
+        Set-NinjaField -FieldName "$($FieldPrefix)MigrationStatus" -Value "NOT_CLUSTERED"
+        Set-NinjaField -FieldName "$($FieldPrefix)FailoverStatus" -Value "NOT_CLUSTERED"
         exit 1
     }
     
     if ($ClusterService.Status -ne 'Running') {
         Write-Log "Cluster service is not running. Status: $($ClusterService.Status)" -Level ERROR
-        Set-NinjaRMMField -FieldName "$($FieldPrefix)MigrationStatus" -Value "SERVICE_STOPPED"
-        Set-NinjaRMMField -FieldName "$($FieldPrefix)FailoverStatus" -Value "SERVICE_STOPPED"
+        Set-NinjaField -FieldName "$($FieldPrefix)MigrationStatus" -Value "SERVICE_STOPPED"
+        Set-NinjaField -FieldName "$($FieldPrefix)FailoverStatus" -Value "SERVICE_STOPPED"
         exit 2
     }
     
@@ -715,22 +719,18 @@ try {
     # Update NinjaRMM fields
     Write-Log "Updating NinjaRMM custom fields..."
     
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)Migrations24h" -Value $MigrationStats24h.TotalCount
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)MigrationSuccessRate" -Value $MigrationStats24h.SuccessRate
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)AvgMigrationTime" -Value $MigrationStats24h.AvgDuration
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)Failovers30d" -Value $FailoverStats.TotalCount
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)CSVMaxIOPS" -Value $MaxCSVIOPS
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)CSVMaxLatency" -Value $MaxCSVLatency
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)WitnessType" -Value $WitnessInfo.Type
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)WitnessStatus" -Value $WitnessInfo.Status
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)AnalyticsReport" -Value $HTMLReport
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)MigrationStatus" -Value $Status.Migration
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)FailoverStatus" -Value $Status.Failover
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)LastScan" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
-    
-    # Calculate execution time
-    $ExecutionEndTime = Get-Date
-    $ExecutionDuration = ($ExecutionEndTime - $ExecutionStartTime).TotalSeconds
+    Set-NinjaField -FieldName "$($FieldPrefix)Migrations24h" -Value $MigrationStats24h.TotalCount
+    Set-NinjaField -FieldName "$($FieldPrefix)MigrationSuccessRate" -Value $MigrationStats24h.SuccessRate
+    Set-NinjaField -FieldName "$($FieldPrefix)AvgMigrationTime" -Value $MigrationStats24h.AvgDuration
+    Set-NinjaField -FieldName "$($FieldPrefix)Failovers30d" -Value $FailoverStats.TotalCount
+    Set-NinjaField -FieldName "$($FieldPrefix)CSVMaxIOPS" -Value $MaxCSVIOPS
+    Set-NinjaField -FieldName "$($FieldPrefix)CSVMaxLatency" -Value $MaxCSVLatency
+    Set-NinjaField -FieldName "$($FieldPrefix)WitnessType" -Value $WitnessInfo.Type
+    Set-NinjaField -FieldName "$($FieldPrefix)WitnessStatus" -Value $WitnessInfo.Status
+    Set-NinjaField -FieldName "$($FieldPrefix)AnalyticsReport" -Value $HTMLReport
+    Set-NinjaField -FieldName "$($FieldPrefix)MigrationStatus" -Value $Status.Migration
+    Set-NinjaField -FieldName "$($FieldPrefix)FailoverStatus" -Value $Status.Failover
+    Set-NinjaField -FieldName "$($FieldPrefix)LastScan" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
     
     Write-Log "========================================"
     Write-Log "Cluster Analytics Summary:"
@@ -741,7 +741,6 @@ try {
     Write-Log "  Migration Status: $($Status.Migration)"
     Write-Log "  Failover Status: $($Status.Failover)"
     Write-Log "  Witness: $($WitnessInfo.Type) ($($WitnessInfo.Status))"
-    Write-Log "  Execution Time: $([Math]::Round($ExecutionDuration, 2)) seconds"
     Write-Log "========================================"
     Write-Log "Script completed successfully"
     
@@ -751,12 +750,21 @@ try {
     Write-Log "Unexpected error: $($_.Exception.Message)" -Level ERROR
     Write-Log "Stack Trace: $($_.ScriptStackTrace)" -Level ERROR
     
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)MigrationStatus" -Value "ERROR"
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)FailoverStatus" -Value "ERROR"
+    $ErrorsEncountered++
+    $ErrorDetails += $_.Exception.Message
     
+    Set-NinjaField -FieldName "$($FieldPrefix)MigrationStatus" -Value "ERROR"
+    Set-NinjaField -FieldName "$($FieldPrefix)FailoverStatus" -Value "ERROR"
+    
+    exit 99
+} finally {
+    # Calculate execution time (MANDATORY)
     $ExecutionEndTime = Get-Date
     $ExecutionDuration = ($ExecutionEndTime - $ExecutionStartTime).TotalSeconds
     Write-Log "Execution Time: $([Math]::Round($ExecutionDuration, 2)) seconds"
     
-    exit 99
+    if ($ErrorsEncountered -gt 0) {
+        Write-Log "Errors Encountered: $ErrorsEncountered"
+        Write-Log "Error Summary: $($ErrorDetails -join '; ')"
+    }
 }

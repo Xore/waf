@@ -33,31 +33,35 @@
     Username must not exceed 20 characters and must not contain spaces or special characters.
 
 .EXAMPLE
-    Outlook-SetForcedMigration.ps1
+    .\Outlook-SetForcedMigration.ps1
     Disables forced migration for all users (default behavior).
 
 .EXAMPLE
-    Outlook-SetForcedMigration.ps1 -MigrationPolicy "Disable" -NewOutlookToggle "Hide Toggle"
+    .\Outlook-SetForcedMigration.ps1 -MigrationPolicy "Disable" -NewOutlookToggle "Hide Toggle"
     Disables forced migration AND hides the toggle button for all users.
 
 .EXAMPLE
-    Outlook-SetForcedMigration.ps1 -MigrationPolicy "Enable" -UserToSetPolicyFor "jsmith"
+    .\Outlook-SetForcedMigration.ps1 -MigrationPolicy "Enable" -UserToSetPolicyFor "jsmith"
     Enables forced migration for user 'jsmith' only.
 
 .EXAMPLE
-    Outlook-SetForcedMigration.ps1 -NewOutlookToggle "Show Toggle" -UserToSetPolicyFor "admin"
+    .\Outlook-SetForcedMigration.ps1 -NewOutlookToggle "Show Toggle" -UserToSetPolicyFor "admin"
     Shows the toggle button for user 'admin' (does not change migration policy).
 
 .EXAMPLE
-    Outlook-SetForcedMigration.ps1 -MigrationPolicy "Default"
+    .\Outlook-SetForcedMigration.ps1 -MigrationPolicy "Default"
     Resets migration policy to default (removes registry key) for all users.
 
 .NOTES
-    Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Version: 3.0
-    Release Notes: 
-        - V3.0: Added Write-Log function, execution tracking, enhanced error handling, structured helper functions
-        - V1.0: Initial Release
+    File Name      : Outlook-SetForcedMigration.ps1
+    Prerequisite   : PowerShell 5.1 or higher, Administrator privileges
+    Minimum OS     : Windows 10, Windows Server 2016
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: V3 standards with exit code management in end block
+    - 3.0: Added Write-Log function, execution tracking, enhanced error handling
+    - 1.0: Initial release
     
     Exit Codes:
         0 = Success
@@ -72,7 +76,7 @@
         - Toggle Button: HKEY_USERS\<SID>\Software\Microsoft\Office\16.0\Outlook\Options\General\HideNewOutlookToggle
 
 .LINK
-    https://learn.microsoft.com/en-us/microsoft-365-apps/outlook/get-started/control-install
+    https://github.com/Xore/waf
 #>
 
 [CmdletBinding()]
@@ -92,38 +96,38 @@ param (
 )
 
 begin {
-    $ErrorActionPreference = 'Stop'
-    $ProgressPreference = 'SilentlyContinue'
     Set-StrictMode -Version Latest
     
-    $ExitCode = 0
-    $ScriptStartTime = Get-Date
+    $ScriptVersion = "3.0.0"
+    $ScriptName = "Outlook-SetForcedMigration"
+    
+    $StartTime = Get-Date
+    $ErrorActionPreference = 'Continue'
+    $ProgressPreference = 'SilentlyContinue'
+    $script:ErrorCount = 0
+    $script:WarningCount = 0
+    $script:ExitCode = 0
 
     function Write-Log {
+        [CmdletBinding()]
         param(
-            [Parameter(Mandatory = $true)]
+            [Parameter(Mandatory=$true)]
             [string]$Message,
-            
-            [Parameter(Mandatory = $false)]
-            [ValidateSet('INFO', 'WARNING', 'ERROR')]
+            [Parameter(Mandatory=$false)]
+            [ValidateSet('DEBUG','INFO','WARN','ERROR','SUCCESS')]
             [string]$Level = 'INFO'
         )
         
-        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-        $logMessage = "[$timestamp] [$Level] $Message"
+        $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        Write-Output "[$Timestamp] [$Level] $Message"
         
         switch ($Level) {
-            'ERROR'   { Write-Error $logMessage }
-            'WARNING' { Write-Warning $logMessage }
-            default   { Write-Host $logMessage }
+            'WARN'  { $script:WarningCount++ }
+            'ERROR' { $script:ErrorCount++ }
         }
     }
 
     function Find-InstallKey {
-        <#
-        .SYNOPSIS
-            Searches for installed software in the Windows registry.
-        #>
         [CmdletBinding()]
         param (
             [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
@@ -180,10 +184,6 @@ begin {
     }
 
     function Get-UserHives {
-        <#
-        .SYNOPSIS
-            Retrieves user profile information including registry hive paths.
-        #>
         param (
             [Parameter(Mandatory = $false)]
             [ValidateSet('AzureAD', 'DomainAndLocal', 'All')]
@@ -268,10 +268,6 @@ begin {
     }
 
     function Set-RegKey {
-        <#
-        .SYNOPSIS
-            Creates or updates a registry key with proper error handling.
-        #>
         param (
             [Parameter(Mandatory = $true)]
             [string]$Path,
@@ -290,7 +286,7 @@ begin {
         if (!(Test-Path -Path $Path)) {
             try {
                 New-Item -Path $Path -Force -ErrorAction Stop | Out-Null
-                Write-Log "Created registry path: $Path"
+                Write-Log "Created registry path: $Path" -Level DEBUG
             }
             catch {
                 Write-Log "Unable to create registry path $Path for $Name: $($_.Exception.Message)" -Level ERROR
@@ -302,12 +298,12 @@ begin {
         
         if ($null -ne $CurrentValue) {
             if ($CurrentValue -eq $Value) {
-                Write-Log "$Path\$Name is already set to '$Value'"
+                Write-Log "$Path\$Name is already set to '$Value'" -Level DEBUG
             }
             else {
                 try {
                     Set-ItemProperty -Path $Path -Name $Name -Value $Value -Force -Confirm:$false -ErrorAction Stop | Out-Null
-                    Write-Log "$Path\$Name changed from $CurrentValue to $Value"
+                    Write-Log "$Path\$Name changed from $CurrentValue to $Value" -Level INFO
                 }
                 catch {
                     Write-Log "Unable to set registry key $Name at $Path: $($_.Exception.Message)" -Level ERROR
@@ -318,7 +314,7 @@ begin {
         else {
             try {
                 New-ItemProperty -Path $Path -Name $Name -Value $Value -PropertyType $PropertyType -Force -Confirm:$false -ErrorAction Stop | Out-Null
-                Write-Log "Set $Path\$Name to $Value"
+                Write-Log "Set $Path\$Name to $Value" -Level INFO
             }
             catch {
                 Write-Log "Unable to create registry key $Name at $Path: $($_.Exception.Message)" -Level ERROR
@@ -328,10 +324,6 @@ begin {
     }
 
     function Test-IsDomainJoined {
-        <#
-        .SYNOPSIS
-            Checks if the computer is joined to a domain.
-        #>
         try {
             if ($PSVersionTable.PSVersion.Major -lt 3) {
                 return (Get-WmiObject -Class Win32_ComputerSystem -ErrorAction Stop).PartOfDomain
@@ -341,16 +333,12 @@ begin {
             }
         }
         catch {
-            Write-Log "Unable to validate whether device is part of a domain: $($_.Exception.Message)" -Level WARNING
+            Write-Log "Unable to validate whether device is part of a domain: $($_.Exception.Message)" -Level WARN
             return $false
         }
     }
 
     function Test-IsDomainController {
-        <#
-        .SYNOPSIS
-            Checks if the computer is a domain controller.
-        #>
         try {
             $OS = if ($PSVersionTable.PSVersion.Major -lt 3) {
                 Get-WmiObject -Class Win32_OperatingSystem -ErrorAction Stop
@@ -362,26 +350,18 @@ begin {
             return ($OS.ProductType -eq 2)
         }
         catch {
-            Write-Log "Unable to validate whether device is a domain controller: $($_.Exception.Message)" -Level WARNING
+            Write-Log "Unable to validate whether device is a domain controller: $($_.Exception.Message)" -Level WARN
             return $false
         }
     }
 
     function Test-IsElevated {
-        <#
-        .SYNOPSIS
-            Checks if the current PowerShell session is running with administrator privileges.
-        #>
         $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
         $p = New-Object System.Security.Principal.WindowsPrincipal($id)
         return $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
     }
 
     function Mount-UserRegistryHive {
-        <#
-        .SYNOPSIS
-            Loads a user's registry hive if not already loaded.
-        #>
         param (
             [Parameter(Mandatory = $true)]
             [PSCustomObject]$UserProfile
@@ -390,11 +370,11 @@ begin {
         if (!(Test-Path -Path "Registry::HKEY_USERS\$($UserProfile.SID)" -ErrorAction SilentlyContinue)) {
             try {
                 Start-Process -FilePath 'cmd.exe' -ArgumentList "/C reg.exe LOAD HKU\$($UserProfile.SID) `"$($UserProfile.UserHive)`"" -Wait -WindowStyle Hidden -ErrorAction Stop
-                Write-Log "Loaded registry hive for user '$($UserProfile.Name)' (SID: $($UserProfile.SID))"
+                Write-Log "Loaded registry hive for user '$($UserProfile.Name)' (SID: $($UserProfile.SID))" -Level DEBUG
                 return $true
             }
             catch {
-                Write-Log "Failed to load registry hive for user '$($UserProfile.Name)': $($_.Exception.Message)" -Level WARNING
+                Write-Log "Failed to load registry hive for user '$($UserProfile.Name)': $($_.Exception.Message)" -Level WARN
                 return $false
             }
         }
@@ -402,10 +382,6 @@ begin {
     }
 
     function Dismount-UserRegistryHive {
-        <#
-        .SYNOPSIS
-            Unloads a user's registry hive.
-        #>
         param (
             [Parameter(Mandatory = $true)]
             [PSCustomObject]$UserProfile
@@ -415,10 +391,10 @@ begin {
             [System.GC]::Collect()
             Start-Sleep -Milliseconds 500
             Start-Process -FilePath 'cmd.exe' -ArgumentList "/C reg.exe UNLOAD HKU\$($UserProfile.SID)" -Wait -WindowStyle Hidden -ErrorAction Stop
-            Write-Log "Unloaded registry hive for user '$($UserProfile.Name)' (SID: $($UserProfile.SID))"
+            Write-Log "Unloaded registry hive for user '$($UserProfile.Name)' (SID: $($UserProfile.SID))" -Level DEBUG
         }
         catch {
-            Write-Log "Failed to unload registry hive for user '$($UserProfile.Name)': $($_.Exception.Message)" -Level WARNING
+            Write-Log "Failed to unload registry hive for user '$($UserProfile.Name)': $($_.Exception.Message)" -Level WARN
         }
     }
 
@@ -431,45 +407,45 @@ begin {
     if ($env:usernameToSetPolicyFor -and $env:usernameToSetPolicyFor -ne 'null') { 
         $UserToSetPolicyFor = $env:usernameToSetPolicyFor 
     }
-    
-    Write-Log '=== Outlook Migration Policy Configuration ==='
-    Write-Log "Migration Policy: $MigrationPolicy"
-    if ($NewOutlookToggle) {
-        Write-Log "New Outlook Toggle: $NewOutlookToggle"
-    }
-    if ($UserToSetPolicyFor) {
-        Write-Log "Target User: $UserToSetPolicyFor"
-    }
 }
 
 process {
     try {
+        Write-Log "========================================" -Level INFO
+        Write-Log "Starting: $ScriptName v$ScriptVersion" -Level INFO
+        Write-Log "========================================" -Level INFO
+        
+        Write-Log "Migration Policy: $MigrationPolicy" -Level INFO
+        if ($NewOutlookToggle) {
+            Write-Log "New Outlook Toggle: $NewOutlookToggle" -Level INFO
+        }
+        if ($UserToSetPolicyFor) {
+            Write-Log "Target User: $UserToSetPolicyFor" -Level INFO
+        }
+        
         if (!(Test-IsElevated)) {
-            Write-Log 'Access Denied. Script must run with Administrator privileges.' -Level ERROR
-            exit 1
+            throw 'Access Denied. Script must run with Administrator privileges.'
         }
         
         if (Test-IsDomainJoined -or Test-IsDomainController) {
-            Write-Log 'This device is joined to a domain. Settings may be overridden by Group Policy.' -Level WARNING
-            Write-Log 'See: https://learn.microsoft.com/en-us/microsoft-365-apps/outlook/get-started/control-install#prevent-users-from-switching-to-new-outlook' -Level WARNING
+            Write-Log 'This device is joined to a domain. Settings may be overridden by Group Policy.' -Level WARN
         }
         
-        Write-Log 'Checking for Office installation...'
+        Write-Log 'Checking for Office installation...' -Level INFO
         $OfficeInstallations = Find-InstallKey -DisplayName 'Office 201'
         $Microsoft365Installations = Find-InstallKey -DisplayName 'Microsoft 365'
         
         if (!$OfficeInstallations -and !$Microsoft365Installations) {
-            Write-Log 'Microsoft Office was not detected on this device.' -Level ERROR
-            exit 1
+            throw 'Microsoft Office was not detected on this device.'
         }
         
-        Write-Log 'Office installation detected.'
+        Write-Log 'Office installation detected.' -Level SUCCESS
         
         if ($UserToSetPolicyFor) {
-            Write-Log "Retrieving user profile for '$UserToSetPolicyFor'..."
+            Write-Log "Retrieving user profile for '$UserToSetPolicyFor'..." -Level INFO
         }
         else {
-            Write-Log 'Gathering all user profiles...'
+            Write-Log 'Gathering all user profiles...' -Level INFO
         }
         
         $UserProfiles = Get-UserHives -Type 'All'
@@ -479,20 +455,19 @@ process {
             
             if (!$ProfileToSet) {
                 Write-Log "No user profile matching '$UserToSetPolicyFor' was found." -Level ERROR
-                Write-Log 'Available user profiles:'
-                $UserProfiles | ForEach-Object { Write-Log "  - $($_.Name) (SID: $($_.SID))" }
-                exit 1
+                Write-Log 'Available user profiles:' -Level INFO
+                $UserProfiles | ForEach-Object { Write-Log "  - $($_.Name) (SID: $($_.SID))" -Level INFO }
+                throw "User profile '$UserToSetPolicyFor' not found"
             }
             
             $UserProfiles = $ProfileToSet
         }
         
         if (!$UserProfiles) {
-            Write-Log 'Failed to retrieve any user profiles.' -Level ERROR
-            exit 1
+            throw 'Failed to retrieve any user profiles.'
         }
         
-        Write-Log "Successfully retrieved $($UserProfiles.Count) user profile(s)."
+        Write-Log "Successfully retrieved $($UserProfiles.Count) user profile(s)." -Level SUCCESS
         
         $ProfileWasLoaded = New-Object System.Collections.Generic.List[PSCustomObject]
         
@@ -518,8 +493,7 @@ process {
                 })
         }
         
-        Write-Log ''
-        Write-Log '=== Setting Outlook Migration Policy ==='
+        Write-Log "Configuring Outlook migration policy..." -Level INFO
         
         foreach ($RegPath in $OutlookMigrationRegistryPaths) {
             $Username = $RegPath.Username
@@ -527,108 +501,93 @@ process {
             try {
                 switch ($MigrationPolicy) {
                     'Enable' { 
-                        Write-Log "Setting migration policy for user '$Username' to ENABLED"
+                        Write-Log "Setting migration policy for user '$Username' to ENABLED" -Level INFO
                         Set-RegKey -Path $RegPath.Path -Name 'NewOutlookMigrationUserSetting' -Value 1
                     }
                     'Disable' { 
-                        Write-Log "Setting migration policy for user '$Username' to DISABLED"
+                        Write-Log "Setting migration policy for user '$Username' to DISABLED" -Level INFO
                         Set-RegKey -Path $RegPath.Path -Name 'NewOutlookMigrationUserSetting' -Value 0
                     }
                     'Default' { 
-                        Write-Log "Resetting migration policy for user '$Username' to DEFAULT"
+                        Write-Log "Resetting migration policy for user '$Username' to DEFAULT" -Level INFO
                         
                         if (Test-Path -Path $RegPath.Path -ErrorAction SilentlyContinue) {
                             $ExistingValue = (Get-ItemProperty -Path $RegPath.Path -ErrorAction SilentlyContinue).NewOutlookMigrationUserSetting
                             
                             if ($null -ne $ExistingValue) {
                                 Remove-ItemProperty -Path $RegPath.Path -Name 'NewOutlookMigrationUserSetting' -ErrorAction Stop
-                                Write-Log "Removed registry key: $($RegPath.Path)\NewOutlookMigrationUserSetting"
+                                Write-Log "Removed registry key: $($RegPath.Path)\NewOutlookMigrationUserSetting" -Level INFO
                             }
                             else {
-                                Write-Log "Registry key already at default for user '$Username'"
+                                Write-Log "Registry key already at default for user '$Username'" -Level DEBUG
                             }
                         }
                         else {
-                            Write-Log "Registry key already at default for user '$Username'"
+                            Write-Log "Registry key already at default for user '$Username'" -Level DEBUG
                         }
                     }
                 }
                 
-                Write-Log "Successfully set migration policy for user '$Username'"
+                Write-Log "Successfully set migration policy for user '$Username'" -Level SUCCESS
             }
             catch {
                 Write-Log "Failed to set migration policy for user '$Username': $($_.Exception.Message)" -Level ERROR
-                $ExitCode = 1
+                $script:ExitCode = 1
             }
         }
         
-        if (!$NewOutlookToggle) {
-            Write-Log ''
-            Write-Log 'New Outlook toggle setting not specified - skipping toggle configuration.'
+        if ($NewOutlookToggle) {
+            Write-Log "Configuring New Outlook toggle visibility..." -Level INFO
             
-            foreach ($UserProfile in $ProfileWasLoaded) {
-                Dismount-UserRegistryHive -UserProfile $UserProfile
-            }
-            
-            if ($ExitCode -eq 0) {
-                Write-Log 'Successfully configured Outlook migration policy.'
-            }
-            exit $ExitCode
-        }
-        
-        Write-Log ''
-        Write-Log '=== Setting New Outlook Toggle Visibility ==='
-        
-        foreach ($RegPath in $NewOutlookToggleRegistryPaths) {
-            $Username = $RegPath.Username
-            
-            try {
-                switch ($NewOutlookToggle) {
-                    'Hide Toggle' { 
-                        Write-Log "Setting toggle for user '$Username' to HIDDEN"
-                        
-                        if (!(Test-Path -Path $RegPath.BasePath)) {
-                            New-Item -Path $RegPath.BasePath -Force -ErrorAction Stop | Out-Null
-                            Write-Log "Created base path: $($RegPath.BasePath)"
-                        }
-                        
-                        Set-RegKey -Path $RegPath.Path -Name 'HideNewOutlookToggle' -Value 1
-                    }
-                    'Show Toggle' { 
-                        Write-Log "Setting toggle for user '$Username' to VISIBLE"
-                        
-                        if (!(Test-Path -Path $RegPath.BasePath)) {
-                            New-Item -Path $RegPath.BasePath -Force -ErrorAction Stop | Out-Null
-                            Write-Log "Created base path: $($RegPath.BasePath)"
-                        }
-                        
-                        Set-RegKey -Path $RegPath.Path -Name 'HideNewOutlookToggle' -Value 0
-                    }
-                    'Default' { 
-                        Write-Log "Resetting toggle for user '$Username' to DEFAULT"
-                        
-                        if (Test-Path -Path $RegPath.Path -ErrorAction SilentlyContinue) {
-                            $ExistingValue = (Get-ItemProperty -Path $RegPath.Path -ErrorAction SilentlyContinue).HideNewOutlookToggle
+            foreach ($RegPath in $NewOutlookToggleRegistryPaths) {
+                $Username = $RegPath.Username
+                
+                try {
+                    switch ($NewOutlookToggle) {
+                        'Hide Toggle' { 
+                            Write-Log "Setting toggle for user '$Username' to HIDDEN" -Level INFO
                             
-                            if ($null -ne $ExistingValue) {
-                                Remove-ItemProperty -Path $RegPath.Path -Name 'HideNewOutlookToggle' -ErrorAction Stop
-                                Write-Log "Removed registry key: $($RegPath.Path)\HideNewOutlookToggle"
+                            if (!(Test-Path -Path $RegPath.BasePath)) {
+                                New-Item -Path $RegPath.BasePath -Force -ErrorAction Stop | Out-Null
+                            }
+                            
+                            Set-RegKey -Path $RegPath.Path -Name 'HideNewOutlookToggle' -Value 1
+                        }
+                        'Show Toggle' { 
+                            Write-Log "Setting toggle for user '$Username' to VISIBLE" -Level INFO
+                            
+                            if (!(Test-Path -Path $RegPath.BasePath)) {
+                                New-Item -Path $RegPath.BasePath -Force -ErrorAction Stop | Out-Null
+                            }
+                            
+                            Set-RegKey -Path $RegPath.Path -Name 'HideNewOutlookToggle' -Value 0
+                        }
+                        'Default' { 
+                            Write-Log "Resetting toggle for user '$Username' to DEFAULT" -Level INFO
+                            
+                            if (Test-Path -Path $RegPath.Path -ErrorAction SilentlyContinue) {
+                                $ExistingValue = (Get-ItemProperty -Path $RegPath.Path -ErrorAction SilentlyContinue).HideNewOutlookToggle
+                                
+                                if ($null -ne $ExistingValue) {
+                                    Remove-ItemProperty -Path $RegPath.Path -Name 'HideNewOutlookToggle' -ErrorAction Stop
+                                    Write-Log "Removed registry key: $($RegPath.Path)\HideNewOutlookToggle" -Level INFO
+                                }
+                                else {
+                                    Write-Log "Registry key already at default for user '$Username'" -Level DEBUG
+                                }
                             }
                             else {
-                                Write-Log "Registry key already at default for user '$Username'"
+                                Write-Log "Registry key already at default for user '$Username'" -Level DEBUG
                             }
                         }
-                        else {
-                            Write-Log "Registry key already at default for user '$Username'"
-                        }
                     }
+                    
+                    Write-Log "Successfully set toggle visibility for user '$Username'" -Level SUCCESS
                 }
-                
-                Write-Log "Successfully set toggle visibility for user '$Username'"
-            }
-            catch {
-                Write-Log "Failed to set toggle visibility for user '$Username': $($_.Exception.Message)" -Level ERROR
-                $ExitCode = 1
+                catch {
+                    Write-Log "Failed to set toggle visibility for user '$Username': $($_.Exception.Message)" -Level ERROR
+                    $script:ExitCode = 1
+                }
             }
         }
         
@@ -636,23 +595,30 @@ process {
             Dismount-UserRegistryHive -UserProfile $UserProfile
         }
         
-        if ($ExitCode -eq 0) {
-            Write-Log ''
-            Write-Log 'Successfully configured all Outlook settings.'
-            Write-Log 'Note: You may need to close and re-open Outlook for changes to take effect.'
+        if ($script:ExitCode -eq 0) {
+            Write-Log 'Successfully configured all Outlook settings.' -Level SUCCESS
         }
         
-        exit $ExitCode
     }
     catch {
-        Write-Log "Unexpected error: $($_.Exception.Message)" -Level ERROR
-        exit 1
+        Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
+        Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
+        $script:ExitCode = 1
     }
 }
 
 end {
-    $executionTime = (Get-Date) - $ScriptStartTime
-    Write-Log "Script execution completed in $($executionTime.TotalSeconds) seconds."
-    
-    [System.GC]::Collect()
+    try {
+        $EndTime = Get-Date
+        $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+        
+        Write-Log "========================================" -Level INFO
+        Write-Log "Execution Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
+        Write-Log "Warnings: $script:WarningCount, Errors: $script:ErrorCount" -Level INFO
+        Write-Log "========================================" -Level INFO
+    }
+    finally {
+        [System.GC]::Collect()
+        exit $script:ExitCode
+    }
 }

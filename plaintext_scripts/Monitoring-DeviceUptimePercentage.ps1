@@ -123,8 +123,8 @@ PARAMETER: -EstimateUnexpectedShutdown
     PSObject
 .NOTES
     Minimum OS Architecture Supported: Windows 8, Windows Server 2012
-    Version: 1.0
-    Release Notes: Initial Release
+    Version: 1.1
+    Release Notes: v3.0.0 - Upgraded to V3.0.0 standards (script-scoped exit code)
 #>
 
 [CmdletBinding()]
@@ -265,7 +265,7 @@ begin {
             throw $CustomField
         }
     }
-    $ExitCode = 0
+    $script:ExitCode = 0
 }
 process {
     if (
@@ -493,7 +493,7 @@ process {
         }
         catch {
             Write-Host "[Error] $($_.Message)"
-            $ExitCode = 1
+            $script:ExitCode = 1
         }
     }
 
@@ -517,15 +517,14 @@ process {
         }
         catch {
             Write-Host "[Error] $($_.Message)"
-            $ExitCode = 1
+            $script:ExitCode = 1
         }
     }
 
-    exit $ExitCode
+    exit $script:ExitCode
 }
 end {
     
     
     
 }
-

@@ -1,41 +1,110 @@
-$sourceFile = $env:sourceFileOrFolder
-$copyToPublic = $env:copyToPublicDesktop
+#Requires -Version 5.1
+Set-StrictMode -Version Latest
 
-if(-not (Test-Path -LiteralPath $sourceFile)){
-    Write-Host "Source file not found : '$sourceFile'"
-    exit 1
-}
+<#
+.SYNOPSIS
+    Copies file to all user desktops.
+.DESCRIPTION
+    Copies a file to all user desktop folders including OneDrive desktops.
+    Optionally includes public desktop.
+.EXAMPLE
+    $env:sourceFileOrFolder = 'C:\file.txt'
+    $env:copyToPublicDesktop = 'true'
+    Copies file to all user desktops including public.
+.OUTPUTS
+    None
+.NOTES
+    Minimum OS Architecture Supported: Windows 10
+    Release Notes: Refactored to V3.0 standards with Write-Log function
+#>
 
-$userprofiles = Get-ChildItem 'C:\Users' -Directory
+[CmdletBinding()]
+param ()
 
-if($copyToPublic -eq 'false'){
-    $userprofiles = Get-ChildItem 'C:\Users' -Directory | Where-Object {
-        $_.Name -notin @('All Users', 'Default', 'Default User', 'Public')
+begin {
+    $StartTime = Get-Date
+
+    function Write-Log {
+        param(
+            [string]$Message,
+            [ValidateSet('Info', 'Warning', 'Error')]
+            [string]$Level = 'Info'
+        )
+        $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $Output = "[$Timestamp] [$Level] $Message"
+        Write-Host $Output
     }
+
+    $SourceFile = $env:sourceFileOrFolder
+    $CopyToPublic = $env:copyToPublicDesktop
 }
 
-foreach ($userprofile in $userprofiles)
-{
-    $desktopPath = Join-Path $userprofile.FullName 'Desktop'
+process {
+    if (-not (Test-Path -LiteralPath $SourceFile)) {
+        Write-Log "Source file not found: $SourceFile" -Level Error
+        exit 1
+    }
 
-    if(Test-Path -LiteralPath $desktopPath -PathType Container) {
-        try{
-            Copy-Item -LiteralPath $sourceFile -Destination $desktopPath -Force -ErrorAction Stop
-            Write-Host "Copies sourcefile: '$sourcefile' to desktopPath '$desktopPath'"
-        } catch {
-            Write-Host "Failed to copy to standard desktop: '$desktopPath': $($_.Exception.Message)"
+    Write-Log "Source file: $SourceFile"
+
+    $UserProfiles = if ($CopyToPublic -eq 'false') {
+        Write-Log "Excluding public desktop"
+        Get-ChildItem 'C:\Users' -Directory | Where-Object {
+            $_.Name -notin @('All Users', 'Default', 'Default User', 'Public')
         }
     }
+    else {
+        Write-Log "Including public desktop"
+        Get-ChildItem 'C:\Users' -Directory
+    }
 
-    $oneDriveDesktop = Join-Path $userprofile.FullName 'OneDrive - MöllerGroup GmbH\Desktop'
-        if(Test-Path -LiteralPath $oneDriveDesktop -PathType Container) {
-            try{
-                Copy-Item -LiteralPath $sourceFile -Destination $oneDriveDesktop -Force
-                Write-Host "Copies sourcefile: '$sourcefile' to onedriveDesktop '$oneDriveDesktop'"
-            } catch {
-                Write-Host "Failed to copy to onedriveDesktop: '$oneDriveDesktop': $($_.Exception.Message)"
+    $SuccessCount = 0
+    $FailureCount = 0
+
+    foreach ($UserProfile in $UserProfiles) {
+        $DesktopPath = Join-Path $UserProfile.FullName 'Desktop'
+
+        if (Test-Path -LiteralPath $DesktopPath -PathType Container) {
+            try {
+                Copy-Item -LiteralPath $SourceFile -Destination $DesktopPath -Force -ErrorAction Stop
+                Write-Log "Copied to: $DesktopPath"
+                $SuccessCount++
+            }
+            catch {
+                Write-Log "Failed to copy to $DesktopPath : $_" -Level Warning
+                $FailureCount++
+            }
+        }
+
+        $OneDriveDesktop = Join-Path $UserProfile.FullName 'OneDrive - MöllerGroup GmbH\Desktop'
+        if (Test-Path -LiteralPath $OneDriveDesktop -PathType Container) {
+            try {
+                Copy-Item -LiteralPath $SourceFile -Destination $OneDriveDesktop -Force -ErrorAction Stop
+                Write-Log "Copied to OneDrive: $OneDriveDesktop"
+                $SuccessCount++
+            }
+            catch {
+                Write-Log "Failed to copy to OneDrive desktop $OneDriveDesktop : $_" -Level Warning
+                $FailureCount++
             }
         }
     }
 
-exit 0
+    Write-Log "Copy completed: $SuccessCount successful, $FailureCount failed"
+
+    if ($SuccessCount -eq 0) {
+        Write-Log "No files were copied successfully" -Level Error
+        exit 1
+    }
+}
+
+end {
+    $EndTime = Get-Date
+    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+    Write-Log "Script execution completed in $ExecutionTime seconds"
+    
+    [System.GC]::Collect()
+    [System.GC]::WaitForPendingFinalizers()
+    
+    exit 0
+}

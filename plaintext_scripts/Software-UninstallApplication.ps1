@@ -1,4 +1,5 @@
 #Requires -Version 5.1
+#Requires -RunAsAdministrator
 
 <#
 .SYNOPSIS
@@ -59,9 +60,9 @@
     Uninstalls VLC media player using its registry UninstallString.
     
     Output:
-    Beginning uninstall of VLC media player using MsiExec.exe /X{GUID} /qn /norestart...
-    Exit Code for VLC media player: 0
-    Successfully uninstalled your requested apps!
+    [2026-02-10 21:00:00] [INFO] Beginning uninstall of VLC media player using MsiExec.exe /X{GUID} /qn /norestart...
+    [2026-02-10 21:00:30] [INFO] Exit code for VLC media player: 0
+    [2026-02-10 21:01:00] [SUCCESS] Successfully uninstalled your requested apps!
 
 .EXAMPLE
     .\Software-UninstallApplication.ps1 -Name "7-Zip 23.01 (x64)" -Timeout 5
@@ -74,13 +75,15 @@
     Uninstalls Adobe Reader with custom silent argument and schedules reboot after completion.
 
 .NOTES
-    Script Name:    Software-UninstallApplication.ps1
-    Author:         Windows Automation Framework
-    Version:        3.0
-    Creation Date:  2024-01-15
-    Last Modified:  2026-02-10
-    
-    Minimum OS: Windows 10, Windows Server 2016
+    File Name      : Software-UninstallApplication.ps1
+    Prerequisite   : PowerShell 5.1 or higher, Administrator privileges
+    Minimum OS     : Windows 10, Windows Server 2016
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: Complete V3 standards implementation with proper error handling
+    - 2.0: Added timeout and multi-app support
+    - 1.0: Initial release
     
     Execution Context: SYSTEM or Administrator required
     Execution Frequency: As needed (software removal)
@@ -90,16 +93,18 @@
     User Interaction: NONE (runs silently)
     Restart Behavior: Optional via -Reboot parameter
     
-    NinjaRMM Fields Updated: None
+    Fields Updated: None
     
     Dependencies:
         - Administrator privileges (mandatory)
         - Target application must be installed
         - UninstallString must exist in registry
     
-    Exit Codes:
-        0 - Application(s) successfully uninstalled
-        1 - Access denied, app not found, timeout exceeded, or uninstall failed
+    Environment Variables (Optional):
+        - nameOfAppToUninstall: Alternative to -Name parameter
+        - arguments: Alternative to -Arguments parameter
+        - timeoutInMinutes: Alternative to -Timeout parameter
+        - reboot: Alternative to -Reboot switch
 
 .LINK
     https://github.com/Xore/waf
@@ -125,27 +130,31 @@ begin {
     $ProgressPreference = 'SilentlyContinue'
     Set-StrictMode -Version Latest
     
-    $ScriptVersion = "3.0"
+    $ScriptVersion = "3.0.0"
     $ScriptName = "Software-UninstallApplication"
     $StartTime = Get-Date
+    $script:ExitCode = 0
+    $script:ErrorCount = 0
+    $script:WarningCount = 0
     
     function Write-Log {
+        [CmdletBinding()]
         param(
             [Parameter(Mandatory=$true)]
             [string]$Message,
             
             [Parameter(Mandatory=$false)]
-            [ValidateSet('INFO', 'WARNING', 'ERROR')]
+            [ValidateSet('DEBUG', 'INFO', 'WARN', 'ERROR', 'SUCCESS')]
             [string]$Level = 'INFO'
         )
         
-        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-        $logMessage = "[$timestamp] [$Level] $Message"
+        $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $LogMessage = "[$Timestamp] [$Level] $Message"
+        Write-Output $LogMessage
         
         switch ($Level) {
-            'ERROR'   { Write-Error $logMessage }
-            'WARNING' { Write-Warning $logMessage }
-            default   { Write-Host $logMessage }
+            'WARN'  { $script:WarningCount++ }
+            'ERROR' { $script:ErrorCount++; $script:ExitCode = 1 }
         }
     }
     
@@ -230,61 +239,59 @@ begin {
             }
         }
     }
-    
-    Write-Log "Starting $ScriptName v$ScriptVersion"
-    
-    # Override with environment variables
-    if ($env:nameOfAppToUninstall -and $env:nameOfAppToUninstall -notlike "null") { 
-        $Name = $env:nameOfAppToUninstall 
-        Write-Log "Using application name from environment: $Name"
-    }
-    if ($env:arguments -and $env:arguments -notlike "null") { 
-        $Arguments = $env:arguments 
-        Write-Log "Using custom arguments from environment: $Arguments"
-    }
-    if ($env:timeoutInMinutes -and $env:timeoutInMinutes -notlike "null") { 
-        $Timeout = $env:timeoutInMinutes 
-        Write-Log "Using timeout from environment: $Timeout minutes"
-    }
-    
-    # Validate parameters
-    if (-not $Name) {
-        Write-Log "No name given, please enter in the name of an app to uninstall!" "ERROR"
-        exit 1
-    }
-    
-    if (-not $Timeout) {
-        Write-Log "No timeout given!" "ERROR"
-        Write-Log "Please enter in a timeout that's greater than or equal to 1 minute or less than or equal to 60 minutes." "ERROR"
-        exit 1
-    }
-    
-    if ($Timeout -lt 1 -or $Timeout -gt 60) {
-        Write-Log "An invalid timeout was given of $Timeout minutes." "ERROR"
-        Write-Log "Please enter in a timeout that's greater than or equal to 1 minute or less than or equal to 60 minutes." "ERROR"
-        exit 1
-    }
-    
-    # Parse application names
-    $AppNames = New-Object System.Collections.Generic.List[String]
-    $Name -split ',' | ForEach-Object {
-        $AppNames.Add($_.Trim())
-    }
-    
-    Write-Log "Applications to uninstall: $($AppNames -join ', ')"
-    Write-Log "Timeout: $Timeout minutes"
-    
-    $ExitCode = 0
 }
 
 process {
     try {
-        if (-not (Test-IsElevated)) {
-            Write-Log "Access Denied. Please run with Administrator privileges." "ERROR"
-            exit 1
+        Write-Log "========================================" -Level INFO
+        Write-Log "Starting: $ScriptName v$ScriptVersion" -Level INFO
+        Write-Log "========================================" -Level INFO
+        
+        # Override with environment variables
+        if ($env:nameOfAppToUninstall -and $env:nameOfAppToUninstall -notlike "null") { 
+            $Name = $env:nameOfAppToUninstall 
+            Write-Log "Using application name from environment: $Name" -Level INFO
+        }
+        if ($env:arguments -and $env:arguments -notlike "null") { 
+            $Arguments = $env:arguments 
+            Write-Log "Using custom arguments from environment: $Arguments" -Level INFO
+        }
+        if ($env:timeoutInMinutes -and $env:timeoutInMinutes -notlike "null") { 
+            $Timeout = $env:timeoutInMinutes 
+            Write-Log "Using timeout from environment: $Timeout minutes" -Level INFO
         }
         
-        Write-Log "Loading user registry hives..."
+        # Validate parameters
+        if (-not $Name) {
+            Write-Log "No application name provided" -Level ERROR
+            throw "Application name is required"
+        }
+        
+        if (-not $Timeout) {
+            Write-Log "No timeout given" -Level ERROR
+            throw "Timeout must be between 1 and 60 minutes"
+        }
+        
+        if ($Timeout -lt 1 -or $Timeout -gt 60) {
+            Write-Log "Invalid timeout of $Timeout minutes" -Level ERROR
+            throw "Timeout must be between 1 and 60 minutes"
+        }
+        
+        # Parse application names
+        $AppNames = New-Object System.Collections.Generic.List[String]
+        $Name -split ',' | ForEach-Object {
+            $AppNames.Add($_.Trim())
+        }
+        
+        Write-Log "Applications to uninstall: $($AppNames -join ', ')" -Level INFO
+        Write-Log "Timeout: $Timeout minutes" -Level INFO
+        
+        if (-not (Test-IsElevated)) {
+            Write-Log "Administrator privileges required" -Level ERROR
+            throw "Access denied"
+        }
+        
+        Write-Log "Loading user registry hives..." -Level INFO
         $UserProfiles = Get-UserHives -Type "All"
         $ProfileWasLoaded = New-Object System.Collections.Generic.List[string]
         
@@ -295,25 +302,26 @@ process {
             }
         }
         
-        Write-Log "Searching for applications in registry..."
+        Write-Log "Searching for applications in registry..." -Level INFO
         $SimilarAppsToName = $AppNames | ForEach-Object { Find-UninstallKey -DisplayName $_ -UninstallString }
         
         if (-not $SimilarAppsToName) {
-            Write-Log "The requested app(s) was not found and none were found that are similar!" "ERROR"
-            exit 1
+            Write-Log "Requested applications not found in registry" -Level ERROR
+            throw "Applications not found"
         }
         
         # Unload hives
         ForEach ($UserHive in $ProfileWasLoaded) {
-            If ($ProfileWasLoaded -eq $false) {
-                [gc]::Collect()
-                Start-Sleep 1
-                Start-Process -FilePath "cmd.exe" -ArgumentList "/C reg.exe UNLOAD HKU\$($UserHive)" -Wait -WindowStyle Hidden | Out-Null
-            }
+            [gc]::Collect()
+            Start-Sleep -Milliseconds 500
+            Start-Process -FilePath "cmd.exe" -ArgumentList "/C reg.exe UNLOAD HKU\$($UserHive)" -Wait -WindowStyle Hidden | Out-Null
         }
         
         # Find exact matches
         $AppsToUninstall = New-Object System.Collections.Generic.List[Object]
+        $ExactMatch = $false
+        $UninstallStringFound = $false
+        
         $SimilarAppsToName | ForEach-Object {
             foreach ($AppName in $AppNames) {
                 if ($AppName -eq $_.DisplayName) {
@@ -321,37 +329,37 @@ process {
                     if ($_.UninstallString) {
                         $UninstallStringFound = $True
                         $AppsToUninstall.Add($_)
-                        Write-Log "Found: $($_.DisplayName)"
+                        Write-Log "Found: $($_.DisplayName)" -Level INFO
                     }
                 }
             }
         }
         
         if (-not $ExactMatch) {
-            Write-Log "Your requested apps were not found. Please see the below list and try again." "ERROR"
-            $SimilarAppsToName | ForEach-Object { Write-Log "  - $($_.DisplayName)" }
-            exit 1
+            Write-Log "Requested applications not found. Similar apps:" -Level ERROR
+            $SimilarAppsToName | ForEach-Object { Write-Log "  - $($_.DisplayName)" -Level INFO }
+            throw "Exact match not found"
         }
         
         if (-not $UninstallStringFound) {
-            Write-Log "No uninstall string found for any of your requested apps!" "ERROR"
-            exit 1
+            Write-Log "No uninstall string found for requested apps" -Level ERROR
+            throw "UninstallString missing"
         }
         
         # Check for missing apps
         $AppNames | ForEach-Object {
             if ($AppsToUninstall.DisplayName -notcontains $_) {
-                Write-Log "Either the uninstall string was not present or the app itself was not found for: $_" "ERROR"
-                $ExitCode = 1
+                Write-Log "UninstallString missing or app not found: $_" -Level ERROR
             }
         }
         
         $TimeoutInSeconds = $Timeout * 60
-        $StartTime = Get-Date
+        $UninstallStartTime = Get-Date
         
         # Process each app
         $AppsToUninstall | ForEach-Object {
             $AdditionalArguments = New-Object System.Collections.Generic.List[String]
+            $Executable = $null
             
             if($_.UninstallString -match "msiexec"){
                 $Executable = "msiexec.exe"
@@ -362,8 +370,7 @@ process {
             }
             
             if(-not $Executable){
-                Write-Log "Unable to find uninstall executable for $($_.DisplayName)!" "ERROR"
-                $ExitCode = 1
+                Write-Log "Unable to find uninstall executable for $($_.DisplayName)" -Level ERROR
                 return
             }
             
@@ -400,7 +407,7 @@ process {
                 }
             }
             
-            Write-Log "Beginning uninstall of $($_.DisplayName) using $Executable $($AdditionalArguments -join ' ')..."
+            Write-Log "Beginning uninstall of $($_.DisplayName) using $Executable $($AdditionalArguments -join ' ')..." -Level INFO
             
             try{
                 if ($AdditionalArguments) {
@@ -410,32 +417,29 @@ process {
                     $Uninstall = Start-Process $Executable -NoNewWindow -PassThru
                 }
             }catch{
-                Write-Log "Failed to start uninstall process: $($_.Exception.Message)" "ERROR"
-                $ExitCode = 1
+                Write-Log "Failed to start uninstall process: $($_.Exception.Message)" -Level ERROR
                 return
             }
             
-            $TimeElapsed = (Get-Date) - $StartTime
+            $TimeElapsed = (Get-Date) - $UninstallStartTime
             $RemainingTime = $TimeoutInSeconds - $TimeElapsed.TotalSeconds
             
             try {
                 $Uninstall | Wait-Process -Timeout $RemainingTime -ErrorAction Stop
             }
             catch {
-                Write-Log "The uninstall process for $($_.DisplayName) has exceeded the specified timeout of $Timeout minutes." "WARNING"
-                Write-Log "Terminating process..." "WARNING"
+                Write-Log "Uninstall process for $($_.DisplayName) exceeded timeout of $Timeout minutes" -Level WARN
+                Write-Log "Terminating process..." -Level WARN
                 $Uninstall | Stop-Process -Force
-                $ExitCode = 1
             }
             
-            Write-Log "Exit code for $($_.DisplayName): $($Uninstall.ExitCode)"
+            Write-Log "Exit code for $($_.DisplayName): $($Uninstall.ExitCode)" -Level INFO
             if ($Uninstall.ExitCode -ne 0) {
-                Write-Log "Exit code does not indicate success!" "ERROR"
-                $ExitCode = 1
+                Write-Log "Non-zero exit code detected" -Level ERROR
             }
         }
         
-        Write-Log "Waiting 30 seconds before verification..."
+        Write-Log "Waiting 30 seconds before verification..." -Level INFO
         Start-Sleep -Seconds 30
         
         # Reload hives for verification
@@ -449,48 +453,58 @@ process {
             }
         }
         
-        Write-Log "Verifying uninstallation..."
+        Write-Log "Verifying uninstallation..." -Level INFO
         $SimilarAppsToName = $AppNames | ForEach-Object { Find-UninstallKey -DisplayName $_ }
+        $UninstallFailure = $false
+        
         $SimilarAppsToName | ForEach-Object {
             foreach ($AppName in $AppNames) {
                 if ($_.DisplayName -eq $AppName) {
-                    Write-Log "Failed to uninstall $($_.DisplayName)." "ERROR"
+                    Write-Log "Failed to uninstall $($_.DisplayName)" -Level ERROR
                     $UninstallFailure = $True
-                    $ExitCode = 1
                 }
             }
         }
         
         # Unload hives
         ForEach ($UserHive in $ProfileWasLoaded) {
-            If ($ProfileWasLoaded -eq $false) {
-                [gc]::Collect()
-                Start-Sleep 1
-                Start-Process -FilePath "cmd.exe" -ArgumentList "/C reg.exe UNLOAD HKU\$($UserHive)" -Wait -WindowStyle Hidden | Out-Null
-            }
+            [gc]::Collect()
+            Start-Sleep -Milliseconds 500
+            Start-Process -FilePath "cmd.exe" -ArgumentList "/C reg.exe UNLOAD HKU\$($UserHive)" -Wait -WindowStyle Hidden | Out-Null
         }
         
         if (-not $UninstallFailure) {
-            Write-Log "Successfully uninstalled your requested apps!"
+            Write-Log "Successfully uninstalled all requested applications" -Level SUCCESS
         }
         
         if ($Reboot -and -not $UninstallFailure) {
-            Write-Log "A reboot was requested. Scheduling restart for 60 seconds from now..." "WARNING"
+            Write-Log "Reboot requested. Scheduling restart for 60 seconds from now..." -Level WARN
             Start-Process shutdown.exe -ArgumentList "/r /t 60" -Wait -NoNewWindow
         }
         
-        exit $ExitCode
     }
     catch {
-        Write-Log "An unexpected error occurred: $($_.Exception.Message)" "ERROR"
-        exit 1
+        Write-Log "Script execution failed: $($_.Exception.Message)" -Level ERROR
+        Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
+        $script:ExitCode = 1
     }
 }
 
 end {
-    if ($StartTime) {
-        $executionTime = (Get-Date) - $StartTime
-        Write-Log "Script execution time: $($executionTime.TotalSeconds) seconds"
+    try {
+        $EndTime = Get-Date
+        $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+        
+        Write-Log "========================================" -Level INFO
+        Write-Log "Execution Summary:" -Level INFO
+        Write-Log "  Duration: $($ExecutionTime.ToString('F2')) seconds" -Level INFO
+        Write-Log "  Errors: $script:ErrorCount" -Level INFO
+        Write-Log "  Warnings: $script:WarningCount" -Level INFO
+        Write-Log "  Exit Code: $script:ExitCode" -Level INFO
+        Write-Log "========================================" -Level INFO
     }
-    [System.GC]::Collect()
+    finally {
+        [System.GC]::Collect()
+        exit $script:ExitCode
+    }
 }

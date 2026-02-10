@@ -42,7 +42,7 @@
 
 .NOTES
     Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Release notes: Initial release for WAF v3.0
+    Release notes: v3.0.0 - Upgraded to V3.0.0 standards (script-scoped exit code)
     
 .COMPONENT
     ADSI - Active Directory Service Interfaces for local group queries
@@ -95,7 +95,7 @@ begin {
         }
     }
 
-    $ExitCode = 0
+    $script:ExitCode = 0
 }
 
 process {
@@ -127,7 +127,7 @@ process {
             if ($ExpectedList -notcontains $Member.Name) {
                 Write-Host "[Alert] Unknown administrator found: $($Member.Name)"
                 $UnknownAdmins += $Member.Name
-                $ExitCode = 1
+                $script:ExitCode = 1
             }
         }
 
@@ -149,16 +149,16 @@ process {
             }
             catch {
                 Write-Host "[Error] Failed to save to custom field: $_"
-                $ExitCode = 1
+                $script:ExitCode = 1
             }
         }
     }
     catch {
         Write-Host "[Error] Failed to check administrators: $_"
-        $ExitCode = 1
+        $script:ExitCode = 1
     }
 
-    exit $ExitCode
+    exit $script:ExitCode
 }
 
 end {

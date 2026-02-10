@@ -1,20 +1,21 @@
 # WAF V3.0 Refactoring Progress
 
-**Last Updated:** 2026-02-10 18:50 CET
+**Last Updated:** 2026-02-10 18:55 CET
 
 ## Overview
 
 **Total Scripts:** 219  
-**Completed:** 84 (38.4%)  
-**Remaining:** 135
+**Completed:** 85 (38.8%)  
+**Remaining:** 134
 
 ## Completion Status by Category
 
-### Active Directory (4/17 = 23.5%)
+### Active Directory (5/17 = 29.4%)
 - [x] ActiveDirectory-GetGroupMembers.ps1 (V3.0.0)
 - [x] ActiveDirectory-GetUserInfo.ps1 (V3.0.0)
 - [x] ActiveDirectory-AddUserToGroup.ps1 (V3.0.0)
 - [x] AD-RemoveComputerFromDomain.ps1 (V3.0.0)
+- [x] AD-GetOUMembers.ps1 (V3.0.0)
 
 ### Audit (15/15 = 100%)
 - [x] Audit-BitLockerStatus.ps1
@@ -139,50 +140,34 @@ Each completed script includes:
 - [x] Proper exit codes (0=success, 1=failure, 2=alert)
 - [x] No checkmark/cross emoji characters in output
 
-## Recent Session Progress (2026-02-10 18:40-18:50 CET)
+## Recent Session Progress (2026-02-10 18:40-18:55 CET)
 
-### Batch 81-84
+### Batch 81-85
 1. [AD-RemoveComputerFromDomain.ps1](https://github.com/Xore/waf/commit/44d491648a74ca7543234944863e3a3f30e03e8f) - Upgraded V3.0 to V3.0.0
-   - Added Set-StrictMode -Version Latest
-   - Implemented begin/process/end blocks
-   - Enhanced logging with Write-Log function
-   - Added garbage collection in end block
-   - Improved credential security handling
-
 2. [Windows-CheckWin11UpgradeCompatibility.ps1](https://github.com/Xore/waf/commit/f473007ccfff9bc03c7e3811700f55cf3be46474) - Upgraded V3.0 to V3.0.0
-   - Added Set-StrictMode and structured error handling
-   - Implemented begin/process/end blocks
-   - Added Write-Log function for structured logging
-   - Maintained Microsoft's official hardware validation logic
-   - Enhanced output formatting and metrics
-
 3. [WindowsUpdate-ListAllUpdates.ps1](https://github.com/Xore/waf/commit/5623cb25a45302fb7c272783adb2648e9393e2ae) - Complete rewrite to V3.0.0
-   - Converted from German to English
-   - Complete refactor with V3.0.0 standards
-   - Fixed PSWindowsUpdate installation logic
-   - Enhanced HTML table generation
-   - Added comprehensive error handling
-   - Improved logging and reporting
-
 4. [Security-UnencryptedDiskAlert.ps1](https://github.com/Xore/waf/commit/0ea1b4a01b3b7bc902ecb5c77562a79797d40d37) - Upgraded V3.0 to V3.0.0
-   - Added Set-StrictMode for stricter code validation
+5. [AD-GetOUMembers.ps1](https://github.com/Xore/waf/commit/82ba92baa0d1ce050f075c4aea0add0bf56cde2e) - Upgraded V2.0 to V3.0.0
+   - Added Set-StrictMode for stricter validation
    - Implemented begin/process/end blocks
-   - Enhanced error handling with proper exit codes (0/1/2)
+   - Enhanced error handling with proper exit codes
    - Added garbage collection in end block
-   - Maintained BitLocker detection functionality
+   - Improved logging and execution metrics
+   - Maintained all original AD query functionality
 
 ## Session Summary
 
-**Scripts Refactored This Session:** 4  
-**Total Progress:** 84/219 (38.4%)  
-**Categories Started:** Security (1 script)  
+**Scripts Refactored This Session:** 5  
+**Total Progress:** 85/219 (38.8%)  
+**Active Directory:** 5/17 (29.4%)  
+**V2.0 to V3.0.0 Upgrades:** 1  
 **V3.0 to V3.0.0 Upgrades:** 3  
 **Complete Rewrites:** 1  
 
 ### Key Improvements
-- Upgraded 3 scripts from V3.0 to V3.0.0 standards
+- Upgraded 1 script from V2.0 to V3.0.0
+- Upgraded 3 scripts from V3.0 to V3.0.0
 - Complete rewrite of 1 legacy script (German to English)
-- Started Security category with BitLocker monitoring
 - All scripts now have Set-StrictMode and begin/process/end structure
 - Enhanced error handling and exit code strategies
 - Proper cleanup with garbage collection

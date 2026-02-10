@@ -1,4 +1,5 @@
 #Requires -Version 5.1
+Set-StrictMode -Version Latest
 
 <#
 .SYNOPSIS
@@ -35,7 +36,7 @@
 
 .NOTES
     Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Release notes: Initial release for WAF v3.0
+    Release notes: Refactored to V3.0 standards with Write-Log function
     
 .COMPONENT
     Registry - HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI
@@ -58,6 +59,19 @@ param(
 )
 
 begin {
+    $StartTime = Get-Date
+
+    function Write-Log {
+        param(
+            [string]$Message,
+            [ValidateSet('Info', 'Warning', 'Error')]
+            [string]$Level = 'Info'
+        )
+        $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $Output = "[$Timestamp] [$Level] $Message"
+        Write-Host $Output
+    }
+
     if ($env:saveToCustomField -and $env:saveToCustomField -notlike "null") {
         $SaveToCustomField = $env:saveToCustomField
     }
@@ -85,7 +99,7 @@ begin {
 
 process {
     try {
-        Write-Host "[Info] Retrieving last logged on user..."
+        Write-Log "Retrieving last logged on user..."
         
         $RegPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI"
         
@@ -100,30 +114,36 @@ process {
                 $LastLoggedOnUser = $LastLoggedOnUser.Split('\')[-1]
             }
             
-            Write-Host "[Info] Last logged on user: $LastLoggedOnUser"
+            Write-Log "Last logged on user: $LastLoggedOnUser"
 
             if ($SaveToCustomField) {
                 try {
                     $LastLoggedOnUser | Set-NinjaProperty -Name $SaveToCustomField
-                    Write-Host "[Info] Result saved to custom field '$SaveToCustomField'"
+                    Write-Log "Result saved to custom field '$SaveToCustomField'"
                 }
                 catch {
-                    Write-Host "[Error] Failed to save to custom field: $_"
+                    Write-Log "Failed to save to custom field: $_" -Level Error
                     $ExitCode = 1
                 }
             }
         }
         else {
-            Write-Host "[Info] No user has logged on to this system yet"
+            Write-Log "No user has logged on to this system yet"
         }
     }
     catch {
-        Write-Host "[Error] Failed to retrieve last logged on user: $_"
+        Write-Log "Failed to retrieve last logged on user: $_" -Level Error
         $ExitCode = 1
     }
-
-    exit $ExitCode
 }
 
 end {
+    $EndTime = Get-Date
+    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+    Write-Log "Script execution completed in $ExecutionTime seconds"
+    
+    [System.GC]::Collect()
+    [System.GC]::WaitForPendingFinalizers()
+    
+    exit $ExitCode
 }

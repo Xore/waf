@@ -1,94 +1,127 @@
-#Requires -Version 4.0
+#Requires -Version 5.1
 
 <#
 .SYNOPSIS
-    Runs an nmap scan to find rogue dhcp servers on a network. This script will not install nmap and nmap is required for this script to work.
+    Scans network for rogue DHCP servers using Nmap.
+
 .DESCRIPTION
-    Runs an nmap scan to find rogue dhcp servers on a network. This script will not install nmap and nmap is required for this script to work.
+    This script uses Nmap to scan the local network subnet(s) for active DHCP servers listening 
+    on UDP port 67. It compares discovered DHCP servers against a list of allowed/authorized 
+    servers and alerts if rogue DHCP servers are detected.
+    
+    Rogue DHCP servers can cause serious network disruptions by providing incorrect IP 
+    configurations to clients. This script helps detect unauthorized DHCP services.
+    
+    Note: This script requires Nmap to be installed separately. It will not install Nmap.
+
+.PARAMETER AllowedServers
+    Array of IP addresses for authorized DHCP servers.
+
+.PARAMETER CustomField
+    Name of custom field to save rogue DHCP server report.
+    Default: rogueDHCPServers
+
+.PARAMETER AllowedServersField
+    Name of custom field to retrieve allowed DHCP servers from.
+    Default: allowedDHCPServers
+
 .EXAMPLE
-    (No Parameters)
+    .\DHCP-FindRogueServersNmap.ps1 -AllowedServers "172.17.240.1","172.17.242.10"
     
     DHCP Servers found.
-
     Mac Address       IP Address    
-    -----------       ----------    
-    00:15:5D:FF:93:C3 172.17.240.1  
-                      172.17.242.16 
-    00:15:5D:45:D5:07 172.17.251.231
+    00:15:5D:FF:93:C3 172.17.240.1
+    No rogue dhcp servers found.
 
-
-
-    Checking allowed servers list...
-    C:\ProgramData\NinjaRMMAgent\scripting\customscript_gen_14.ps1 : Rogue DHCP Server Found! 172.17.240.1 is not on the 
-    list of allowed DHCP Servers.
-        + CategoryInfo          : NotSpecified: (:) [Write-Error], WriteErrorException
-        + FullyQualifiedErrorId : Microsoft.PowerShell.Commands.WriteErrorException,customscript_gen_14.ps1
-
-PARAMETER: -AllowedServers "172.17.240.1"
-    Lists 172.17.240.1 as an allowed dhcp server.
-
-PARAMETER: -CustomField "ReplaceMeWithAnyMultilineCustomField"
-    Output results to a custom field of your choice.
-
-PARAMETER: -AllowedServersField "ReplaceMeWithAnyTextCustomField"
-    Will retrieve a list of allowed servers from a custom field.
+.EXAMPLE
+    .\DHCP-FindRogueServersNmap.ps1 -AllowedServersField "allowedDHCP"
     
+    Retrieves allowed servers from custom field and scans for rogues.
+
 .OUTPUTS
-    None
+    None. Status information is written to the console and optionally to a custom field.
+
 .NOTES
-    Minimum Supported OS: Windows 8, Server 2012
-    Version: 1.0
-    Release Notes: Initial Release
+    File Name      : DHCP-FindRogueServersNmap.ps1
+    Prerequisite   : PowerShell 5.1 or higher, Nmap installed
+    Minimum OS     : Windows 10, Windows Server 2016
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: Upgraded to V3 standards with Write-Log function and execution tracking
+    - 1.0: Initial release
+    
+.LINK
+    https://nmap.org/download.html
 #>
 
 [CmdletBinding()]
 param (
     [Parameter()]
     [String[]]$AllowedServers,
+    
     [Parameter()]
     [String]$CustomField = "rogueDHCPServers",
+    
     [Parameter()]
     [String]$AllowedServersField = "allowedDHCPServers"
 )
 
 begin {
+    $ErrorActionPreference = 'Stop'
+    $ProgressPreference = 'SilentlyContinue'
+    $StartTime = Get-Date
+    
+    Set-StrictMode -Version Latest
 
-    # If script variables are used set them here
-    if($env:allowedServersCustomField -and $env:allowedServersCustomField -notlike "null"){
-        $AllowedServersField = $env:allowedServersCustomField
+    function Write-Log {
+        param([string]$Message, [string]$Level = 'INFO')
+        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $logMessage = "[$timestamp] [$Level] $Message"
+        
+        switch ($Level) {
+            'ERROR' { Write-Error $logMessage }
+            'WARNING' { Write-Warning $logMessage }
+            default { Write-Output $logMessage }
+        }
     }
 
-    if($AllowedServersField -and -not ($AllowedServers)){
-        $AllowedServers = (Ninja-Property-Get $AllowedServersField) -split ',' | ForEach-Object { ($_).trim() }
-    }
-
-    if($env:allowedServers -and $env:allowedServers -notlike "null"){
-        $AllowedServers = $env:AllowedServers -split ',' | ForEach-Object { ($_).trim() }
-    }
-
-    if($env:customFieldName -and $env:customFieldName -notlike "null"){
-        $CustomField = $env:customFieldName 
-    }
-
-    # Parses out the subnet info into cidr format
     function Get-Subnet {
-        $DefaultGateways = (Get-NetIPConfiguration).IPv4DefaultGateway
+        <#
+        .SYNOPSIS
+            Parses subnet info into CIDR format from network configuration.
+        #>
+        try {
+            $DefaultGateways = (Get-NetIPConfiguration).IPv4DefaultGateway
 
-        $Subnets = $DefaultGateways | ForEach-Object {
-            $Index = $_.ifIndex
-            $PrefixLength = (Get-NetIPAddress | Where-Object { $_.AddressFamily -eq 'IPv4' -and $_.PrefixOrigin -ne 'WellKnown' -and $Index -eq $_.InterfaceIndex } | Select-Object -ExpandProperty PrefixLength)
-            if ($_.NextHop -and $PrefixLength) {
-                "$($_.NextHop)/$PrefixLength"
+            $Subnets = $DefaultGateways | ForEach-Object {
+                $Index = $_.ifIndex
+                $PrefixLength = (Get-NetIPAddress | Where-Object { 
+                    $_.AddressFamily -eq 'IPv4' -and 
+                    $_.PrefixOrigin -ne 'WellKnown' -and 
+                    $Index -eq $_.InterfaceIndex 
+                } | Select-Object -ExpandProperty PrefixLength)
+                
+                if ($_.NextHop -and $PrefixLength) {
+                    "$($_.NextHop)/$PrefixLength"
+                }
+            }
+
+            if ($Subnets) {
+                $Subnets | Select-Object -Unique
             }
         }
-
-        if ($Subnets) {
-            $Subnets | Select-Object -Unique
+        catch {
+            Write-Log "Failed to get subnet information: $_" -Level ERROR
+            throw
         }
     }
 
-    # Handy uninstall string finder
     function Find-UninstallKey {
+        <#
+        .SYNOPSIS
+            Finds application uninstall keys in the registry.
+        #>
         [CmdletBinding()]
         param (
             [Parameter(ValueFromPipeline = $True)]
@@ -99,13 +132,14 @@ begin {
         process {
             $UninstallList = New-Object System.Collections.Generic.List[Object]
 
-            $Result = Get-ChildItem HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* | Get-ItemProperty | Where-Object { $_.DisplayName -like "*$DisplayName*" }
+            $Result = Get-ChildItem HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* -ErrorAction SilentlyContinue | 
+                Get-ItemProperty | Where-Object { $_.DisplayName -like "*$DisplayName*" }
             if ($Result) { $UninstallList.Add($Result) }
 
-            $Result = Get-ChildItem HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Get-ItemProperty | Where-Object { $_.DisplayName -like "*$DisplayName*" }
+            $Result = Get-ChildItem HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* -ErrorAction SilentlyContinue | 
+                Get-ItemProperty | Where-Object { $_.DisplayName -like "*$DisplayName*" }
             if ($Result) { $UninstallList.Add($Result) }
 
-            # Programs don't always have an uninstall string listed here so to account for that I made this optional.
             if ($UninstallString) {
                 $UninstallList | Select-Object -ExpandProperty UninstallString -ErrorAction SilentlyContinue
             }
@@ -115,81 +149,121 @@ begin {
         }
     }
 
+    if ($env:allowedServersCustomField -and $env:allowedServersCustomField -notlike "null") {
+        $AllowedServersField = $env:allowedServersCustomField
+    }
+
+    if ($AllowedServersField -and -not ($AllowedServers)) {
+        try {
+            $AllowedServers = (Ninja-Property-Get $AllowedServersField 2>$null) -split ',' | ForEach-Object { $_.Trim() }
+        }
+        catch {
+            Write-Log "Failed to retrieve allowed servers from custom field" -Level WARNING
+        }
+    }
+
+    if ($env:allowedServers -and $env:allowedServers -notlike "null") {
+        $AllowedServers = $env:allowedServers -split ',' | ForEach-Object { $_.Trim() }
+    }
+
+    if ($env:customFieldName -and $env:customFieldName -notlike "null") {
+        $CustomField = $env:customFieldName 
+    }
+
     $Nmap = (Find-UninstallKey -DisplayName "Nmap" -UninstallString) -replace '"' -replace 'uninstall.exe', 'nmap.exe'
     if (-not $Nmap) {
-        Write-Error "Nmap is not installed! Please install nmap prior to running this script. https://nmap.org/download.html"
-        exit 1
+        throw "Nmap is not installed! Please install nmap prior to running this script. https://nmap.org/download.html"
     }
+
+    $ExitCode = 0
 }
+
 process {
-
-    # Get's a list of subnets
-    $Subnets = Get-Subnet
-    if (-not $Subnets) {
-        Write-Error "Unable to get list of subnets?"
-        exit 1
-    }
-
-    # nmap arguments
-    $Arguments = @(
-        "-sU"
-        "-p"
-        "67"
-        "-d"
-        $Subnets
-        "--open"
-        "-oX"
-        "$env:TEMP\nmap-results.xml"
-    )
     try {
-        Start-Process -FilePath $Nmap -ArgumentList $Arguments -WindowStyle Hidden -Wait
-        [xml]$result = Get-Content -Path "$env:Temp\nmap-results.xml"
+        Write-Log "Starting rogue DHCP server scan"
+        
+        $Subnets = Get-Subnet
+        if (-not $Subnets) {
+            throw "Unable to get list of subnets"
+        }
+
+        Write-Log "Scanning subnets: $($Subnets -join ', ')"
+
+        $Arguments = @(
+            "-sU"
+            "-p"
+            "67"
+            "-d"
+            $Subnets
+            "--open"
+            "-oX"
+            "$env:TEMP\nmap-results.xml"
+        )
+        
+        Start-Process -FilePath $Nmap -ArgumentList $Arguments -WindowStyle Hidden -Wait -ErrorAction Stop
+        
+        if (-not (Test-Path "$env:Temp\nmap-results.xml")) {
+            throw "Nmap scan failed to generate results file"
+        }
+        
+        [xml]$result = Get-Content -Path "$env:Temp\nmap-results.xml" -ErrorAction Stop
+
+        if ($result) {
+            $resultObject = $result.DocumentElement.host | ForEach-Object {
+                [PSCustomObject]@{
+                    "IP Address"  = ($_.address | Where-Object { $_.addrtype -match "ip" } | Select-Object -ExpandProperty "addr")
+                    "Mac Address" = ($_.address | Where-Object { $_.addrtype -match "mac" } | Select-Object -ExpandProperty "addr")
+                }
+            }
+        }
+        else {
+            throw "Nmap results are empty"
+        }
+
+        if ($resultObject) {
+            Write-Log "DHCP Servers found:"
+            $resultObject | Sort-Object -Property "IP Address" -Unique | Format-Table | Out-String | Write-Log
+            
+            Remove-Item -Path "$env:Temp\nmap-results.xml" -Force -ErrorAction SilentlyContinue
+
+            Write-Log "Checking against allowed servers list..."
+            $RogueServers = @()
+            
+            foreach ($Server in $resultObject) {
+                if ($AllowedServers -notcontains $Server."IP Address") {
+                    Write-Log "Rogue DHCP Server Found: $($Server.'IP Address') is not on the allowed list" -Level WARNING
+                    $RogueServers += $Server
+                    $ExitCode = 1
+                }
+            }
+
+            if ($RogueServers.Count -gt 0) {
+                try {
+                    Ninja-Property-Set -Name $CustomField -Value ($RogueServers | Format-List | Out-String)
+                }
+                catch {
+                    Write-Log "Failed to save rogue servers to custom field: $_" -Level WARNING
+                }
+            }
+            else {
+                Write-Log "No rogue DHCP servers found"
+            }
+        }
     }
     catch {
-        Write-Error "Nmap scan failed to run! Ensure nmap is installed prior to running this script."
-        exit 1
-    }
-
-    # Parse the xml results
-    if ($result) {
-        $resultObject = $result.DocumentElement.host | ForEach-Object {
-            New-Object psobject -Property @{
-                "IP Address"  = ($_.address | Where-Object { $_.addrtype -match "ip" } | Select-Object -ExpandProperty "addr")
-                "Mac Address" = ($_.address | Where-Object { $_.addrtype -match "mac" } | Select-Object -ExpandProperty "addr")
-            }
-        }
-    }
-    else {
-        Write-Error "Nmap results are empty?"
-        exit 1
-    }
-
-    # Check if the dhcp servers found are on the list. If so simply report back what were found otherwise indicate that they're Rogue DHCP Servers.
-    if ($resultObject) {
-        Write-Host "DHCP Servers found."
-        $resultObject | Sort-Object -Property "IP Address" -Unique | Format-Table | Out-String | Write-Host
-        Remove-Item -Path "$env:Temp\nmap-results.xml" -Force
-
-        Write-Host "Checking allowed servers list..."
-        $ErrorOut = $False
-        $resultObject | ForEach-Object {
-            if ($AllowedServers -notcontains $_."IP Address") {
-                Write-Error "Rogue DHCP Server Found! $($_.'IP Address') is not on the list of allowed DHCP Servers."
-                $ErrorOut = $True
-            }
-        }
-
-        Ninja-Property-Set -Name $CustomField -Value ($resultObject | Where-Object { $AllowedServers -notcontains $_."IP Address" } | Format-List | Out-String)
-
-        if($ErrorOut -eq $True){
-            exit 1
-        }
-
-        Write-Host "No rogue dhcp servers found."
+        Write-Log "Failed to scan for rogue DHCP servers: $_" -Level ERROR
+        $ExitCode = 1
     }
 }
+
 end {
-    
-    
-    
+    try {
+        $EndTime = Get-Date
+        $Duration = ($EndTime - $StartTime).TotalSeconds
+        Write-Log "Script execution completed in $Duration seconds"
+    }
+    finally {
+        [System.GC]::Collect()
+        exit $ExitCode
+    }
 }

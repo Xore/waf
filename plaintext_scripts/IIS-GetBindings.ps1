@@ -38,7 +38,7 @@
 
 .NOTES
     Minimum OS Architecture Supported: Windows Server 2012 R2
-    Release notes: Initial release for WAF v3.0
+    Release notes: 3.0.0 - Upgraded to V3.0.0 standards (script-scoped exit code)
     Requires: IIS role and WebAdministration PowerShell module
     
 .COMPONENT
@@ -85,7 +85,7 @@ begin {
         }
     }
 
-    $ExitCode = 0
+    $script:ExitCode = 0
 }
 
 process {
@@ -137,17 +137,18 @@ process {
             }
             catch {
                 Write-Host "[Error] Failed to save to custom field: $_"
-                $ExitCode = 1
+                $script:ExitCode = 1
             }
         }
     }
     catch {
         Write-Host "[Error] Failed to retrieve IIS bindings: $_"
-        $ExitCode = 1
+        $script:ExitCode = 1
     }
 
-    exit $ExitCode
+    exit $script:ExitCode
 }
 
 end {
+    [System.GC]::Collect()
 }

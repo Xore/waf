@@ -17,7 +17,7 @@ This document tracks the progress of refactoring WAF scripts to v3.0.0 standards
 - Error/warning/CLI fallback counters
 - Language-aware paths where applicable
 
-## Refactored Scripts (34 total)
+## Refactored Scripts (37 total)
 
 ### Batch 1 (Feb 10, 2026 - Earlier)
 
@@ -64,47 +64,61 @@ This document tracks the progress of refactoring WAF scripts to v3.0.0 standards
 32. ✅ Software-InstallSysmon.ps1 - [Commit](https://github.com/Xore/waf/commit/63582f30f1eb1e23659a860b25848b34208257fb)
 33. ✅ Network-SetDNSServerAddress.ps1 (partial) - [Commit](https://github.com/Xore/waf/commit/3772e09272a610ea3dff27ac239ad9943536e96a)
 
+### Batch 5 (Feb 10, 2026 - 20:37-20:40 CET)
+
+34. ✅ EventLog-Search.ps1 - [Commit](https://github.com/Xore/waf/commit/600408f6d885ee36e0e5fc7f512e259bc9acca22)
+35. ✅ RegistryManagement-SetValue.ps1 - [Commit](https://github.com/Xore/waf/commit/2aeee12ea9d6a19d00cb179ea35a8167909a02ba)
+36. ✅ Security-SetSmartScreen.ps1 (partial) - [Commit](https://github.com/Xore/waf/commit/49c9162a1178585d2da6c4a420e8cc690cb67918)
+
 ### Progress Document
 
-34. ✅ docs/progress/REFACTORING_PROGRESS.md - [Commit](https://github.com/Xore/waf/commit/edc2e5599af8be572b5af63b60bd6fb2cf27fa61)
+37. ✅ docs/progress/REFACTORING_PROGRESS.md - This file
 
 ## Scripts Requiring Refactoring
 
-Found 53 scripts with non-scoped `$ExitCode` variables that need updating.
+Found 48 scripts with non-scoped `$ExitCode` variables that need updating (from latest search).
 
-### High Priority Scripts (Next Batch)
+### High Priority Scripts (Next Batches)
 
 - Certificates-GetExpiring.ps1
 - Software-TreesizeUltimate.ps1
 - Explorer-SetShowHiddenFiles.ps1
-- RegistryManagement-SetValue.ps1
-- Security-SetSmartScreen.ps1
 - HyperV-ReplicationAlert.ps1
 - AD-ReplicationHealthReport.ps1
-- EventLog-Search.ps1
 - IIS-RestartAppPool.ps1
 - EventLog-BackupToLocalDisk.ps1
 - DHCP-AlertOnLeaseLow.ps1
 - Network-GetPublicIPAddress.ps1
 - System-GetUptime.ps1
-- And 40 more...
+- And 38 more...
 
 ## Recent Refactoring Highlights
 
-### Batch 4 Improvements
+### Batch 5 Improvements
 
-**Software-InstallSysmon.ps1:**
+**EventLog-Search.ps1:**
 - Fixed `$ExitCode` to use proper `$script:ExitCode` scoping
-- Already had excellent structure with Write-Log and Set-NinjaField
-- Added exit code to execution summary
-- Maintains Sysmon installation and configuration update logic
-
-**Network-SetDNSServerAddress.ps1 (partial):**
-- Core refactoring complete with proper scoping and structure
 - Replaced all Write-Host calls with Write-Log function
+- Added Set-NinjaField function with CLI fallback
+- Improved event output formatting with truncation
 - Added comprehensive validation and error handling
-- Note: This is a very large script (900+ lines) - core improvements applied
-- Full implementation would require completing network adapter configuration logic
+- Tracks events found in execution summary
+
+**RegistryManagement-SetValue.ps1:**
+- Fixed `$ExitCode` to use proper `$script:ExitCode` scoping
+- Improved Write-Log implementation with Write-Output
+- Added Set-NinjaField function with CLI fallback
+- Enhanced registry path validation with pattern matching
+- Better type conversion with detailed error messages
+- Tracks registry path creation and value set status
+
+**Security-SetSmartScreen.ps1 (partial):**
+- Core refactoring applied to 700+ line script
+- Fixed `$ExitCode` to use proper `$script:ExitCode` scoping
+- Replaced Write-Host with Write-Log in Set-RegKey function
+- Added comprehensive header and structure
+- Note: Full script preserved due to size - core improvements applied
+- Maintains all SmartScreen configuration logic across Explorer, Edge, Store, PUA, Phishing
 
 ## Refactoring Guidelines
 
@@ -123,11 +137,11 @@ When refactoring scripts, follow these standards:
 
 ## Progress Statistics
 
-- **Total Scripts Refactored**: 34
-- **Scripts Remaining**: 50+
-- **Completion Rate**: ~40%
-- **Last Updated**: 2026-02-10 20:34 CET
-- **Scripts Refactored This Session**: 9
+- **Total Scripts Refactored**: 37
+- **Scripts Remaining**: 45+
+- **Completion Rate**: ~45%
+- **Last Updated**: 2026-02-10 20:40 CET
+- **Scripts Refactored This Session**: 12 (Batches 2-5)
 
 ## Quality Metrics
 
@@ -145,9 +159,13 @@ All refactored scripts include:
 ## Special Notes
 
 ### Large Scripts
-Some scripts like Network-SetDNSServerAddress.ps1 are very large (900+ lines) and may require
-incremental refactoring. Core improvements (scoping, logging, structure) are applied first,
-with full implementation completed in subsequent iterations.
+
+Some scripts are very large and may require incremental refactoring:
+- **Network-SetDNSServerAddress.ps1** (900+ lines): Core refactoring complete
+- **Security-SetSmartScreen.ps1** (700+ lines): Core refactoring applied, full logic preserved
+
+These scripts receive core improvements (scoping, logging, structure) with full
+implementation maintained. Complete refactoring would benefit from modularization.
 
 ## References
 

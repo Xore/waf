@@ -16,30 +16,36 @@
     Name of a custom field to save the firewall audit results.
 
 .EXAMPLE
-    No Parameters
+    .\Firewall-AuditStatus.ps1
 
-    [Info] Auditing Windows Firewall status...
+    Auditing Windows Firewall status...
     Domain Profile: Enabled
     Private Profile: Enabled
     Public Profile: Enabled
-    [Info] All firewall profiles are enabled
+    All firewall profiles are enabled
 
 .EXAMPLE
-    -SaveToCustomField "FirewallStatus"
+    .\Firewall-AuditStatus.ps1 -SaveToCustomField "FirewallStatus"
 
-    [Info] Auditing Windows Firewall status...
+    Auditing Windows Firewall status...
     Domain Profile: Enabled
     Private Profile: Disabled
     Public Profile: Enabled
-    [Alert] Private profile is DISABLED - security risk detected
-    [Info] Results saved to custom field 'FirewallStatus'
+    Private profile is DISABLED - security risk detected
+    Results saved to custom field 'FirewallStatus'
 
 .OUTPUTS
-    None
+    None. Status information is written to the console.
 
 .NOTES
-    Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Release notes: Initial release for WAF v3.0
+    File Name      : Firewall-AuditStatus.ps1
+    Prerequisite   : PowerShell 5.1 or higher
+    Minimum OS     : Windows 10, Windows Server 2016
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: Upgraded to V3 standards with Write-Log function and execution tracking
+    - 1.0: Initial release
     
 .COMPONENT
     NetSecurity - Windows Firewall management module
@@ -57,10 +63,33 @@
 
 [CmdletBinding()]
 param(
+    [Parameter()]
     [string]$SaveToCustomField
 )
 
 begin {
+    $ErrorActionPreference = 'Stop'
+    $ProgressPreference = 'SilentlyContinue'
+    $StartTime = Get-Date
+    
+    Set-StrictMode -Version Latest
+
+    function Write-Log {
+        param(
+            [string]$Message,
+            [string]$Level = 'INFO'
+        )
+        $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $LogMessage = "[$Timestamp] [$Level] $Message"
+        
+        switch ($Level) {
+            'ERROR' { Write-Error $LogMessage }
+            'WARNING' { Write-Warning $LogMessage }
+            'ALERT' { Write-Warning "ALERT: $Message" }
+            default { Write-Output $LogMessage }
+        }
+    }
+
     if ($env:saveToCustomField -and $env:saveToCustomField -notlike "null") {
         $SaveToCustomField = $env:saveToCustomField
     }
@@ -85,7 +114,7 @@ begin {
 
 process {
     try {
-        Write-Host "[Info] Auditing Windows Firewall status..."
+        Write-Log "Auditing Windows Firewall status..."
         
         $Profiles = Get-NetFirewallProfile -ErrorAction Stop
         $Report = @()
@@ -95,38 +124,45 @@ process {
             $Status = if ($Profile.Enabled) { "Enabled" } else { "Disabled" }
             $ProfileInfo = "$($Profile.Name) Profile: $Status"
             
-            Write-Host $ProfileInfo
+            Write-Log $ProfileInfo
             $Report += $ProfileInfo
 
             if (-not $Profile.Enabled) {
-                Write-Host "[Alert] $($Profile.Name) profile is DISABLED - security risk detected"
+                Write-Log "$($Profile.Name) profile is DISABLED - security risk detected" -Level ALERT
                 $AllEnabled = $false
                 $ExitCode = 1
             }
         }
 
         if ($AllEnabled) {
-            Write-Host "[Info] All firewall profiles are enabled"
+            Write-Log "All firewall profiles are enabled"
         }
 
         if ($SaveToCustomField) {
             try {
                 $Report -join "; " | Set-NinjaProperty -Name $SaveToCustomField
-                Write-Host "[Info] Results saved to custom field '$SaveToCustomField'"
+                Write-Log "Results saved to custom field '$SaveToCustomField'"
             }
             catch {
-                Write-Host "[Error] Failed to save to custom field: $_"
+                Write-Log "Failed to save to custom field: $_" -Level ERROR
                 $ExitCode = 1
             }
         }
     }
     catch {
-        Write-Host "[Error] Failed to audit firewall status: $_"
+        Write-Log "Failed to audit firewall status: $_" -Level ERROR
         $ExitCode = 1
     }
-
-    exit $ExitCode
 }
 
 end {
+    try {
+        $EndTime = Get-Date
+        $Duration = ($EndTime - $StartTime).TotalSeconds
+        Write-Log "Script execution completed in $Duration seconds"
+    }
+    finally {
+        [System.GC]::Collect()
+        exit $ExitCode
+    }
 }

@@ -16,24 +16,30 @@
     
     Helps administrators plan infrastructure scaling and identify
     resource constraints before they impact workloads.
+    
+    This script runs unattended without user interaction.
 
 .NOTES
+    Script Name:    Hyper-V Capacity Planner 4.ps1
     Author:         Windows Automation Framework
-    Created:        2026-02-10
-    Version:        1.0
-    Purpose:        Hyper-V capacity planning and forecasting
+    Version:        1.1
+    Creation Date:  2026-02-10
+    Last Modified:  2026-02-10
     
-    Execution Context:  SYSTEM
+    Execution Context: SYSTEM (via NinjaRMM automation)
     Execution Frequency: Every 1 hour
-    Estimated Duration: ~20 seconds
-    Timeout Setting:    90 seconds
+    Typical Duration: ~20 seconds
+    Timeout Setting: 90 seconds
+    
+    User Interaction: NONE (fully automated, no prompts)
+    Restart Behavior: Never restarts device
     
     Fields Updated:
-    - hypervCapacityCPUAvailablePercent (Float)      - Available CPU capacity %
-    - hypervCapacityCPUGrowthRate (Float)            - CPU growth rate % per month
+    - hypervCapacityCPUAvailablePercent (Float)      - Available CPU capacity percent
+    - hypervCapacityCPUGrowthRate (Float)            - CPU growth rate percent per month
     - hypervCapacityCPURunwayMonths (Integer)        - Months until CPU exhaustion
     - hypervCapacityMemoryAvailableGB (Integer)      - Available memory GB
-    - hypervCapacityMemoryGrowthRate (Float)         - Memory growth rate % per month
+    - hypervCapacityMemoryGrowthRate (Float)         - Memory growth rate percent per month
     - hypervCapacityMemoryRunwayMonths (Integer)     - Months until memory exhaustion
     - hypervCapacityStorageAvailableTB (Float)       - Available storage TB
     - hypervCapacityStorageGrowthRateGB (Integer)    - Storage growth GB per month
@@ -48,6 +54,9 @@
     - hypervCapacityLastScan (DateTime)              - Last scan timestamp
     
     Dependencies:
+    - Windows PowerShell 5.1 or higher
+    - Administrator privileges (SYSTEM context)
+    - NinjaRMM Agent installed
     - Hyper-V role installed
     - Hyper-V PowerShell module
     - Performance counter access
@@ -60,7 +69,7 @@
     99 = Unexpected error
 
 .EXAMPLE
-    .\Hyper-V_Capacity_Planner_4.ps1
+    .\"Hyper-V Capacity Planner 4.ps1"
 
 .LINK
     https://github.com/Xore/waf/tree/main/hyper-v%20monitoring
@@ -76,17 +85,17 @@ param()
 # CONFIGURATION
 # ============================================================================
 
-$ScriptVersion = "1.0"
+$ScriptVersion = "1.1"
 $ScriptName = "Hyper-V Capacity Planner 4"
 
 # Capacity thresholds
 $Thresholds = @{
-    CPUWarningPercent = 75          # % - Warning threshold
-    CPUCriticalPercent = 85         # % - Critical threshold
-    MemoryWarningPercent = 80       # % - Warning threshold
-    MemoryCriticalPercent = 90      # % - Critical threshold
-    StorageWarningPercent = 75      # % - Warning threshold
-    StorageCriticalPercent = 85     # % - Critical threshold
+    CPUWarningPercent = 75          # percent - Warning threshold
+    CPUCriticalPercent = 85         # percent - Critical threshold
+    MemoryWarningPercent = 80       # percent - Warning threshold
+    MemoryCriticalPercent = 90      # percent - Critical threshold
+    StorageWarningPercent = 75      # percent - Warning threshold
+    StorageCriticalPercent = 85     # percent - Critical threshold
     RunwayWarningMonths = 6         # Months - Warning
     RunwayCriticalMonths = 3        # Months - Critical
 }
@@ -96,11 +105,21 @@ $GrowthAnalysisDays = 30
 
 $FieldPrefix = "hypervCapacity"
 
+# NinjaRMM CLI path
+$NinjaRMMCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
+
 # ============================================================================
-# EXECUTION TIME TRACKING (MANDATORY)
+# INITIALIZATION
 # ============================================================================
 
-$ExecutionStartTime = Get-Date
+# Start timing - REQUIRED FOR ALL SCRIPTS
+$StartTime = Get-Date
+
+# Initialize error tracking
+$ErrorActionPreference = 'Stop'
+$script:ErrorCount = 0
+$script:WarningCount = 0
+$script:CLIFallbackCount = 0
 
 # ============================================================================
 # FUNCTIONS
@@ -108,8 +127,11 @@ $ExecutionStartTime = Get-Date
 
 function Write-Log {
     param(
+        [Parameter(Mandatory=$true)]
         [string]$Message,
-        [ValidateSet('INFO', 'WARNING', 'ERROR', 'DEBUG')]
+        
+        [Parameter(Mandatory=$false)]
+        [ValidateSet('DEBUG','INFO','WARN','ERROR')]
         [string]$Level = 'INFO'
     )
     
@@ -117,31 +139,72 @@ function Write-Log {
     $LogMessage = "[$Timestamp] [$Level] $Message"
     
     switch ($Level) {
-        'ERROR'   { Write-Error $LogMessage }
-        'WARNING' { Write-Warning $LogMessage }
-        'DEBUG'   { Write-Verbose $LogMessage }
-        default   { Write-Output $LogMessage }
+        'DEBUG' { Write-Verbose $LogMessage }
+        'INFO'  { Write-Output $LogMessage }
+        'WARN'  { 
+            Write-Warning $LogMessage
+            $script:WarningCount++
+        }
+        'ERROR' { 
+            Write-Error $LogMessage -ErrorAction Continue
+            $script:ErrorCount++
+        }
     }
 }
 
-function Set-NinjaRMMField {
+function Set-NinjaField {
+    <#
+    .SYNOPSIS
+        Sets a NinjaRMM custom field value with automatic fallback to CLI
+    #>
+    [CmdletBinding()]
     param(
+        [Parameter(Mandatory=$true)]
         [string]$FieldName,
+        
+        [Parameter(Mandatory=$true)]
         [AllowNull()]
-        [object]$Value
+        $Value
     )
+    
+    if ($null -eq $Value -or $Value -eq "") {
+        Write-Log "Skipping field '$FieldName' - no value provided" -Level DEBUG
+        return
+    }
+    
+    $ValueString = $Value.ToString()
     
     try {
         if (Get-Command Ninja-Property-Set -ErrorAction SilentlyContinue) {
-            Ninja-Property-Set -Name $FieldName -Value $Value
-        }
-        
-        $RegPath = "HKLM:\SOFTWARE\NinjaRMMAgent\CustomFields"
-        if (Test-Path $RegPath) {
-            Set-ItemProperty -Path $RegPath -Name $FieldName -Value $Value -ErrorAction SilentlyContinue
+            Ninja-Property-Set $FieldName $ValueString -ErrorAction Stop
+            Write-Log "Field '$FieldName' set to: $ValueString" -Level DEBUG
+            return
+        } else {
+            Write-Log "Ninja-Property-Set cmdlet not available, using CLI fallback" -Level DEBUG
+            throw "Cmdlet not found"
         }
     } catch {
-        Write-Log "Failed to set field $FieldName : $($_.Exception.Message)" -Level WARNING
+        Write-Log "Ninja-Property-Set failed for '$FieldName': $_" -Level DEBUG
+        Write-Log "Attempting CLI fallback..." -Level DEBUG
+        
+        try {
+            if (-not (Test-Path $NinjaRMMCLI)) {
+                throw "NinjaRMM CLI not found at: $NinjaRMMCLI"
+            }
+            
+            $CLIArgs = @("set", $FieldName, $ValueString)
+            $CLIResult = & $NinjaRMMCLI $CLIArgs 2>&1
+            
+            if ($LASTEXITCODE -ne 0) {
+                throw "CLI returned exit code: $LASTEXITCODE. Output: $CLIResult"
+            }
+            
+            Write-Log "Field '$FieldName' set via CLI to: $ValueString" -Level DEBUG
+            $script:CLIFallbackCount++
+        } catch {
+            Write-Log "Failed to set field '$FieldName' (both methods): $_" -Level ERROR
+            throw
+        }
     }
 }
 
@@ -152,20 +215,16 @@ function Get-HostCapacityInfo {
     try {
         Write-Log "Collecting host capacity information..."
         
-        # Get CPU info
         $CPU = Get-CimInstance -ClassName Win32_Processor
         $TotalCores = ($CPU | Measure-Object -Property NumberOfCores -Sum).Sum
         $TotalLogicalProcessors = ($CPU | Measure-Object -Property NumberOfLogicalProcessors -Sum).Sum
         
-        # Get memory info
         $Memory = Get-CimInstance -ClassName Win32_ComputerSystem
         $TotalMemoryGB = [Math]::Round($Memory.TotalPhysicalMemory / 1GB, 2)
         
-        # Get available memory
         $AvailableMemoryMB = (Get-Counter '\Memory\Available MBytes').CounterSamples.CookedValue
         $AvailableMemoryGB = [Math]::Round($AvailableMemoryMB / 1024, 2)
         
-        # Get current CPU usage
         $CPUUsage = (Get-Counter '\Processor(_Total)\% Processor Time').CounterSamples.CookedValue
         
         return @{
@@ -176,7 +235,6 @@ function Get-HostCapacityInfo {
             AvailableMemoryGB = $AvailableMemoryGB
             UsedMemoryGB = [Math]::Round($TotalMemoryGB - $AvailableMemoryGB, 2)
         }
-        
     } catch {
         Write-Log "Failed to get host capacity: $($_.Exception.Message)" -Level ERROR
         return $null
@@ -198,13 +256,9 @@ function Get-VMResourceAllocation {
         $TotalAllocatedStorageGB = 0
         
         foreach ($VM in $VMs) {
-            # CPU allocation
             $TotalAllocatedCPU += $VM.ProcessorCount
-            
-            # Memory allocation
             $TotalAllocatedMemoryGB += ($VM.MemoryStartup / 1GB)
             
-            # Storage allocation
             try {
                 $VHDs = Get-VHD -VMId $VM.Id -ErrorAction SilentlyContinue
                 foreach ($VHD in $VHDs) {
@@ -224,7 +278,6 @@ function Get-VMResourceAllocation {
             TotalUsedStorageGB = [Math]::Round($TotalUsedStorageGB, 2)
             TotalAllocatedStorageGB = [Math]::Round($TotalAllocatedStorageGB, 2)
         }
-        
     } catch {
         Write-Log "Failed to calculate VM allocation: $($_.Exception.Message)" -Level ERROR
         return $null
@@ -238,7 +291,6 @@ function Get-StorageCapacity {
     try {
         Write-Log "Checking storage capacity..."
         
-        # Get all volumes
         $Volumes = Get-Volume | Where-Object { $_.DriveType -eq 'Fixed' -and $_.Size -gt 0 }
         
         $TotalCapacityGB = 0
@@ -261,9 +313,8 @@ function Get-StorageCapacity {
             TotalFreeGB = [Math]::Round($TotalFreeGB, 2)
             UsedPercent = [Math]::Round(($TotalUsedGB / $TotalCapacityGB) * 100, 2)
         }
-        
     } catch {
-        Write-Log "Failed to get storage capacity: $($_.Exception.Message)" -Level WARNING
+        Write-Log "Failed to get storage capacity: $($_.Exception.Message)" -Level WARN
         return @{
             TotalCapacityGB = 0
             TotalUsedGB = 0
@@ -271,34 +322,6 @@ function Get-StorageCapacity {
             UsedPercent = 0
         }
     }
-}
-
-function Get-GrowthRate {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [float]$CurrentValue,
-        
-        [Parameter(Mandatory)]
-        [float]$PreviousValue,
-        
-        [Parameter(Mandatory)]
-        [int]$DaysBetween
-    )
-    
-    if ($PreviousValue -eq 0 -or $DaysBetween -eq 0) {
-        return 0
-    }
-    
-    # Calculate growth rate per month
-    $GrowthTotal = $CurrentValue - $PreviousValue
-    $GrowthPerDay = $GrowthTotal / $DaysBetween
-    $GrowthPerMonth = $GrowthPerDay * 30
-    
-    # Convert to percentage
-    $GrowthRatePercent = ($GrowthPerMonth / $PreviousValue) * 100
-    
-    return [Math]::Round($GrowthRatePercent, 2)
 }
 
 function Get-CapacityRunway {
@@ -317,7 +340,7 @@ function Get-CapacityRunway {
     $Available = $TotalCapacity - $CurrentUsed
     
     if ($GrowthPerMonth -le 0) {
-        return 999  # No growth or negative growth
+        return 999
     }
     
     $MonthsRemaining = $Available / $GrowthPerMonth
@@ -338,7 +361,6 @@ function Get-CapacityMetrics {
         [hashtable]$StorageCapacity
     )
     
-    # Calculate overcommit ratios
     $CPUOvercommit = if ($HostCapacity.TotalLogicalProcessors -gt 0) {
         [Math]::Round($VMAllocation.TotalAllocatedCPU / $HostCapacity.TotalLogicalProcessors, 2)
     } else { 0 }
@@ -347,12 +369,10 @@ function Get-CapacityMetrics {
         [Math]::Round($VMAllocation.TotalAllocatedMemoryGB / $HostCapacity.TotalMemoryGB, 2)
     } else { 0 }
     
-    # Calculate available percentages
     $CPUAvailablePercent = [Math]::Round((100 - $HostCapacity.CPUUsagePercent), 2)
     $MemoryAvailablePercent = [Math]::Round(($HostCapacity.AvailableMemoryGB / $HostCapacity.TotalMemoryGB) * 100, 2)
     $StorageAvailablePercent = [Math]::Round(($StorageCapacity.TotalFreeGB / $StorageCapacity.TotalCapacityGB) * 100, 2)
     
-    # VM density
     $VMDensity = [Math]::Round($VMAllocation.RunningVMCount, 2)
     
     return @{
@@ -380,12 +400,11 @@ function Get-CapacityRecommendations {
     
     $Recommendations = @()
     
-    # CPU recommendations
     if ($Metrics.CPUAvailablePercent -lt (100 - $Thresholds.CPUCriticalPercent)) {
-        $Recommendations += "CRITICAL: CPU capacity at $($Metrics.CPUAvailablePercent)% available. Consider adding CPU cores or migrating VMs."
+        $Recommendations += "CRITICAL: CPU capacity at $($Metrics.CPUAvailablePercent) percent available. Consider adding CPU cores or migrating VMs."
     }
     elseif ($Metrics.CPUAvailablePercent -lt (100 - $Thresholds.CPUWarningPercent)) {
-        $Recommendations += "WARNING: CPU capacity at $($Metrics.CPUAvailablePercent)% available. Plan CPU expansion."
+        $Recommendations += "WARNING: CPU capacity at $($Metrics.CPUAvailablePercent) percent available. Plan CPU expansion."
     }
     
     if ($Runways.CPUMonths -lt $Thresholds.RunwayCriticalMonths -and $Runways.CPUMonths -gt 0) {
@@ -395,12 +414,11 @@ function Get-CapacityRecommendations {
         $Recommendations += "WARNING: CPU capacity runway is $($Runways.CPUMonths) months. Begin planning expansion."
     }
     
-    # Memory recommendations
     if ($Metrics.MemoryAvailablePercent -lt (100 - $Thresholds.MemoryCriticalPercent)) {
-        $Recommendations += "CRITICAL: Memory capacity at $($Metrics.MemoryAvailablePercent)% available. Add RAM immediately."
+        $Recommendations += "CRITICAL: Memory capacity at $($Metrics.MemoryAvailablePercent) percent available. Add RAM immediately."
     }
     elseif ($Metrics.MemoryAvailablePercent -lt (100 - $Thresholds.MemoryWarningPercent)) {
-        $Recommendations += "WARNING: Memory capacity at $($Metrics.MemoryAvailablePercent)% available. Plan memory upgrade."
+        $Recommendations += "WARNING: Memory capacity at $($Metrics.MemoryAvailablePercent) percent available. Plan memory upgrade."
     }
     
     if ($Runways.MemoryMonths -lt $Thresholds.RunwayCriticalMonths -and $Runways.MemoryMonths -gt 0) {
@@ -410,12 +428,11 @@ function Get-CapacityRecommendations {
         $Recommendations += "WARNING: Memory runway is $($Runways.MemoryMonths) months. Plan memory expansion."
     }
     
-    # Storage recommendations
     if ($Metrics.StorageAvailablePercent -lt (100 - $Thresholds.StorageCriticalPercent)) {
-        $Recommendations += "CRITICAL: Storage capacity at $($Metrics.StorageAvailablePercent)% available. Add storage urgently."
+        $Recommendations += "CRITICAL: Storage capacity at $($Metrics.StorageAvailablePercent) percent available. Add storage urgently."
     }
     elseif ($Metrics.StorageAvailablePercent -lt (100 - $Thresholds.StorageWarningPercent)) {
-        $Recommendations += "WARNING: Storage capacity at $($Metrics.StorageAvailablePercent)% available. Plan storage expansion."
+        $Recommendations += "WARNING: Storage capacity at $($Metrics.StorageAvailablePercent) percent available. Plan storage expansion."
     }
     
     if ($Runways.StorageMonths -lt $Thresholds.RunwayCriticalMonths -and $Runways.StorageMonths -gt 0) {
@@ -425,7 +442,6 @@ function Get-CapacityRecommendations {
         $Recommendations += "WARNING: Storage runway is $($Runways.StorageMonths) months. Begin planning expansion."
     }
     
-    # Overcommit warnings
     if ($Metrics.CPUOvercommit -gt 4.0) {
         $Recommendations += "WARNING: CPU overcommit ratio is $($Metrics.CPUOvercommit):1. Performance may suffer under load."
     }
@@ -448,7 +464,6 @@ function Get-NextBottleneck {
         [hashtable]$Runways
     )
     
-    # Find the resource with shortest runway
     $Resources = @(
         @{ Name = "CPU"; Months = $Runways.CPUMonths }
         @{ Name = "Memory"; Months = $Runways.MemoryMonths }
@@ -480,7 +495,6 @@ function Get-CapacityStatus {
     $CriticalCount = 0
     $WarningCount = 0
     
-    # Check CPU
     if ($Metrics.CPUAvailablePercent -lt (100 - $Thresholds.CPUCriticalPercent) -or 
         ($Runways.CPUMonths -lt $Thresholds.RunwayCriticalMonths -and $Runways.CPUMonths -gt 0)) {
         $CriticalCount++
@@ -490,7 +504,6 @@ function Get-CapacityStatus {
         $WarningCount++
     }
     
-    # Check Memory
     if ($Metrics.MemoryAvailablePercent -lt (100 - $Thresholds.MemoryCriticalPercent) -or 
         ($Runways.MemoryMonths -lt $Thresholds.RunwayCriticalMonths -and $Runways.MemoryMonths -gt 0)) {
         $CriticalCount++
@@ -500,7 +513,6 @@ function Get-CapacityStatus {
         $WarningCount++
     }
     
-    # Check Storage
     if ($Metrics.StorageAvailablePercent -lt (100 - $Thresholds.StorageCriticalPercent) -or 
         ($Runways.StorageMonths -lt $Thresholds.RunwayCriticalMonths -and $Runways.StorageMonths -gt 0)) {
         $CriticalCount++
@@ -558,9 +570,9 @@ function New-CapacityHTMLReport {
 <div class='summary'>
     <strong>Capacity Overview</strong><br/>
     VMs: $($VMAllocation.VMCount) ($($VMAllocation.RunningVMCount) running) | 
-    CPU: $($Metrics.CPUAvailablePercent)% available | 
-    Memory: $($Metrics.MemoryAvailablePercent)% available | 
-    Storage: $($Metrics.StorageAvailablePercent)% available
+    CPU: $($Metrics.CPUAvailablePercent) percent available | 
+    Memory: $($Metrics.MemoryAvailablePercent) percent available | 
+    Storage: $($Metrics.StorageAvailablePercent) percent available
 </div>
 
 <div class='section'>Resource Capacity</div>
@@ -573,21 +585,21 @@ function New-CapacityHTMLReport {
             <td><strong>CPU</strong></td>
             <td>$($HostCapacity.TotalLogicalProcessors) vCPUs</td>
             <td>$($VMAllocation.TotalAllocatedCPU) vCPUs</td>
-            <td class='$(if($Metrics.CPUAvailablePercent -lt 15){"critical"}elseif($Metrics.CPUAvailablePercent -lt 25){"warning"}else{"good"})'>$($Metrics.CPUAvailablePercent)%</td>
+            <td class='$(if($Metrics.CPUAvailablePercent -lt 15){"critical"}elseif($Metrics.CPUAvailablePercent -lt 25){"warning"}else{"good"})'>$($Metrics.CPUAvailablePercent) percent</td>
             <td>$($Runways.CPUMonths) months</td>
         </tr>
         <tr>
             <td><strong>Memory</strong></td>
             <td>$($HostCapacity.TotalMemoryGB) GB</td>
             <td>$($VMAllocation.TotalAllocatedMemoryGB) GB</td>
-            <td class='$(if($Metrics.MemoryAvailablePercent -lt 10){"critical"}elseif($Metrics.MemoryAvailablePercent -lt 20){"warning"}else{"good"})'>$($Metrics.MemoryAvailablePercent)%</td>
+            <td class='$(if($Metrics.MemoryAvailablePercent -lt 10){"critical"}elseif($Metrics.MemoryAvailablePercent -lt 20){"warning"}else{"good"})'>$($Metrics.MemoryAvailablePercent) percent</td>
             <td>$($Runways.MemoryMonths) months</td>
         </tr>
         <tr>
             <td><strong>Storage</strong></td>
             <td>$($StorageCapacity.TotalCapacityGB) GB</td>
             <td>$($StorageCapacity.TotalUsedGB) GB</td>
-            <td class='$(if($Metrics.StorageAvailablePercent -lt 15){"critical"}elseif($Metrics.StorageAvailablePercent -lt 25){"warning"}else{"good"})'>$($Metrics.StorageAvailablePercent)%</td>
+            <td class='$(if($Metrics.StorageAvailablePercent -lt 15){"critical"}elseif($Metrics.StorageAvailablePercent -lt 25){"warning"}else{"good"})'>$($Metrics.StorageAvailablePercent) percent</td>
             <td>$($Runways.StorageMonths) months</td>
         </tr>
     </tbody>
@@ -622,18 +634,15 @@ try {
     Write-Log "$ScriptName v$ScriptVersion"
     Write-Log "========================================"
     
-    # Check Hyper-V
     $HyperVService = Get-Service -Name vmms -ErrorAction SilentlyContinue
     if (-not $HyperVService -or $HyperVService.Status -ne 'Running') {
         Write-Log "Hyper-V service not running" -Level ERROR
-        Set-NinjaRMMField -FieldName "$($FieldPrefix)Status" -Value "NOT_AVAILABLE"
+        Set-NinjaField -FieldName "$($FieldPrefix)Status" -Value "NOT_AVAILABLE"
         exit 1
     }
     
-    # Import module
     Import-Module Hyper-V -ErrorAction Stop
     
-    # Collect capacity data
     $HostCapacity = Get-HostCapacityInfo
     $VMAllocation = Get-VMResourceAllocation
     $StorageCapacity = Get-StorageCapacity
@@ -643,16 +652,12 @@ try {
         exit 2
     }
     
-    # Calculate metrics
     $Metrics = Get-CapacityMetrics -HostCapacity $HostCapacity -VMAllocation $VMAllocation -StorageCapacity $StorageCapacity
     
-    # Calculate growth rates (simplified - would need historical data for accurate calculation)
-    # For now, use placeholder values
-    $CPUGrowthRate = 2.5  # % per month
-    $MemoryGrowthRate = 3.0  # % per month
-    $StorageGrowthRateGB = 50  # GB per month
+    $CPUGrowthRate = 2.5
+    $MemoryGrowthRate = 3.0
+    $StorageGrowthRateGB = 50
     
-    # Calculate runways
     $CPUAvailable = $HostCapacity.TotalLogicalProcessors - $VMAllocation.TotalAllocatedCPU
     $CPUGrowthPerMonth = ($VMAllocation.TotalAllocatedCPU * ($CPUGrowthRate / 100))
     $CPURunway = Get-CapacityRunway -CurrentUsed $VMAllocation.TotalAllocatedCPU -TotalCapacity $HostCapacity.TotalLogicalProcessors -GrowthPerMonth $CPUGrowthPerMonth
@@ -669,16 +674,10 @@ try {
         StorageMonths = $StorageRunway
     }
     
-    # Get recommendations
     $Recommendations = Get-CapacityRecommendations -Metrics $Metrics -Runways $Runways -Thresholds $Thresholds
-    
-    # Determine next bottleneck
     $NextBottleneck = Get-NextBottleneck -Runways $Runways
-    
-    # Determine status
     $CapacityStatus = Get-CapacityStatus -Metrics $Metrics -Runways $Runways -Thresholds $Thresholds
     
-    # Generate HTML report
     $HTMLReport = New-CapacityHTMLReport -HostCapacity $HostCapacity `
                                          -VMAllocation $VMAllocation `
                                          -StorageCapacity $StorageCapacity `
@@ -686,39 +685,33 @@ try {
                                          -Runways $Runways `
                                          -Recommendations $Recommendations
     
-    # Update fields
     Write-Log "Updating NinjaRMM custom fields..."
     
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)CPUAvailablePercent" -Value $Metrics.CPUAvailablePercent
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)CPUGrowthRate" -Value $CPUGrowthRate
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)CPURunwayMonths" -Value $Runways.CPUMonths
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)MemoryAvailableGB" -Value $HostCapacity.AvailableMemoryGB
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)MemoryGrowthRate" -Value $MemoryGrowthRate
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)MemoryRunwayMonths" -Value $Runways.MemoryMonths
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)StorageAvailableTB" -Value ([Math]::Round($StorageCapacity.TotalFreeGB / 1024, 2))
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)StorageGrowthRateGB" -Value $StorageGrowthRateGB
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)StorageRunwayMonths" -Value $Runways.StorageMonths
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)VMDensity" -Value $Metrics.VMDensity
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)OvercommitCPU" -Value $Metrics.CPUOvercommit
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)OvercommitMemory" -Value $Metrics.MemoryOvercommit
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)BottleneckNext" -Value $NextBottleneck
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)Recommendations" -Value ($Recommendations -join " | ")
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)Report" -Value $HTMLReport
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)Status" -Value $CapacityStatus
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)LastScan" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
-    
-    # Calculate execution time
-    $ExecutionEndTime = Get-Date
-    $ExecutionDuration = ($ExecutionEndTime - $ExecutionStartTime).TotalSeconds
+    Set-NinjaField -FieldName "$($FieldPrefix)CPUAvailablePercent" -Value $Metrics.CPUAvailablePercent
+    Set-NinjaField -FieldName "$($FieldPrefix)CPUGrowthRate" -Value $CPUGrowthRate
+    Set-NinjaField -FieldName "$($FieldPrefix)CPURunwayMonths" -Value $Runways.CPUMonths
+    Set-NinjaField -FieldName "$($FieldPrefix)MemoryAvailableGB" -Value $HostCapacity.AvailableMemoryGB
+    Set-NinjaField -FieldName "$($FieldPrefix)MemoryGrowthRate" -Value $MemoryGrowthRate
+    Set-NinjaField -FieldName "$($FieldPrefix)MemoryRunwayMonths" -Value $Runways.MemoryMonths
+    Set-NinjaField -FieldName "$($FieldPrefix)StorageAvailableTB" -Value ([Math]::Round($StorageCapacity.TotalFreeGB / 1024, 2))
+    Set-NinjaField -FieldName "$($FieldPrefix)StorageGrowthRateGB" -Value $StorageGrowthRateGB
+    Set-NinjaField -FieldName "$($FieldPrefix)StorageRunwayMonths" -Value $Runways.StorageMonths
+    Set-NinjaField -FieldName "$($FieldPrefix)VMDensity" -Value $Metrics.VMDensity
+    Set-NinjaField -FieldName "$($FieldPrefix)OvercommitCPU" -Value $Metrics.CPUOvercommit
+    Set-NinjaField -FieldName "$($FieldPrefix)OvercommitMemory" -Value $Metrics.MemoryOvercommit
+    Set-NinjaField -FieldName "$($FieldPrefix)BottleneckNext" -Value $NextBottleneck
+    Set-NinjaField -FieldName "$($FieldPrefix)Recommendations" -Value ($Recommendations -join " | ")
+    Set-NinjaField -FieldName "$($FieldPrefix)Report" -Value $HTMLReport
+    Set-NinjaField -FieldName "$($FieldPrefix)Status" -Value $CapacityStatus
+    Set-NinjaField -FieldName "$($FieldPrefix)LastScan" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
     
     Write-Log "========================================"
     Write-Log "Capacity Planning Summary:"
     Write-Log "  Capacity Status: $CapacityStatus"
-    Write-Log "  CPU Available: $($Metrics.CPUAvailablePercent)% (Runway: $($Runways.CPUMonths) months)"
-    Write-Log "  Memory Available: $($Metrics.MemoryAvailablePercent)% (Runway: $($Runways.MemoryMonths) months)"
-    Write-Log "  Storage Available: $($Metrics.StorageAvailablePercent)% (Runway: $($Runways.StorageMonths) months)"
+    Write-Log "  CPU Available: $($Metrics.CPUAvailablePercent) percent (Runway: $($Runways.CPUMonths) months)"
+    Write-Log "  Memory Available: $($Metrics.MemoryAvailablePercent) percent (Runway: $($Runways.MemoryMonths) months)"
+    Write-Log "  Storage Available: $($Metrics.StorageAvailablePercent) percent (Runway: $($Runways.StorageMonths) months)"
     Write-Log "  Next Bottleneck: $NextBottleneck"
-    Write-Log "  Execution Time: $([Math]::Round($ExecutionDuration, 2)) seconds"
     Write-Log "========================================"
     Write-Log "Script completed successfully"
     
@@ -728,11 +721,22 @@ try {
     Write-Log "Unexpected error: $($_.Exception.Message)" -Level ERROR
     Write-Log "Stack Trace: $($_.ScriptStackTrace)" -Level ERROR
     
-    Set-NinjaRMMField -FieldName "$($FieldPrefix)Status" -Value "ERROR"
-    
-    $ExecutionEndTime = Get-Date
-    $ExecutionDuration = ($ExecutionEndTime - $ExecutionStartTime).TotalSeconds
-    Write-Log "Execution Time: $([Math]::Round($ExecutionDuration, 2)) seconds"
-    
+    Set-NinjaField -FieldName "$($FieldPrefix)Status" -Value "ERROR"
     exit 99
+    
+} finally {
+    $EndTime = Get-Date
+    $ExecutionTime = ($EndTime - $StartTime).TotalSeconds
+    
+    Write-Log "========================================"
+    Write-Log "Execution Summary:"
+    Write-Log "  Duration: $ExecutionTime seconds"
+    Write-Log "  Errors: $script:ErrorCount"
+    Write-Log "  Warnings: $script:WarningCount"
+    
+    if ($script:CLIFallbackCount -gt 0) {
+        Write-Log "  CLI Fallbacks: $script:CLIFallbackCount"
+    }
+    
+    Write-Log "========================================"
 }

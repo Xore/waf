@@ -1,19 +1,20 @@
 # WAF V3.0 Refactoring Progress
 
-**Last Updated:** 2026-02-10 18:35 CET
+**Last Updated:** 2026-02-10 18:40 CET
 
 ## Overview
 
 **Total Scripts:** 219  
-**Completed:** 79 (36.1%)  
-**Remaining:** 140
+**Completed:** 80 (36.5%)  
+**Remaining:** 139
 
 ## Completion Status by Category
 
-### Active Directory (3/17 = 17.6%)
-- [x] ActiveDirectory-GetGroupMembers.ps1
-- [x] ActiveDirectory-GetUserInfo.ps1
-- [x] ActiveDirectory-AddUserToGroup.ps1
+### Active Directory (4/17 = 23.5%)
+- [x] ActiveDirectory-GetGroupMembers.ps1 (V3.0.0)
+- [x] ActiveDirectory-GetUserInfo.ps1 (V3.0.0)
+- [x] ActiveDirectory-AddUserToGroup.ps1 (V3.0.0)
+- [x] AD-RemoveComputerFromDomain.ps1 (V3.0.0)
 
 ### Audit (15/15 = 100%)
 - [x] Audit-BitLockerStatus.ps1
@@ -137,34 +138,36 @@ Each completed script includes:
 - [x] Proper exit codes (0=success, 1=failure)
 - [x] No checkmark/cross emoji characters in output
 
-## Recent Session Progress (2026-02-10 18:00-18:35 CET)
+## Recent Session Progress (2026-02-10 18:40 CET)
+
+### Batch 80 (Active Directory Category)
+1. [AD-RemoveComputerFromDomain.ps1](https://github.com/Xore/waf/commit/44d491648a74ca7543234944863e3a3f30e03e8f) - Upgraded V3.0 to V3.0.0
+   - Added Set-StrictMode -Version Latest
+   - Implemented begin/process/end blocks
+   - Enhanced logging with Write-Log function
+   - Added garbage collection in end block
+   - Improved credential security handling
+   - Maintained all original domain removal functionality
+
+## Previous Session Progress (2026-02-10 18:00-18:35 CET)
 
 ### Batch 77-79 (Software Category)
 1. [Software-UpdatePowerShell51.ps1](https://github.com/Xore/waf/commit/ecbf23122336e4900a5aaed6fafc5705b2e0afe2) - Complete refactor to V3.0.0
 2. [Software-UninstallSiemensNX2412.ps1](https://github.com/Xore/waf/commit/c51a2bccca52d086b641c44b3f991f0d855dc4ee) - Converted from batch to PS V3.0.0
 3. [Software-UninstallCatiaBMW-R2024SP5.ps1](https://github.com/Xore/waf/commit/0e56c82fe0e8adad1b8d3122494c484f5f859be6) - Converted from batch to PS V3.0.0
 
-### Already Compliant (Verified)
-- Software-InstallNetFramework35.ps1 (V3.0.0)
-- Software-TreesizeUltimate.ps1 (V3.0.0)
-- Software-InstallSiemensNX.ps1 (V3.0.0)
-- Software-InstallSysmon.ps1 (V3.0.0)
-- Software-ListInstalledApplications.ps1 (V3.0)
-- Software-UninstallPuTTY.ps1 (V3.0)
-
 ## Session Summary
 
-**Scripts Refactored:** 3  
-**Scripts Verified:** 6  
-**Total Progress:** 79/219 (36.1%)  
-**Software Category:** 14/23 completed (60.9%)
+**Scripts Refactored This Session:** 1  
+**Total Progress:** 80/219 (36.5%)  
+**Active Directory Category:** 4/17 completed (23.5%)
 
 ### Key Improvements
-- Converted 2 batch scripts to PowerShell with full V3.0.0 compliance
-- Upgraded 1 legacy PowerShell script to V3.0.0 standards
-- All scripts now have structured logging, error handling, and NinjaRMM integration
-- Execution time tracking added to all scripts
-- Proper cleanup with garbage collection
+- Upgraded AD-RemoveComputerFromDomain.ps1 from V3.0 to V3.0.0
+- Added structured logging and error handling
+- Implemented proper cleanup with garbage collection
+- Enhanced credential security handling
+- All scripts maintain original functionality while adding robustness
 
 ## Notes
 

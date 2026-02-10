@@ -44,6 +44,7 @@
 .NOTES
     Minimum OS Architecture Supported: Windows 10, Windows Server 2016
     Release notes:
+    (v3.0.0) 2026-02-10 - Upgraded to script-scoped exit code handling
     (v3.0) 2026-02-10 - Upgraded to V3 standards: Write-Log function, execution tracking, enhanced error handling
     (v2.0) 2025-12-01 - Initial release for WAF v2.0
     
@@ -76,7 +77,7 @@ begin {
     Set-StrictMode -Version Latest
     
     $startTime = Get-Date
-    $exitCode = 0
+    $script:exitCode = 0
 
     function Write-Log {
         param(
@@ -280,7 +281,7 @@ process {
 
         if ($officeInfo.Version -eq "Not Installed") {
             Write-Log "Microsoft Office is not installed on this system"
-            $exitCode = 0
+            $script:exitCode = 0
         }
         else {
             Write-Log "Office Version: $($officeInfo.Version)"
@@ -311,17 +312,17 @@ process {
                 }
                 else {
                     Write-Log "Failed to save to custom field '$SaveToCustomField'" -Level WARNING
-                    $exitCode = 1
+                    $script:exitCode = 1
                 }
             }
             
-            $exitCode = 0
+            $script:exitCode = 0
         }
     }
     catch {
         Write-Log "Failed to detect Office version: $($_.Exception.Message)" -Level ERROR
         Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
-        $exitCode = 1
+        $script:exitCode = 1
     }
 }
 

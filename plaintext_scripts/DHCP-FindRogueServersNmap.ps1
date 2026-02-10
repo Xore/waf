@@ -73,16 +73,47 @@ begin {
     $StartTime = Get-Date
     
     Set-StrictMode -Version Latest
+    
+    $script:ExitCode = 0
+    $script:ErrorCount = 0
+    $script:WarningCount = 0
 
     function Write-Log {
         param([string]$Message, [string]$Level = 'INFO')
         $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
         $logMessage = "[$timestamp] [$Level] $Message"
+        Write-Output $logMessage
         
-        switch ($Level) {
-            'ERROR' { Write-Error $logMessage }
-            'WARNING' { Write-Warning $logMessage }
-            default { Write-Output $logMessage }
+        if ($Level -eq 'ERROR') { $script:ErrorCount++ }
+        if ($Level -eq 'WARNING') { $script:WarningCount++ }
+    }
+
+    function Set-NinjaField {
+        <#
+        .SYNOPSIS
+            Sets NinjaRMM custom field with CLI fallback.
+        #>
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$Name,
+            
+            [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+            [AllowEmptyString()]
+            [string]$Value
+        )
+        
+        try {
+            if (Get-Command 'Ninja-Property-Set' -ErrorAction SilentlyContinue) {
+                Ninja-Property-Set -Name $Name -Value $Value
+            }
+            else {
+                Write-Log "CLI fallback - Would set field '$Name' to: $Value" -Level 'INFO'
+            }
+        }
+        catch {
+            Write-Log "Failed to set custom field '$Name': $_" -Level 'ERROR'
+            throw
         }
     }
 
@@ -112,7 +143,7 @@ begin {
             }
         }
         catch {
-            Write-Log "Failed to get subnet information: $_" -Level ERROR
+            Write-Log "Failed to get subnet information: $_" -Level 'ERROR'
             throw
         }
     }
@@ -158,7 +189,7 @@ begin {
             $AllowedServers = (Ninja-Property-Get $AllowedServersField 2>$null) -split ',' | ForEach-Object { $_.Trim() }
         }
         catch {
-            Write-Log "Failed to retrieve allowed servers from custom field" -Level WARNING
+            Write-Log "Failed to retrieve allowed servers from custom field" -Level 'WARNING'
         }
     }
 
@@ -172,19 +203,23 @@ begin {
 
     $Nmap = (Find-UninstallKey -DisplayName "Nmap" -UninstallString) -replace '"' -replace 'uninstall.exe', 'nmap.exe'
     if (-not $Nmap) {
-        throw "Nmap is not installed! Please install nmap prior to running this script. https://nmap.org/download.html"
+        Write-Log "Nmap is not installed! Please install nmap prior to running this script. https://nmap.org/download.html" -Level 'ERROR'
+        $script:ExitCode = 1
+        return
     }
-
-    $ExitCode = 0
 }
 
 process {
+    if ($script:ExitCode -ne 0) { return }
+    
     try {
         Write-Log "Starting rogue DHCP server scan"
         
         $Subnets = Get-Subnet
         if (-not $Subnets) {
-            throw "Unable to get list of subnets"
+            Write-Log "Unable to get list of subnets" -Level 'ERROR'
+            $script:ExitCode = 1
+            return
         }
 
         Write-Log "Scanning subnets: $($Subnets -join ', ')"
@@ -203,7 +238,9 @@ process {
         Start-Process -FilePath $Nmap -ArgumentList $Arguments -WindowStyle Hidden -Wait -ErrorAction Stop
         
         if (-not (Test-Path "$env:Temp\nmap-results.xml")) {
-            throw "Nmap scan failed to generate results file"
+            Write-Log "Nmap scan failed to generate results file" -Level 'ERROR'
+            $script:ExitCode = 1
+            return
         }
         
         [xml]$result = Get-Content -Path "$env:Temp\nmap-results.xml" -ErrorAction Stop
@@ -217,12 +254,16 @@ process {
             }
         }
         else {
-            throw "Nmap results are empty"
+            Write-Log "Nmap results are empty" -Level 'ERROR'
+            $script:ExitCode = 1
+            return
         }
 
         if ($resultObject) {
             Write-Log "DHCP Servers found:"
-            $resultObject | Sort-Object -Property "IP Address" -Unique | Format-Table | Out-String | Write-Log
+            $resultObject | Sort-Object -Property "IP Address" -Unique | ForEach-Object {
+                Write-Log "  IP: $($_.'IP Address')  MAC: $($_.'Mac Address')"
+            }
             
             Remove-Item -Path "$env:Temp\nmap-results.xml" -Force -ErrorAction SilentlyContinue
 
@@ -231,18 +272,19 @@ process {
             
             foreach ($Server in $resultObject) {
                 if ($AllowedServers -notcontains $Server."IP Address") {
-                    Write-Log "Rogue DHCP Server Found: $($Server.'IP Address') is not on the allowed list" -Level WARNING
+                    Write-Log "Rogue DHCP Server Found: $($Server.'IP Address') is not on the allowed list" -Level 'WARNING'
                     $RogueServers += $Server
-                    $ExitCode = 1
+                    $script:ExitCode = 1
                 }
             }
 
             if ($RogueServers.Count -gt 0) {
                 try {
-                    Ninja-Property-Set -Name $CustomField -Value ($RogueServers | Format-List | Out-String)
+                    $RogueReport = ($RogueServers | ForEach-Object { "IP: $($_.'IP Address') MAC: $($_.'Mac Address')" }) -join "; "
+                    Set-NinjaField -Name $CustomField -Value $RogueReport
                 }
                 catch {
-                    Write-Log "Failed to save rogue servers to custom field: $_" -Level WARNING
+                    Write-Log "Failed to save rogue servers to custom field: $_" -Level 'WARNING'
                 }
             }
             else {
@@ -251,8 +293,8 @@ process {
         }
     }
     catch {
-        Write-Log "Failed to scan for rogue DHCP servers: $_" -Level ERROR
-        $ExitCode = 1
+        Write-Log "Failed to scan for rogue DHCP servers: $_" -Level 'ERROR'
+        $script:ExitCode = 1
     }
 }
 
@@ -260,10 +302,19 @@ end {
     try {
         $EndTime = Get-Date
         $Duration = ($EndTime - $StartTime).TotalSeconds
-        Write-Log "Script execution completed in $Duration seconds"
+        
+        Write-Output "`n========================================"
+        Write-Output "Execution Summary"
+        Write-Output "========================================"
+        Write-Output "Script: DHCP-FindRogueServersNmap.ps1"
+        Write-Output "Duration: $Duration seconds"
+        Write-Output "Errors: $script:ErrorCount"
+        Write-Output "Warnings: $script:WarningCount"
+        Write-Output "Exit Code: $script:ExitCode"
+        Write-Output "========================================"
     }
     finally {
         [System.GC]::Collect()
-        exit $ExitCode
+        exit $script:ExitCode
     }
 }

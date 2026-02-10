@@ -3,307 +3,254 @@
 <#
 .SYNOPSIS
     Sets the required registry key to either block the forced migration from 'classic Outlook' to 'New Outlook' and optionally hides the 'Try the New Outlook' toggle button.
+
 .DESCRIPTION
-    Sets the required registry key to either block the forced migration from 'classic Outlook' to 'New Outlook' and optionally hides the 'Try the New Outlook' toggle button.
-.EXAMPLE
-    -NewOutlookToggle "Hide Toggle"
+    This script configures registry settings to control Outlook's migration behavior from classic Outlook to New Outlook.
+    It can disable/enable the forced migration policy and hide/show the 'Try the New Outlook' toggle button for users.
+    The script supports targeting specific users or all users on the system.
     
-    [Warning] This device is currently joined to a domain. This setting could be overridden by a group policy in the future.
-    [Warning] https://learn.microsoft.com/en-us/microsoft-365-apps/outlook/get-started/control-install#prevent-users-from-switching-to-new-outlook
-    Gathering all user profiles.
-    Successfully retrieved one or more profiles.
+    Key Features:
+    - Controls Outlook migration policy (Enable/Disable/Default)
+    - Hides/shows the 'Try the New Outlook' toggle button
+    - Supports per-user or system-wide configuration
+    - Loads/unloads user registry hives as needed
+    - Compatible with domain-joined systems (warns about GPO override)
+    - Validates Office/Microsoft 365 installation
 
-    Setting the New Outlook forced migration policy for all users.
+.PARAMETER MigrationPolicy
+    Sets the automatic forced migration policy for classic Outlook to New Outlook.
+    Valid values: 'Enable', 'Disable', 'Default'
+    Default: 'Disable'
 
-    Setting the New Outlook forced migration policy for the user 'Administrator' to disabled.
-    Set Registry::HKEY_USERS\S-1-5-21-1045302187-3297466791-1554884838-500\Software\Policies\Microsoft\office\16.0\outlook\preferences\NewOutlookMigrationUserSetting to 0
-    Successfully set the New Outlook forced migration policy for the user 'Administrator'.
+.PARAMETER NewOutlookToggle
+    Controls visibility of the 'Try the New Outlook' toggle button in Outlook.
+    Valid values: 'Hide Toggle', 'Show Toggle', 'Default'
+    If not specified, the toggle setting will not be modified.
 
-    Setting the New Outlook forced migration policy for the user 'tuser1' to disabled.
-    Set Registry::HKEY_USERS\S-1-5-21-1308996835-875450383-3441943874-1104\Software\Policies\Microsoft\office\16.0\outlook\preferences\NewOutlookMigrationUserSetting to 0
-    Successfully set the New Outlook forced migration policy for the user 'tuser1'.
+.PARAMETER UserToSetPolicyFor
+    Specifies a username to target for policy changes.
+    If not specified, applies policy to all users on the system.
+    Username must not exceed 20 characters and must not contain spaces or special characters.
 
-    Setting the New Outlook forced migration policy for the user 'cheart' to disabled.
-    Set Registry::HKEY_USERS\S-1-5-21-1308996835-875450383-3441943874-1113\Software\Policies\Microsoft\office\16.0\outlook\preferences\NewOutlookMigrationUserSetting to 0
-    Successfully set the New Outlook forced migration policy for the user 'cheart'.
+.EXAMPLE
+    Outlook-SetForcedMigration.ps1
+    Disables forced migration for all users (default behavior).
 
-    Setting the New Outlook forced migration policy for the user 'Administrator' to disabled.
-    Set Registry::HKEY_USERS\S-1-5-21-1308996835-875450383-3441943874-500\Software\Policies\Microsoft\office\16.0\outlook\preferences\NewOutlookMigrationUserSetting to 0
-    Successfully set the New Outlook forced migration policy for the user 'Administrator'.
+.EXAMPLE
+    Outlook-SetForcedMigration.ps1 -MigrationPolicy "Disable" -NewOutlookToggle "Hide Toggle"
+    Disables forced migration AND hides the toggle button for all users.
 
-    Successfully set the New Outlook forced migration policy for all users.
+.EXAMPLE
+    Outlook-SetForcedMigration.ps1 -MigrationPolicy "Enable" -UserToSetPolicyFor "jsmith"
+    Enables forced migration for user 'jsmith' only.
 
-    Setting the 'Try the new outlook' toggle for all users.
+.EXAMPLE
+    Outlook-SetForcedMigration.ps1 -NewOutlookToggle "Show Toggle" -UserToSetPolicyFor "admin"
+    Shows the toggle button for user 'admin' (does not change migration policy).
 
-    Setting the 'Try the New Outlook' toggle for user 'Administrator' to hidden.
-    Set Registry::HKEY_USERS\S-1-5-21-1045302187-3297466791-1554884838-500\Software\Microsoft\Office\16.0\Outlook\Options\General\HideNewOutlookToggle to 1
-    Successfully set the 'Try the new outlook' toggle for user 'Administrator'
+.EXAMPLE
+    Outlook-SetForcedMigration.ps1 -MigrationPolicy "Default"
+    Resets migration policy to default (removes registry key) for all users.
 
-    Setting the 'Try the New Outlook' toggle for user 'tuser1' to hidden.
-    Set Registry::HKEY_USERS\S-1-5-21-1308996835-875450383-3441943874-1104\Software\Microsoft\Office\16.0\Outlook\Options\General\HideNewOutlookToggle to 1
-    Successfully set the 'Try the new outlook' toggle for user 'tuser1'
-
-    Setting the 'Try the New Outlook' toggle for user 'cheart' to hidden.
-    Set Registry::HKEY_USERS\S-1-5-21-1308996835-875450383-3441943874-1113\Software\Microsoft\Office\16.0\Outlook\Options\General\HideNewOutlookToggle to 1
-    Successfully set the 'Try the new outlook' toggle for user 'cheart'
-
-    Setting the 'Try the New Outlook' toggle for user 'Administrator' to hidden.
-    Set Registry::HKEY_USERS\S-1-5-21-1308996835-875450383-3441943874-500\Software\Microsoft\Office\16.0\Outlook\Options\General\HideNewOutlookToggle to 1
-    Successfully set the 'Try the new outlook' toggle for user 'Administrator'
-
-    Successfully set the 'Try the New Outlook' toggle for all users. You may need to close and re-open Outlook for your change to take effect.
-
-PARAMETER: -MigrationPolicy "Disable"
-    Sets a policy to either disable or enable the automatic forced migration of classic Outlook to New Outlook.
-
-PARAMETER: -NewOutlookToggle "Hide Toggle"
-    Hide or show the toggle button to migrate to the new outlook.
-
-PARAMETER: -UserToSetPolicyFor "ReplaceMeWithAValidUsername"
-    The username you would like to set the policy for. Leave blank for all users.
+.NOTES
+    Minimum OS Architecture Supported: Windows 10, Windows Server 2016
+    Version: 3.0
+    Release Notes: 
+        - V3.0: Added Write-Log function, execution tracking, enhanced error handling, structured helper functions
+        - V1.0: Initial Release
+    
+    Exit Codes:
+        0 = Success
+        1 = Failure (various error conditions)
+    
+    Requirements:
+        - Administrator privileges required
+        - Microsoft Office or Microsoft 365 must be installed
+    
+    Registry Paths:
+        - Migration Policy: HKEY_USERS\<SID>\Software\Policies\Microsoft\office\16.0\outlook\preferences\NewOutlookMigrationUserSetting
+        - Toggle Button: HKEY_USERS\<SID>\Software\Microsoft\Office\16.0\Outlook\Options\General\HideNewOutlookToggle
 
 .LINK
     https://learn.microsoft.com/en-us/microsoft-365-apps/outlook/get-started/control-install
-.NOTES
-    Minimum OS Architecture Supported: Windows 10, Windows Server 2016
-    Version: 1.0
-    Release Notes: Initial Release
 #>
 
 [CmdletBinding()]
 param (
-    [Parameter()]
-    [String]$MigrationPolicy = "Disable",
-    [Parameter()]
+    [Parameter(Mandatory = $false)]
+    [ValidateSet('Enable', 'Disable', 'Default')]
+    [String]$MigrationPolicy = 'Disable',
+    
+    [Parameter(Mandatory = $false)]
+    [ValidateSet('Hide Toggle', 'Show Toggle', 'Default')]
     [String]$NewOutlookToggle,
-    [Parameter()]
+    
+    [Parameter(Mandatory = $false)]
+    [ValidateLength(1, 20)]
+    [ValidatePattern('^[^\[\]:;|=+*?<>/\\,"@\s]+$')]
     [String]$UserToSetPolicyFor
 )
 
 begin {
-    # If the script form variables are used, replace the command line parameters with their value.
-    if ($env:migrationAction -and $env:migrationAction -ne "null") { $MigrationPolicy = $env:migrationAction }
-    if ($env:toggleButtonAction -and $env:toggleButtonAction -ne "null") { $NewOutlookToggle = $env:toggleButtonAction }
-    if ($env:usernameToSetPolicyFor -and $env:usernameToSetPolicyFor -ne "null") { $UserToSetPolicyFor = $env:usernameToSetPolicyFor }
+    $ErrorActionPreference = 'Stop'
+    $ProgressPreference = 'SilentlyContinue'
+    Set-StrictMode -Version Latest
     
-    # Check if a specific username was provided for setting the policy.
-    if ($UserToSetPolicyFor) {
-        # Trim any leading or trailing spaces from the username.
-        $UserToSetPolicyFor = $UserToSetPolicyFor.Trim()
+    $ExitCode = 0
+    $ScriptStartTime = Get-Date
 
-        # Validate that the username is not empty after trimming.
-        if (!$UserToSetPolicyFor) {
-            Write-Host -Object "[Error] An invalid username was given. Please specify a valid username."
-            exit 1
-        }
-
-        # Ensure the username does not contain any illegal characters.
-        if ($UserToSetPolicyFor -match '\[|\]|:|;|\||=|\+|\*|\?|<|>|/|\\|,|"|@') {
-            Write-Host -Object ("[Error] $UserToSetPolicyFor contains one of the following invalid characters." + ' " [ ] : ; | = + * ? < > / \ , @')
-            exit 1
-        }
-
-        # Ensure the username does not contain spaces.
-        if ($UserToSetPolicyFor -match '\s') {
-            Write-Host -Object ("[Error] '$UserToSetPolicyFor' contains a space.")
-            exit 1
-        }
-
-        # Ensure the username does not exceed 20 characters.
-        $UserNameCharacters = $UserToSetPolicyFor | Measure-Object -Character | Select-Object -ExpandProperty Characters
-        if ($UserNameCharacters -gt 20) {
-            Write-Host -Object "[Error] '$UserToSetPolicyFor' is too long. The username must not exceed 20 characters."
-            exit 1
+    function Write-Log {
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$Message,
+            
+            [Parameter(Mandatory = $false)]
+            [ValidateSet('INFO', 'WARNING', 'ERROR')]
+            [string]$Level = 'INFO'
+        )
+        
+        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $logMessage = "[$timestamp] [$Level] $Message"
+        
+        switch ($Level) {
+            'ERROR'   { Write-Error $logMessage }
+            'WARNING' { Write-Warning $logMessage }
+            default   { Write-Host $logMessage }
         }
     }
 
-    # Check if a migration policy was provided and trim any leading/trailing spaces.
-    if ($MigrationPolicy) {
-        $MigrationPolicy = $MigrationPolicy.Trim()
-    }
-
-    # Check if the "Try the New Outlook" toggle policy was provided and trim spaces.
-    if ($NewOutlookToggle) {
-        $NewOutlookToggle = $NewOutlookToggle.Trim()
-
-        # Validate that the toggle action is not empty after trimming.
-        if (!$NewOutlookToggle) {
-            Write-Host -Object "[Error] An invalid 'Try the new outlook' toggle button action was given. Please specify either 'Hide Toggle', 'Show Toggle', 'Default' or nothing."
-            exit 1
-        }
-    }
-
-    # Ensure that a migration policy was specified.
-    if (!$MigrationPolicy) {
-        Write-Host -Object "[Error] Please specify a valid migration policy action. Valid migration actions include 'Enable', 'Disable' or 'Default'."
-        exit 1
-    }
-
-    
-    # Define valid migration policy actions and ensure the input is valid.
-    $ValidMigrationPolicyActions = "Enable", "Disable", "Default"
-    if ($ValidMigrationPolicyActions -notcontains $MigrationPolicy) {
-        Write-Host -Object "[Error] An invalid migration policy of '$MigrationPolicy' was given. Please specify a valid migration action such as 'Enable', 'Disable' or 'Default'."
-        exit 1
-    }
-
-    # Define valid New Outlook toggle actions and ensure the input is valid.
-    $ValidNewOutlookTogglePolicy = "Hide Toggle", "Show Toggle", "Default"
-    if ($NewOutlookToggle -and $ValidNewOutlookTogglePolicy -notcontains $NewOutlookToggle) {
-        Write-Host -Object "[Error] An invalid 'Try the new outlook' toggle button action of '$NewOutlookToggle' was given. Please specify either 'Hide Toggle', 'Show Toggle', 'Default' or nothing."
-        exit 1
-    }
-
-    # To check if office is installed on the machine.
     function Find-InstallKey {
+        <#
+        .SYNOPSIS
+            Searches for installed software in the Windows registry.
+        #>
         [CmdletBinding()]
         param (
-            [Parameter(ValueFromPipeline = $True)]
+            [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
             [String]$DisplayName,
-            [Parameter()]
+            
+            [Parameter(Mandatory = $false)]
             [Switch]$UninstallString,
-            [Parameter()]
+            
+            [Parameter(Mandatory = $false)]
             [String]$UserBaseKey
         )
+        
         process {
-            # Initialize a list to store found installation keys
             $InstallList = New-Object System.Collections.Generic.List[Object]
-    
-            # If no custom user base key is provided, search in the standard HKLM paths
-            if (!$UserBaseKey) {
-                $ErrorActionPreference = "Stop"
-                # Search in the 32-bit uninstall registry key and add results to the list
-                try {
-                    $Result = Get-ChildItem -Path "Registry::HKEY_LOCAL_MACHINE\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" | Get-ItemProperty | Where-Object { $_.DisplayName -like "*$DisplayName*" }
-                    if ($Result) { $InstallList.Add($Result) }
+            
+            try {
+                if (!$UserBaseKey) {
+                    $Paths = @(
+                        'Registry::HKEY_LOCAL_MACHINE\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
+                        'Registry::HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Uninstall\*'
+                    )
                 }
-                catch {
-                    Write-Host -Object "[Error] $($_.Exception.Message)"
-                    Write-Host -Object "[Error] Failed to retrieve registry keys at 'HKEY_LOCAL_MACHINE\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'."
-                    exit 1
+                else {
+                    $Paths = @(
+                        "$UserBaseKey\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+                        "$UserBaseKey\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"
+                    )
                 }
-    
-                # Search in the 64-bit uninstall registry key and add results to the list
-                try {
-                    $Result = Get-ChildItem -Path "Registry::HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Uninstall\*" | Get-ItemProperty | Where-Object { $_.DisplayName -like "*$DisplayName*" }
-                    if ($Result) { $InstallList.Add($Result) }
+                
+                foreach ($Path in $Paths) {
+                    if (Test-Path -Path $Path) {
+                        $Result = Get-ChildItem -Path $Path -ErrorAction Stop | 
+                            Get-ItemProperty | 
+                            Where-Object { $_.DisplayName -like "*$DisplayName*" }
+                        
+                        if ($Result) { 
+                            $InstallList.Add($Result) 
+                        }
+                    }
                 }
-                catch {
-                    Write-Host -Object "[Error] $($_.Exception.Message)"
-                    Write-Host -Object "[Error] Failed to retrieve registry keys at 'HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Uninstall\*'."
-                    exit 1
-                }
-    
-                $ErrorActionPreference = "Continue"
             }
-            else {
-                $ErrorActionPreference = "Stop"
-                # If a custom user base key is provided, search in the corresponding Wow6432Node path and add results to the list
-                try {
-                    $Result = Get-ChildItem -Path "$UserBaseKey\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" | Get-ItemProperty | Where-Object { $_.DisplayName -like "*$DisplayName*" }
-                    if ($Result) { $InstallList.Add($Result) }
-                }
-                catch {
-                    Write-Host -Object "[Error] $($_.Exception.Message)"
-                    Write-Host -Object "[Error] Failed to retrieve registry keys at '$UserBaseKey\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'."
-                    exit 1
-                }
-    
-                try {
-                    # Search in the custom user base key for the standard uninstall path and add results to the list
-                    $Result = Get-ChildItem -Path "$UserBaseKey\Software\Microsoft\Windows\CurrentVersion\Uninstall\*" | Get-ItemProperty | Where-Object { $_.DisplayName -like "*$DisplayName*" }
-                    if ($Result) { $InstallList.Add($Result) }
-                }
-                catch {
-                    Write-Host -Object "[Error] $($_.Exception.Message)"
-                    Write-Host -Object "[Error] Failed to retrieve registry keys at '$UserBaseKey\Software\Microsoft\Windows\CurrentVersion\Uninstall\*'."
-                    exit 1
-                }
-    
-                $ErrorActionPreference = "Continue"
+            catch {
+                Write-Log "Failed to retrieve registry keys at '$Path': $($_.Exception.Message)" -Level ERROR
+                throw
             }
-    
-            # If the UninstallString switch is set, return only the UninstallString property of the found keys
+            
             if ($UninstallString) {
-                $InstallList | Select-Object -ExpandProperty UninstallString -ErrorAction SilentlyContinue
+                return $InstallList | Select-Object -ExpandProperty UninstallString -ErrorAction SilentlyContinue
             }
             else {
-                $InstallList
+                return $InstallList
             }
         }
     }
 
     function Get-UserHives {
+        <#
+        .SYNOPSIS
+            Retrieves user profile information including registry hive paths.
+        #>
         param (
-            [Parameter()]
+            [Parameter(Mandatory = $false)]
             [ValidateSet('AzureAD', 'DomainAndLocal', 'All')]
-            [String]$Type = "All",
-            [Parameter()]
+            [String]$Type = 'All',
+            
+            [Parameter(Mandatory = $false)]
             [String[]]$ExcludedUsers,
-            [Parameter()]
+            
+            [Parameter(Mandatory = $false)]
             [switch]$IncludeDefault
         )
-    
-        # Define the SID patterns to match based on the selected user type
+        
         $Patterns = switch ($Type) {
-            "AzureAD" { "S-1-12-1-(\d+-?){4}$" }
-            "DomainAndLocal" { "S-1-5-21-(\d+-?){4}$" }
-            "All" { "S-1-12-1-(\d+-?){4}$" ; "S-1-5-21-(\d+-?){4}$" } 
+            'AzureAD'        { 'S-1-12-1-(\d+-?){4}$' }
+            'DomainAndLocal' { 'S-1-5-21-(\d+-?){4}$' }
+            'All'            { 'S-1-12-1-(\d+-?){4}$'; 'S-1-5-21-(\d+-?){4}$' } 
         }
-    
-        # Retrieve user profile information based on the defined patterns
+        
         try {
-            $UserProfiles = Foreach ($Pattern in $Patterns) { 
-                Get-ItemProperty "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\*" -ErrorAction Stop |
+            $UserProfiles = foreach ($Pattern in $Patterns) { 
+                Get-ItemProperty 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\*' -ErrorAction Stop |
                     Where-Object { $_.PSChildName -match $Pattern } | 
-                    Select-Object @{Name = "SID"; Expression = { $_.PSChildName } },
-                    @{Name = "Username"; Expression = { "$($_.ProfileImagePath | Split-Path -Leaf)" } }, 
-                    @{Name = "Domain"; Expression = { if ($_.PSChildName -match "S-1-12-1-(\d+-?){4}$") { "AzureAD" }else { $Null } } }, 
-                    @{Name = "UserHive"; Expression = { "$($_.ProfileImagePath)\NTuser.dat" } }, 
-                    @{Name = "Path"; Expression = { $_.ProfileImagePath } }
+                    Select-Object @{Name = 'SID'; Expression = { $_.PSChildName } },
+                    @{Name = 'Username'; Expression = { "$($_.ProfileImagePath | Split-Path -Leaf)" } }, 
+                    @{Name = 'Domain'; Expression = { if ($_.PSChildName -match 'S-1-12-1-(\d+-?){4}$') { 'AzureAD' } else { $null } } }, 
+                    @{Name = 'UserHive'; Expression = { "$($_.ProfileImagePath)\NTuser.dat" } }, 
+                    @{Name = 'Path'; Expression = { $_.ProfileImagePath } }
             }
         }
         catch {
-            Write-Host -Object "[Error] Failed to scan registry keys at 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList'."
-            Write-Host -Object "[Error] $($_.Exception.Message)"
-            exit 1
+            Write-Log "Failed to scan registry keys at 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList': $($_.Exception.Message)" -Level ERROR
+            throw
         }
-    
-        # If the IncludeDefault switch is set, add the Default profile to the results
-        switch ($IncludeDefault) {
-            $True {
-                $DefaultProfile = "" | Select-Object Username, SID, UserHive, Path
-                $DefaultProfile.Username = "Default"
-                $DefaultProfile.Domain = $env:COMPUTERNAME
-                $DefaultProfile.SID = "DefaultProfile"
-                $DefaultProfile.Userhive = "$env:SystemDrive\Users\Default\NTUSER.DAT"
-                $DefaultProfile.Path = "C:\Users\Default"
-    
-                # Exclude users specified in the ExcludedUsers list
-                $DefaultProfile | Where-Object { $ExcludedUsers -notcontains $_.Username }
+        
+        if ($IncludeDefault) {
+            $DefaultProfile = [PSCustomObject]@{
+                Username = 'Default'
+                Domain   = $env:COMPUTERNAME
+                SID      = 'DefaultProfile'
+                Userhive = "$env:SystemDrive\Users\Default\NTUSER.DAT"
+                Path     = 'C:\Users\Default'
+            }
+            
+            if ($ExcludedUsers -notcontains $DefaultProfile.Username) {
+                $UserProfiles += $DefaultProfile
             }
         }
-    
+        
         try {
-            if ($PSVersionTable.PSVersion.Major -lt 3) {
-                $AllAccounts = Get-WmiObject -Class "win32_UserAccount" -ErrorAction Stop
+            $AllAccounts = if ($PSVersionTable.PSVersion.Major -lt 3) {
+                Get-WmiObject -Class 'win32_UserAccount' -ErrorAction Stop
             }
             else {
-                $AllAccounts = Get-CimInstance -ClassName "win32_UserAccount" -ErrorAction Stop
+                Get-CimInstance -ClassName 'win32_UserAccount' -ErrorAction Stop
             }
         }
         catch {
-            Write-Host -Object "[Error] Failed to gather complete profile information."
-            Write-Host -Object "[Error] $($_.Exception.Message)"
-            exit 1
+            Write-Log "Failed to gather complete profile information: $($_.Exception.Message)" -Level ERROR
+            throw
         }
-    
+        
         $CompleteUserProfiles = $UserProfiles | ForEach-Object {
             $SID = $_.SID
-            $Win32Object = $AllAccounts | Where-Object { $_.SID -like $SID }
-    
+            $Win32Object = $AllAccounts | Where-Object { $_.SID -eq $SID }
+            
             if ($Win32Object) {
-                $Win32Object | Add-Member -NotePropertyName UserHive -NotePropertyValue $_.UserHive
+                $Win32Object | Add-Member -NotePropertyName UserHive -NotePropertyValue $_.UserHive -Force
                 $Win32Object
             }
             else {
@@ -316,91 +263,94 @@ begin {
                 }
             }
         }
-    
-        # Return the list of user profiles, excluding any specified in the ExcludedUsers list
-        $CompleteUserProfiles | Where-Object { $ExcludedUsers -notcontains $_.Name }
+        
+        return $CompleteUserProfiles | Where-Object { $ExcludedUsers -notcontains $_.Name }
     }
 
     function Set-RegKey {
+        <#
+        .SYNOPSIS
+            Creates or updates a registry key with proper error handling.
+        #>
         param (
-            $Path,
-            $Name,
+            [Parameter(Mandatory = $true)]
+            [string]$Path,
+            
+            [Parameter(Mandatory = $true)]
+            [string]$Name,
+            
+            [Parameter(Mandatory = $true)]
             $Value,
-            [ValidateSet("DWord", "QWord", "String", "ExpandedString", "Binary", "MultiString", "Unknown")]
-            $PropertyType = "DWord"
+            
+            [Parameter(Mandatory = $false)]
+            [ValidateSet('DWord', 'QWord', 'String', 'ExpandedString', 'Binary', 'MultiString', 'Unknown')]
+            [string]$PropertyType = 'DWord'
         )
-    
-        # Check if the specified registry path exists
+        
         if (!(Test-Path -Path $Path)) {
             try {
-                # If the path does not exist, create it
                 New-Item -Path $Path -Force -ErrorAction Stop | Out-Null
+                Write-Log "Created registry path: $Path"
             }
             catch {
-                # If there is an error creating the path, output an error message and exit
-                Write-Host "[Error] Unable to create the registry path $Path for $Name. Please see the error below!"
-                Write-Host "[Error] $($_.Exception.Message)"
-                exit 1
+                Write-Log "Unable to create registry path $Path for $Name: $($_.Exception.Message)" -Level ERROR
+                throw
             }
         }
-    
-        # Check if the registry key already exists at the specified path
-        if (Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue) {
-            # Retrieve the current value of the registry key
-            $CurrentValue = (Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue).$Name
+        
+        $CurrentValue = (Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue).$Name
+        
+        if ($null -ne $CurrentValue) {
             if ($CurrentValue -eq $Value) {
-                Write-Host "$Path\$Name is already the value '$Value'."
+                Write-Log "$Path\$Name is already set to '$Value'"
             }
             else {
                 try {
-                    # Update the registry key with the new value
                     Set-ItemProperty -Path $Path -Name $Name -Value $Value -Force -Confirm:$false -ErrorAction Stop | Out-Null
+                    Write-Log "$Path\$Name changed from $CurrentValue to $Value"
                 }
                 catch {
-                    # If there is an error setting the key, output an error message and exit
-                    Write-Host "[Error] Unable to set registry key for $Name at $Path. Please see the error below!"
-                    Write-Host "[Error] $($_.Exception.Message)"
-                    exit 1
+                    Write-Log "Unable to set registry key $Name at $Path: $($_.Exception.Message)" -Level ERROR
+                    throw
                 }
-                # Output the change made to the registry key
-                Write-Host "$Path\$Name changed from $CurrentValue to $((Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue).$Name)"
             }
         }
         else {
             try {
-                # If the registry key does not exist, create it with the specified value and property type
                 New-ItemProperty -Path $Path -Name $Name -Value $Value -PropertyType $PropertyType -Force -Confirm:$false -ErrorAction Stop | Out-Null
+                Write-Log "Set $Path\$Name to $Value"
             }
             catch {
-                # If there is an error creating the key, output an error message and exit
-                Write-Host "[Error] Unable to set registry key for $Name at $Path. Please see the error below!"
-                Write-Host "[Error] $($_.Exception.Message)"
-                exit 1
+                Write-Log "Unable to create registry key $Name at $Path: $($_.Exception.Message)" -Level ERROR
+                throw
             }
-            # Output the creation of the new registry key
-            Write-Host "Set $Path\$Name to $((Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue).$Name)"
         }
     }
 
     function Test-IsDomainJoined {
-        # Check the PowerShell version to determine the appropriate cmdlet to use
+        <#
+        .SYNOPSIS
+            Checks if the computer is joined to a domain.
+        #>
         try {
             if ($PSVersionTable.PSVersion.Major -lt 3) {
-                return $(Get-WmiObject -Class Win32_ComputerSystem).PartOfDomain
+                return (Get-WmiObject -Class Win32_ComputerSystem -ErrorAction Stop).PartOfDomain
             }
             else {
-                return $(Get-CimInstance -Class Win32_ComputerSystem).PartOfDomain
+                return (Get-CimInstance -Class Win32_ComputerSystem -ErrorAction Stop).PartOfDomain
             }
         }
         catch {
-            Write-Host -Object "[Error] Unable to validate whether or not this device is a part of a domain."
-            Write-Host -Object "[Error] $($_.Exception.Message)"
-            exit 1
+            Write-Log "Unable to validate whether device is part of a domain: $($_.Exception.Message)" -Level WARNING
+            return $false
         }
     }
 
     function Test-IsDomainController {
-        # Determine the method to retrieve the operating system information based on PowerShell version
+        <#
+        .SYNOPSIS
+            Checks if the computer is a domain controller.
+        #>
         try {
             $OS = if ($PSVersionTable.PSVersion.Major -lt 3) {
                 Get-WmiObject -Class Win32_OperatingSystem -ErrorAction Stop
@@ -408,339 +358,301 @@ begin {
             else {
                 Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
             }
+            
+            return ($OS.ProductType -eq 2)
         }
         catch {
-            Write-Host -Object "[Error] Unable to validate whether or not this device is a domain controller."
-            Write-Host -Object "[Error] $($_.Exception.Message)"
-            exit 1
-        }
-    
-        # Check if the ProductType is "2", which indicates that the system is a domain controller
-        if ($OS.ProductType -eq "2") {
-            return $true
+            Write-Log "Unable to validate whether device is a domain controller: $($_.Exception.Message)" -Level WARNING
+            return $false
         }
     }
 
     function Test-IsElevated {
+        <#
+        .SYNOPSIS
+            Checks if the current PowerShell session is running with administrator privileges.
+        #>
         $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
         $p = New-Object System.Security.Principal.WindowsPrincipal($id)
-        $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+        return $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
     }
 
-    if (!$ExitCode) {
-        $ExitCode = 0
+    function Mount-UserRegistryHive {
+        <#
+        .SYNOPSIS
+            Loads a user's registry hive if not already loaded.
+        #>
+        param (
+            [Parameter(Mandatory = $true)]
+            [PSCustomObject]$UserProfile
+        )
+        
+        if (!(Test-Path -Path "Registry::HKEY_USERS\$($UserProfile.SID)" -ErrorAction SilentlyContinue)) {
+            try {
+                Start-Process -FilePath 'cmd.exe' -ArgumentList "/C reg.exe LOAD HKU\$($UserProfile.SID) `"$($UserProfile.UserHive)`"" -Wait -WindowStyle Hidden -ErrorAction Stop
+                Write-Log "Loaded registry hive for user '$($UserProfile.Name)' (SID: $($UserProfile.SID))"
+                return $true
+            }
+            catch {
+                Write-Log "Failed to load registry hive for user '$($UserProfile.Name)': $($_.Exception.Message)" -Level WARNING
+                return $false
+            }
+        }
+        return $false
+    }
+
+    function Dismount-UserRegistryHive {
+        <#
+        .SYNOPSIS
+            Unloads a user's registry hive.
+        #>
+        param (
+            [Parameter(Mandatory = $true)]
+            [PSCustomObject]$UserProfile
+        )
+        
+        try {
+            [System.GC]::Collect()
+            Start-Sleep -Milliseconds 500
+            Start-Process -FilePath 'cmd.exe' -ArgumentList "/C reg.exe UNLOAD HKU\$($UserProfile.SID)" -Wait -WindowStyle Hidden -ErrorAction Stop
+            Write-Log "Unloaded registry hive for user '$($UserProfile.Name)' (SID: $($UserProfile.SID))"
+        }
+        catch {
+            Write-Log "Failed to unload registry hive for user '$($UserProfile.Name)': $($_.Exception.Message)" -Level WARNING
+        }
+    }
+
+    if ($env:migrationAction -and $env:migrationAction -ne 'null') { 
+        $MigrationPolicy = $env:migrationAction 
+    }
+    if ($env:toggleButtonAction -and $env:toggleButtonAction -ne 'null') { 
+        $NewOutlookToggle = $env:toggleButtonAction 
+    }
+    if ($env:usernameToSetPolicyFor -and $env:usernameToSetPolicyFor -ne 'null') { 
+        $UserToSetPolicyFor = $env:usernameToSetPolicyFor 
+    }
+    
+    Write-Log '=== Outlook Migration Policy Configuration ==='
+    Write-Log "Migration Policy: $MigrationPolicy"
+    if ($NewOutlookToggle) {
+        Write-Log "New Outlook Toggle: $NewOutlookToggle"
+    }
+    if ($UserToSetPolicyFor) {
+        Write-Log "Target User: $UserToSetPolicyFor"
     }
 }
+
 process {
-    # Check if the script is running with elevated (Administrator) privileges
-    if (!(Test-IsElevated)) {
-        Write-Host -Object "[Error] Access Denied. Please run with Administrator privileges."
-        exit 1
-    }
-
-    # Check if the current device is either joined to a domain or is a domain controller
-    if (Test-IsDomainJoined -or Test-IsDomainController) {
-        # Display a warning indicating that the device is joined to a domain
-        Write-Host -Object "[Warning] This device is currently joined to a domain. This setting could be overridden by a group policy in the future."
-
-        # Display additional information about the group policy that can override the setting
-        Write-Host -Object "[Warning] https://learn.microsoft.com/en-us/microsoft-365-apps/outlook/get-started/control-install#prevent-users-from-switching-to-new-outlook"
-    }
-
-    # Search for Office installations (both legacy and Microsoft 365 versions)
-    $OfficeInstallations = Find-InstallKey -DisplayName "Office 201"
-    $Microsoft365Installations = Find-InstallKey -DisplayName "Microsoft 365"
-
-    # Exit if no Office installations are detected
-    if (!$OfficeInstallations -and !$Microsoft365Installations) {
-        Write-Host -Object "[Error] Microsoft Office was not detected on this device. Please ensure that it is installed and listed in the Control Panel."
-        exit 1
-    }
-
-    # Create lists to store registry paths for Outlook migration and New Outlook toggle policies
-    $OutlookMigrationRegistryPaths = New-Object System.Collections.Generic.List[object]
-    $NewOutlookToggleRegistryPaths = New-Object System.Collections.Generic.List[object]
-
-    # Check if a specific user is targeted for the policy
-    if ($UserToSetPolicyFor) {
-        Write-Host -Object "Retrieving the user profile for '$UserToSetPolicyFor'."
-    }
-    else {
-        Write-Host -Object "Gathering all user profiles."
-    }
-
-    # Retrieve all user profiles (hives) on the system
-    $UserProfiles = Get-UserHives -Type "All"
-    $ProfileWasLoaded = New-Object System.Collections.Generic.List[object]
-
-    # If a specific user is targeted, filter the retrieved profiles to find a match
-    if ($UserToSetPolicyFor) {
-        $ProfileToSet = $UserProfiles | Where-Object { $_.Name -eq $UserToSetPolicyFor }
-
-        # Exit if no matching profile is found
-        if (!$ProfileToSet) {
-            Write-Host -Object "[Error] No user profiles matching '$UserToSetPolicyFor' were found. Below is a list of existing users on the system."
-            Write-Host -Object "[Error] You can also leave the 'Username to Set Policy For' field blank to set the policy for all users."
-            Write-Host -Object "### User Profiles ###"
-            ($UserProfiles | Format-Table -Property Name, Path, SID | Out-String).Trim() | Write-Host
+    try {
+        if (!(Test-IsElevated)) {
+            Write-Log 'Access Denied. Script must run with Administrator privileges.' -Level ERROR
             exit 1
-        }else{
-            $UserProfiles = $ProfileToSet
         }
-    }
-
-    # Load user registry hives (NTUSER.DAT) if not already loaded
-    ForEach ($UserProfile in $UserProfiles) {
-        # Load User ntuser.dat if it's not already loaded
-        If (!(Test-Path -Path Registry::HKEY_USERS\$($UserProfile.SID) -ErrorAction SilentlyContinue)) {
-            Start-Process -FilePath "cmd.exe" -ArgumentList "/C reg.exe LOAD HKU\$($UserProfile.SID) `"$($UserProfile.UserHive)`"" -Wait -WindowStyle Hidden
-            $ProfileWasLoaded.Add($UserProfile)
+        
+        if (Test-IsDomainJoined -or Test-IsDomainController) {
+            Write-Log 'This device is joined to a domain. Settings may be overridden by Group Policy.' -Level WARNING
+            Write-Log 'See: https://learn.microsoft.com/en-us/microsoft-365-apps/outlook/get-started/control-install#prevent-users-from-switching-to-new-outlook' -Level WARNING
         }
-    }
-
-    # Construct the registry paths for Outlook migration and New Outlook toggle settings
-    $UserProfiles | ForEach-Object {
-        # Add Outlook migration policy registry path
-        $OutlookMigrationRegistryPaths.Add(
-            [PSCustomObject]@{
-                Username = $_.Name
-                Path     = "Registry::HKEY_USERS\$($_.SID)\Software\Policies\Microsoft\office\16.0\outlook\preferences"
-            }
-        )
-
-        # Add New Outlook toggle policy registry path
-        $NewOutlookToggleRegistryPaths.Add(
-            [PSCustomObject]@{
-                Username = $_.Name
-                BasePath = "Registry::HKEY_USERS\$($_.SID)\Software\Microsoft\Office"
-                Path     = "Registry::HKEY_USERS\$($_.SID)\Software\Microsoft\Office\16.0\Outlook\Options\General"
-            }
-        )
-    }
-
-    # Validate that registry paths have been generated successfully
-    if ($OutlookMigrationRegistryPaths.Count -lt 1 -or $NewOutlookToggleRegistryPaths.Count -lt 1) {
-        Write-Host -Object "[Error] Failed to retrieve any user profiles."
-        exit 1
-    }
-    else {
-        Write-Host -Object "Successfully retrieved one or more profiles."
-    }
-
-    # Check whether a specific user is targeted for the policy, and output a message accordingly.
-    if ($UserToSetPolicyFor) {
-        Write-Host -Object "`nSetting the New Outlook forced migration policy for '$UserToSetPolicyFor'."
-    }
-    else {
-        Write-Host -Object "`nSetting the New Outlook forced migration policy for all users."
-    }
-
-    # Set the Outlook migration policy for each user
-    $OutlookMigrationRegistryPaths | ForEach-Object {
-        $Username = $_.Username
-        Write-Host -Object ""
-
-        # Determine the action to take based on the $MigrationPolicy variable
-        switch ($MigrationPolicy) {
-            "Enable" { 
-                Write-Host -Object "Setting the New Outlook forced migration policy for the user '$Username' to enabled." 
-                $RegValue = 1
-            }
-            "Disable" { 
-                Write-Host -Object "Setting the New Outlook forced migration policy for the user '$Username' to disabled."
-                $RegValue = 0
-            }
-            "Default" { 
-                Write-Host -Object "Setting the New Outlook forced migration policy back to the default for the user '$Username'."
-            }
+        
+        Write-Log 'Checking for Office installation...'
+        $OfficeInstallations = Find-InstallKey -DisplayName 'Office 201'
+        $Microsoft365Installations = Find-InstallKey -DisplayName 'Microsoft 365'
+        
+        if (!$OfficeInstallations -and !$Microsoft365Installations) {
+            Write-Log 'Microsoft Office was not detected on this device.' -Level ERROR
+            exit 1
         }
-
-        # If the policy is set to "Default," remove the registry key if it exists
-        if ($MigrationPolicy -eq "Default") {
-            # Check if the registry path exists
-            if (!(Test-Path -Path $_.Path -ErrorAction SilentlyContinue)) {
-                Write-Host -Object "The registry key '$($_.Path)\NewOutlookMigrationUserSetting' has already been removed."
-                Write-Host -Object "Successfully set the New Outlook forced migration policy for the user '$Username'."
-                return
-            }
-
-            try {
-                # Check for an existing registry value
-                $ExistingValue = Get-ItemProperty -Path $_.Path -ErrorAction Stop | Select-Object -ExpandProperty "NewOutlookMigrationUserSetting" -ErrorAction SilentlyContinue
-            }
-            catch {
-                Write-Host -Object "[Error] $($_.Exception.Message)"
-                Write-Host -Object "[Error] Failed to check if the new outlook forced migration policy is already set to the default."
-                $ExitCode = 1
-                return
-            }
-
-            # Remove the registry value if it exists
-            if (!$ExistingValue -and $ExistingValue -ne 0) {
-                Write-Host -Object "The registry key '$($_.Path)\NewOutlookMigrationUserSetting' has already been removed."
-                Write-Host -Object "Successfully set the New Outlook forced migration policy for the user '$Username'."
-                return
-            }
-
-            try {
-                Remove-ItemProperty -Path $_.Path -Name "NewOutlookMigrationUserSetting" -ErrorAction Stop
-                Write-Host -Object "Removed the registry key '$($_.Path)\NewOutlookMigrationUserSetting'."
-                Write-Host -Object "Successfully set the New Outlook forced migration policy for the user '$Username'."
-                return
-            }
-            catch {
-                Write-Host -Object "[Error] $($_.Exception.Message)"
-                Write-Host -Object "[Error] Failed to remove the registry key '$($_.Path)\NewOutlookMigrationUserSetting'."
-                Write-Host -Object "[Error] Failed to set the new outlook forced migration policy for user '$Username' to the default."
-                $ExitCode = 1
-                return
-            }
+        
+        Write-Log 'Office installation detected.'
+        
+        if ($UserToSetPolicyFor) {
+            Write-Log "Retrieving user profile for '$UserToSetPolicyFor'..."
         }
-
-        # Set the specified registry key value for Outlook migration
-        Set-RegKey -Path $_.Path -Name "NewOutlookMigrationUserSetting" -Value $RegValue
-        Write-Host -Object "Successfully set the New Outlook forced migration policy for the user '$Username'."
-    }
-
-    # If user profiles were loaded and a New Outlook toggle policy was not specified, unload their registry hives
-    if (!$NewOutlookToggle -and $ProfileWasLoaded.Count -gt 0) {
-        ForEach ($UserProfile in $ProfileWasLoaded) {
-            # Unload NTuser.dat
-            [gc]::Collect()
-            Start-Sleep 1
-            Start-Process -FilePath "cmd.exe" -ArgumentList "/C reg.exe UNLOAD HKU\$($UserProfile.SID)" -Wait -WindowStyle Hidden | Out-Null
+        else {
+            Write-Log 'Gathering all user profiles...'
         }
-    }
-
-    # Check whether a specific user is targeted for the policy, and output a message accordingly.
-    if ($UserToSetPolicyFor -and $ExitCode -eq 0) {
-        Write-Host -Object "`nSuccessfully set the New Outlook forced migration policy for '$UserToSetPolicyFor'."
-    }
-    elseif ($ExitCode -eq 0) {
-        Write-Host -Object "`nSuccessfully set the New Outlook forced migration policy for all users."
-    }
-
-    # Exit if no New Outlook toggle policy is specified
-    if (!$NewOutlookToggle) {
-        exit $ExitCode
-    }
-
-    # Check whether a specific user is targeted for the policy, and output a message accordingly.
-    if ($UserToSetPolicyFor) {
-        Write-Host -Object "`nSetting the 'Try the new outlook' toggle for '$UserToSetPolicyFor'."
-    }
-    else{
-        Write-Host -Object "`nSetting the 'Try the new outlook' toggle for all users."
-    }
-
-    # Process each New Outlook toggle registry path for user profiles
-    $NewOutlookToggleRegistryPaths | ForEach-Object {
-        Write-Host -Object ""
-        $Username = $_.Username
-
-        # Set the New Outlook toggle value based on the specified policy
-        switch ($NewOutlookToggle) {
-            "Hide Toggle" { 
-                Write-Host -Object "Setting the 'Try the New Outlook' toggle for user '$Username' to hidden."
-                $RegValue = 1
-            }
-            "Show Toggle" { 
-                Write-Host -Object "Setting the 'Try the new outlook' toggle for user '$Username' to show."
-                $RegValue = 0
-            }
-            "Default" { 
-                Write-Host -Object "Setting the 'Try the new outlook' toggle back to the default for user '$Username'" 
-            }
-        }
-
-        # Handle the "Default" policy by removing the registry key if it exists
-        if ($NewOutlookToggle -eq "Default") {
-            if (!(Test-Path -Path $_.Path -ErrorAction SilentlyContinue)) {
-                Write-Host -Object "The registry key '$($_.Path)\HideNewOutlookToggle' has already been removed."
-                Write-Host -Object "Successfully set the 'Try the new outlook' toggle to the default for user '$Username'"
-                return
-            }
-
-            # Attempt to retrieve the existing registry value
-            try {
-                $ExistingValue = Get-ItemProperty -Path $_.Path -ErrorAction Stop | Select-Object -ExpandProperty "HideNewOutlookToggle" -ErrorAction SilentlyContinue
-            }
-            catch {
-                Write-Host -Object "[Error] $($_.Exception.Message)"
-                Write-Host -Object "[Error] Failed to verify whether the 'Try the new outlook' toggle is already set to the default."
-                $ExitCode = 1
-                return
-            }
-
-            # If the registry key does not exist, confirm it has already been removed
-            if (!$ExistingValue -and $ExistingValue -ne 0) {
-                Write-Host -Object "The registry key '$($_.Path)\HideNewOutlookToggle' has already been removed."
-                Write-Host -Object "Successfully set the 'Try the new outlook' toggle to the default for user '$Username'"
-                return
+        
+        $UserProfiles = Get-UserHives -Type 'All'
+        
+        if ($UserToSetPolicyFor) {
+            $ProfileToSet = $UserProfiles | Where-Object { $_.Name -eq $UserToSetPolicyFor }
+            
+            if (!$ProfileToSet) {
+                Write-Log "No user profile matching '$UserToSetPolicyFor' was found." -Level ERROR
+                Write-Log 'Available user profiles:'
+                $UserProfiles | ForEach-Object { Write-Log "  - $($_.Name) (SID: $($_.SID))" }
+                exit 1
             }
             
-            # Remove the specific registry key property
+            $UserProfiles = $ProfileToSet
+        }
+        
+        if (!$UserProfiles) {
+            Write-Log 'Failed to retrieve any user profiles.' -Level ERROR
+            exit 1
+        }
+        
+        Write-Log "Successfully retrieved $($UserProfiles.Count) user profile(s)."
+        
+        $ProfileWasLoaded = New-Object System.Collections.Generic.List[PSCustomObject]
+        
+        foreach ($UserProfile in $UserProfiles) {
+            if (Mount-UserRegistryHive -UserProfile $UserProfile) {
+                $ProfileWasLoaded.Add($UserProfile)
+            }
+        }
+        
+        $OutlookMigrationRegistryPaths = New-Object System.Collections.Generic.List[PSCustomObject]
+        $NewOutlookToggleRegistryPaths = New-Object System.Collections.Generic.List[PSCustomObject]
+        
+        foreach ($UserProfile in $UserProfiles) {
+            $OutlookMigrationRegistryPaths.Add([PSCustomObject]@{
+                    Username = $UserProfile.Name
+                    Path     = "Registry::HKEY_USERS\$($UserProfile.SID)\Software\Policies\Microsoft\office\16.0\outlook\preferences"
+                })
+            
+            $NewOutlookToggleRegistryPaths.Add([PSCustomObject]@{
+                    Username = $UserProfile.Name
+                    BasePath = "Registry::HKEY_USERS\$($UserProfile.SID)\Software\Microsoft\Office"
+                    Path     = "Registry::HKEY_USERS\$($UserProfile.SID)\Software\Microsoft\Office\16.0\Outlook\Options\General"
+                })
+        }
+        
+        Write-Log ''
+        Write-Log '=== Setting Outlook Migration Policy ==='
+        
+        foreach ($RegPath in $OutlookMigrationRegistryPaths) {
+            $Username = $RegPath.Username
+            
             try {
-                Remove-ItemProperty -Path $_.Path -Name "HideNewOutlookToggle" -ErrorAction Stop
-                Write-Host -Object "Removed the registry key '$($_.Path)\HideNewOutlookToggle'."
+                switch ($MigrationPolicy) {
+                    'Enable' { 
+                        Write-Log "Setting migration policy for user '$Username' to ENABLED"
+                        Set-RegKey -Path $RegPath.Path -Name 'NewOutlookMigrationUserSetting' -Value 1
+                    }
+                    'Disable' { 
+                        Write-Log "Setting migration policy for user '$Username' to DISABLED"
+                        Set-RegKey -Path $RegPath.Path -Name 'NewOutlookMigrationUserSetting' -Value 0
+                    }
+                    'Default' { 
+                        Write-Log "Resetting migration policy for user '$Username' to DEFAULT"
+                        
+                        if (Test-Path -Path $RegPath.Path -ErrorAction SilentlyContinue) {
+                            $ExistingValue = (Get-ItemProperty -Path $RegPath.Path -ErrorAction SilentlyContinue).NewOutlookMigrationUserSetting
+                            
+                            if ($null -ne $ExistingValue) {
+                                Remove-ItemProperty -Path $RegPath.Path -Name 'NewOutlookMigrationUserSetting' -ErrorAction Stop
+                                Write-Log "Removed registry key: $($RegPath.Path)\NewOutlookMigrationUserSetting"
+                            }
+                            else {
+                                Write-Log "Registry key already at default for user '$Username'"
+                            }
+                        }
+                        else {
+                            Write-Log "Registry key already at default for user '$Username'"
+                        }
+                    }
+                }
+                
+                Write-Log "Successfully set migration policy for user '$Username'"
             }
             catch {
-                Write-Host -Object "[Error] $($_.Exception.Message)"
-                Write-Host -Object "[Error] Failed to remove the registry key '$($_.Path)\HideNewOutlookToggle'."
-                Write-Host -Object "[Error] Failed to set the 'Try the new outlook' toggle to the default for user '$Username'"
+                Write-Log "Failed to set migration policy for user '$Username': $($_.Exception.Message)" -Level ERROR
                 $ExitCode = 1
-                return
             }
-
-            # Confirm successful removal of the registry key
-            Write-Host -Object "Successfully set the 'Try the new outlook' toggle to the default for user '$Username'"
-            return
         }
-
-        # Ensure the base registry path exists; create it if necessary
-        $BasePath = $_.BasePath
-        if (!(Test-Path -Path $BasePath -ErrorAction SilentlyContinue)) {
-            # Create the missing base registry path
+        
+        if (!$NewOutlookToggle) {
+            Write-Log ''
+            Write-Log 'New Outlook toggle setting not specified - skipping toggle configuration.'
+            
+            foreach ($UserProfile in $ProfileWasLoaded) {
+                Dismount-UserRegistryHive -UserProfile $UserProfile
+            }
+            
+            if ($ExitCode -eq 0) {
+                Write-Log 'Successfully configured Outlook migration policy.'
+            }
+            exit $ExitCode
+        }
+        
+        Write-Log ''
+        Write-Log '=== Setting New Outlook Toggle Visibility ==='
+        
+        foreach ($RegPath in $NewOutlookToggleRegistryPaths) {
+            $Username = $RegPath.Username
+            
             try {
-                New-Item -Path $BasePath -ErrorAction Stop | Out-Null
+                switch ($NewOutlookToggle) {
+                    'Hide Toggle' { 
+                        Write-Log "Setting toggle for user '$Username' to HIDDEN"
+                        
+                        if (!(Test-Path -Path $RegPath.BasePath)) {
+                            New-Item -Path $RegPath.BasePath -Force -ErrorAction Stop | Out-Null
+                            Write-Log "Created base path: $($RegPath.BasePath)"
+                        }
+                        
+                        Set-RegKey -Path $RegPath.Path -Name 'HideNewOutlookToggle' -Value 1
+                    }
+                    'Show Toggle' { 
+                        Write-Log "Setting toggle for user '$Username' to VISIBLE"
+                        
+                        if (!(Test-Path -Path $RegPath.BasePath)) {
+                            New-Item -Path $RegPath.BasePath -Force -ErrorAction Stop | Out-Null
+                            Write-Log "Created base path: $($RegPath.BasePath)"
+                        }
+                        
+                        Set-RegKey -Path $RegPath.Path -Name 'HideNewOutlookToggle' -Value 0
+                    }
+                    'Default' { 
+                        Write-Log "Resetting toggle for user '$Username' to DEFAULT"
+                        
+                        if (Test-Path -Path $RegPath.Path -ErrorAction SilentlyContinue) {
+                            $ExistingValue = (Get-ItemProperty -Path $RegPath.Path -ErrorAction SilentlyContinue).HideNewOutlookToggle
+                            
+                            if ($null -ne $ExistingValue) {
+                                Remove-ItemProperty -Path $RegPath.Path -Name 'HideNewOutlookToggle' -ErrorAction Stop
+                                Write-Log "Removed registry key: $($RegPath.Path)\HideNewOutlookToggle"
+                            }
+                            else {
+                                Write-Log "Registry key already at default for user '$Username'"
+                            }
+                        }
+                        else {
+                            Write-Log "Registry key already at default for user '$Username'"
+                        }
+                    }
+                }
+                
+                Write-Log "Successfully set toggle visibility for user '$Username'"
             }
             catch {
-                Write-Host -Object "[Error] $($_.Exception.Message)"
-                Write-Host -Object "[Error] Failed to create the base path '$BasePath', which is required to set the registry key."
-                Write-Host -Object "[Error] https://learn.microsoft.com/en-us/microsoft-365-apps/outlook/get-started/control-install#prevent-users-from-switching-to-new-outlook"
+                Write-Log "Failed to set toggle visibility for user '$Username': $($_.Exception.Message)" -Level ERROR
                 $ExitCode = 1
-                return
             }
         }
-
-        # Set the registry key value for the specified toggle policy
-        Set-RegKey -Path $_.Path -Name "HideNewOutlookToggle" -Value $RegValue
-        Write-Host -Object "Successfully set the 'Try the new outlook' toggle for user '$Username'"
-    }
-
-    # If user profiles were loaded during the process, unload their registry hives
-    if ($ProfileWasLoaded.Count -gt 0) {
-        ForEach ($UserProfile in $ProfileWasLoaded) {
-            # Collect garbage to release memory and avoid locking issues
-            [gc]::Collect()
-            Start-Sleep 1
-            # Unload the user's NTUSER.DAT registry hive
-            Start-Process -FilePath "cmd.exe" -ArgumentList "/C reg.exe UNLOAD HKU\$($UserProfile.SID)" -Wait -WindowStyle Hidden | Out-Null
+        
+        foreach ($UserProfile in $ProfileWasLoaded) {
+            Dismount-UserRegistryHive -UserProfile $UserProfile
         }
+        
+        if ($ExitCode -eq 0) {
+            Write-Log ''
+            Write-Log 'Successfully configured all Outlook settings.'
+            Write-Log 'Note: You may need to close and re-open Outlook for changes to take effect.'
+        }
+        
+        exit $ExitCode
     }
-
-    # Check whether a specific user is targeted for the policy, and output a message accordingly.
-    if ($UserToSetPolicyFor -and $ExitCode -eq 0) {
-        Write-Host -Object "`nSuccessfully set the 'Try the new outlook' toggle for '$UserToSetPolicyFor'.  You may need to close and re-open Outlook for your change to take effect."
+    catch {
+        Write-Log "Unexpected error: $($_.Exception.Message)" -Level ERROR
+        exit 1
     }
-    elseif ($ExitCode -eq 0) {
-        Write-Host -Object "`nSuccessfully set the 'Try the New Outlook' toggle for all users. You may need to close and re-open Outlook for your change to take effect."
-    }
-
-    exit $ExitCode
 }
+
 end {
+    $executionTime = (Get-Date) - $ScriptStartTime
+    Write-Log "Script execution completed in $($executionTime.TotalSeconds) seconds."
     
-    
-    
+    [System.GC]::Collect()
 }

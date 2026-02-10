@@ -112,6 +112,7 @@ begin {
     
     $StartTime = Get-Date
     $ErrorActionPreference = 'Stop'
+    $script:ExitCode = 0
     $script:ErrorCount = 0
     $script:WarningCount = 0
     $script:CLIFallbackCount = 0
@@ -132,7 +133,7 @@ begin {
         
         switch ($Level) {
             'WARN'  { $script:WarningCount++ }
-            'ERROR' { $script:ErrorCount++ }
+            'ERROR' { $script:ErrorCount++; $script:ExitCode = 1 }
         }
     }
 
@@ -270,14 +271,14 @@ process {
         Write-Log "  Arguments: $($InstallArgs -join ' ')" -Level DEBUG
         
         $InstallProcess = Start-Process -FilePath $SetupPath -ArgumentList $InstallArgs -Wait -PassThru -NoNewWindow
-        $ExitCode = $InstallProcess.ExitCode
+        $ProcessExitCode = $InstallProcess.ExitCode
         
-        Write-Log "Setup process completed with exit code: $ExitCode" -Level DEBUG
+        Write-Log "Setup process completed with exit code: $ProcessExitCode" -Level DEBUG
         
-        if ($ExitCode -eq 0 -or $ExitCode -eq 3010) {
+        if ($ProcessExitCode -eq 0 -or $ProcessExitCode -eq 3010) {
             Write-Log "Installation completed successfully" -Level SUCCESS
             
-            if ($ExitCode -eq 3010) {
+            if ($ProcessExitCode -eq 3010) {
                 Write-Log "Reboot may be required to complete installation" -Level WARN
             }
             
@@ -299,19 +300,15 @@ process {
                 Set-NinjaField -FieldName "siemensNXLicenseServer" -Value $LicenseServer
             }
             
-            $ExitCode = 0
-            
-        } elseif ($ExitCode -eq 1641) {
+        } elseif ($ProcessExitCode -eq 1641) {
             Write-Log "Installation completed, system restart initiated" -Level SUCCESS
             
             Set-NinjaField -FieldName "siemensNXInstallStatus" -Value "Success (reboot required)"
             Set-NinjaField -FieldName "siemensNXInstallDate" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
             Set-NinjaField -FieldName "siemensNXLicenseServer" -Value $LicenseServer
             
-            $ExitCode = 0
-            
         } else {
-            throw "Installation failed with exit code: $ExitCode"
+            throw "Installation failed with exit code: $ProcessExitCode"
         }
         
     } catch {
@@ -321,7 +318,7 @@ process {
         Set-NinjaField -FieldName "siemensNXInstallStatus" -Value "Failed"
         Set-NinjaField -FieldName "siemensNXInstallDate" -Value (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
         
-        $ExitCode = 1
+        $script:ExitCode = 1
     }
 }
 
@@ -340,10 +337,11 @@ end {
             Write-Log "  CLI Fallbacks: $script:CLIFallbackCount" -Level INFO
         }
         
+        Write-Log "  Exit Code: $script:ExitCode" -Level INFO
         Write-Log "========================================" -Level INFO
     }
     finally {
         [System.GC]::Collect()
-        exit $ExitCode
+        exit $script:ExitCode
     }
 }

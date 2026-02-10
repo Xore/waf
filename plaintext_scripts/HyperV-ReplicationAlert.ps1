@@ -1,4 +1,4 @@
-#Requires -Version 5.1 -Modules Hyper-V
+#Requires -Version 5.1
 
 <#
 .SYNOPSIS
@@ -19,27 +19,38 @@
     Name of a custom field to save the replication status report.
 
 .EXAMPLE
-    No Parameters
-
-    [Info] Monitoring Hyper-V replication status...
-    [Info] Checking 3 replica VM(s)...
+    HyperV-ReplicationAlert.ps1
+    
+    Monitoring Hyper-V replication status...
+    Checking 3 replica VM(s)...
     VM: Server01 | Status: Normal | Last Replication: 02/10/2026 00:45:00
     VM: Server02 | Status: Error | Last Replication: 02/09/2026 14:30:00
-    [Alert] Replication errors detected on 1 VM(s)
+    Replication errors detected on 1 VM(s)
+
+.EXAMPLE
+    HyperV-ReplicationAlert.ps1 -AlertOnWarning
+    
+    Alerts on both errors and warnings.
 
 .OUTPUTS
-    None
+    None. Status information is written to the console.
 
 .NOTES
-    Minimum OS Architecture Supported: Windows Server 2012 R2 (Hyper-V Host)
-    Release notes: Initial release for WAF v3.0
-    Requires: Hyper-V role and Hyper-V PowerShell module
+    File Name      : HyperV-ReplicationAlert.ps1
+    Prerequisite   : PowerShell 5.1 or higher, Hyper-V role installed
+    Requires       : Hyper-V PowerShell module
+    Minimum OS     : Windows Server 2012 R2 (Hyper-V Host)
+    Version        : 3.0.0
+    Author         : WAF Team
+    Change Log:
+    - 3.0.0: Upgraded to V3 standards with Write-Log function and execution tracking
+    - 1.0: Initial release
     
 .COMPONENT
     Hyper-V - Windows Hyper-V management module
     
 .LINK
-    https://learn.microsoft.com/en-us/powershell/module/hyper-v/
+    https://learn.microsoft.com/en-us/powershell/module/hyper-v/get-vmreplication
 
 .FUNCTIONALITY
     - Queries all replica VMs on Hyper-V host
@@ -52,97 +63,165 @@
 
 [CmdletBinding()]
 param(
+    [Parameter()]
     [switch]$AlertOnWarning,
+    
+    [Parameter()]
     [string]$SaveToCustomField
 )
 
 begin {
-    if ($env:alertOnWarning -eq "true") {
-        $AlertOnWarning = $true
-    }
-    if ($env:saveToCustomField -and $env:saveToCustomField -notlike "null") {
-        $SaveToCustomField = $env:saveToCustomField
+    $ErrorActionPreference = 'Stop'
+    $ProgressPreference = 'SilentlyContinue'
+    $StartTime = Get-Date
+    
+    Set-StrictMode -Version Latest
+    
+    $script:ExitCode = 0
+    $script:ErrorCount = 0
+    $script:WarningCount = 0
+
+    function Write-Log {
+        param([string]$Message, [string]$Level = 'INFO')
+        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $logMessage = "[$timestamp] [$Level] $Message"
+        Write-Output $logMessage
+        
+        if ($Level -eq 'ERROR') { $script:ErrorCount++ }
+        if ($Level -eq 'WARNING') { $script:WarningCount++ }
     }
 
-    function Set-NinjaProperty {
+    function Set-NinjaField {
+        <#
+        .SYNOPSIS
+            Sets NinjaRMM custom field with CLI fallback.
+        #>
         [CmdletBinding()]
-        Param(
-            [Parameter(Mandatory = $True)]
-            [String]$Name,
-            [Parameter(Mandatory = $True, ValueFromPipeline = $True)]
-            $Value
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$Name,
+            
+            [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+            [AllowEmptyString()]
+            [string]$Value
         )
-        $NinjaValue = $Value
-        $CustomField = $NinjaValue | Ninja-Property-Set-Piped -Name $Name 2>&1
-        if ($CustomField.Exception) {
-            throw $CustomField
+        
+        try {
+            if (Get-Command 'Ninja-Property-Set-Piped' -ErrorAction SilentlyContinue) {
+                $Value | Ninja-Property-Set-Piped -Name $Name
+            }
+            else {
+                Write-Log "CLI fallback - Would set field '$Name' to: $Value" -Level 'INFO'
+            }
+        }
+        catch {
+            Write-Log "Failed to set custom field '$Name': $_" -Level 'ERROR'
+            throw
         }
     }
 
-    $ExitCode = 0
+    if ($env:alertOnWarning -eq 'true') {
+        $AlertOnWarning = $true
+    }
+    
+    if ($env:saveToCustomField -and $env:saveToCustomField -notlike 'null') {
+        $SaveToCustomField = $env:saveToCustomField
+    }
 }
 
 process {
     try {
-        Write-Host "[Info] Monitoring Hyper-V replication status..."
+        if (-not (Get-Command 'Get-VMReplication' -ErrorAction SilentlyContinue)) {
+            Write-Log 'Hyper-V module not found. Hyper-V role may not be installed' -Level 'ERROR'
+            $script:ExitCode = 1
+            return
+        }
+
+        Write-Log 'Monitoring Hyper-V replication status...'
         
         $ReplicaVMs = Get-VMReplication -ErrorAction Stop
 
         if (-not $ReplicaVMs) {
-            Write-Host "[Info] No replica VMs configured on this host"
-            exit 0
+            Write-Log 'No replica VMs configured on this host'
+            return
         }
 
-        Write-Host "[Info] Checking $($ReplicaVMs.Count) replica VM(s)...`n"
+        Write-Log "Checking $($ReplicaVMs.Count) replica VM(s)..."
         
         $Report = @()
-        $ErrorCount = 0
-        $WarningCount = 0
+        $ReplicationErrors = 0
+        $ReplicationWarnings = 0
 
         foreach ($VM in $ReplicaVMs) {
             $Status = $VM.Health
             $VMInfo = "VM: $($VM.VMName) | Status: $Status | Last Replication: $($VM.LastReplicationTime)"
-            Write-Host $VMInfo
+            
+            if ($Status -eq 'Critical' -or $Status -eq 'Error') {
+                Write-Log $VMInfo -Level 'ERROR'
+                $ReplicationErrors++
+            }
+            elseif ($Status -eq 'Warning') {
+                if ($AlertOnWarning) {
+                    Write-Log $VMInfo -Level 'WARNING'
+                    $ReplicationWarnings++
+                }
+                else {
+                    Write-Log $VMInfo
+                }
+            }
+            else {
+                Write-Log $VMInfo
+            }
+            
             $Report += $VMInfo
-
-            if ($Status -eq "Critical" -or $Status -eq "Error") {
-                $ErrorCount++
-            }
-            elseif ($Status -eq "Warning" -and $AlertOnWarning) {
-                $WarningCount++
-            }
         }
 
-        if ($ErrorCount -gt 0) {
-            Write-Host "`n[Alert] Replication errors detected on $ErrorCount VM(s)"
-            $ExitCode = 1
+        if ($ReplicationErrors -gt 0) {
+            Write-Log "Replication errors detected on $ReplicationErrors VM(s)" -Level 'ERROR'
+            $script:ExitCode = 1
         }
-        elseif ($WarningCount -gt 0) {
-            Write-Host "`n[Warn] Replication warnings detected on $WarningCount VM(s)"
-            $ExitCode = 1
+        elseif ($ReplicationWarnings -gt 0) {
+            Write-Log "Replication warnings detected on $ReplicationWarnings VM(s)" -Level 'WARNING'
+            $script:ExitCode = 1
         }
         else {
-            Write-Host "`n[Info] All replica VMs are healthy"
+            Write-Log 'All replica VMs are healthy'
         }
 
         if ($SaveToCustomField) {
             try {
-                $Report -join "; " | Set-NinjaProperty -Name $SaveToCustomField
-                Write-Host "[Info] Report saved to custom field '$SaveToCustomField'"
+                $Report -join "; " | Set-NinjaField -Name $SaveToCustomField
+                Write-Log "Report saved to custom field '$SaveToCustomField'"
             }
             catch {
-                Write-Host "[Error] Failed to save to custom field: $_"
-                $ExitCode = 1
+                Write-Log "Failed to save to custom field: $_" -Level 'ERROR'
+                $script:ExitCode = 1
             }
         }
     }
     catch {
-        Write-Host "[Error] Failed to monitor Hyper-V replication: $_"
-        $ExitCode = 1
+        Write-Log "Failed to monitor Hyper-V replication: $_" -Level 'ERROR'
+        $script:ExitCode = 1
     }
-
-    exit $ExitCode
 }
 
 end {
+    try {
+        $EndTime = Get-Date
+        $Duration = ($EndTime - $StartTime).TotalSeconds
+        
+        Write-Output "`n========================================"
+        Write-Output "Execution Summary"
+        Write-Output "========================================"
+        Write-Output "Script: HyperV-ReplicationAlert.ps1"
+        Write-Output "Duration: $Duration seconds"
+        Write-Output "Errors: $script:ErrorCount"
+        Write-Output "Warnings: $script:WarningCount"
+        Write-Output "Exit Code: $script:ExitCode"
+        Write-Output "========================================"
+    }
+    finally {
+        [System.GC]::Collect()
+        exit $script:ExitCode
+    }
 }

@@ -3,7 +3,7 @@
 **Project:** Windows Automation Framework (WAF) Documentation Overhaul  
 **Started:** 2026-02-11  
 **Status:** In Progress  
-**Last Updated:** 2026-02-11 20:47
+**Last Updated:** 2026-02-11 20:57
 
 ---
 
@@ -21,7 +21,7 @@ Comprehensive documentation improvement across 5 tracks:
 
 ## Track 1: Core Infrastructure Documentation
 
-**Status:** ✅ **COMPLETE** (5/5 phases)
+**Status:** ✅ **COMPLETE** (5/5 phases - 100%)
 
 ### Completed Phases
 
@@ -75,7 +75,7 @@ Comprehensive documentation improvement across 5 tracks:
 
 ## Track 2: Script Documentation
 
-**Status:** 🔄 **IN PROGRESS** (1/4 phases - 25%)
+**Status:** 🔄 **IN PROGRESS** (2/4 phases - 50%)
 
 ### Completed Phases
 
@@ -88,18 +88,20 @@ Comprehensive documentation improvement across 5 tracks:
   - NinjaOne integration status
   - Statistics and usage examples
 
-### In Progress
-
-- [ ] **Phase 2.2:** Category-Based Script Guides
+- [x] **Phase 2.2:** Category-Based Script Guides (2026-02-11 20:57)
   - Location: `/docs/scripts/categories/`
-  - Files:
-    - `active-directory.md` - AD script documentation
-    - `networking.md` - Network script documentation
-    - `hyper-v.md` - Hyper-V script documentation
-    - `hardware.md` - Hardware monitoring documentation
-    - `security.md` - Security & compliance documentation
-    - `server-roles.md` - Server role monitoring documentation
-  - Estimated: 6 files, 10-15 KB each
+  - Total Size: 80.2 KB (6 files)
+  - Commit: `51910e41`
+  
+  **Files Created:**
+  1. `hyper-v.md` (15.8 KB) - 8 enterprise scripts, 3 deployment scenarios
+  2. `active-directory.md` (16.3 KB) - 15+ scripts, DC/user/domain operations
+  3. `security.md` (17.7 KB) - 15+ scripts, encryption, certificates, compliance
+  4. `networking.md` (7.8 KB) - 20+ scripts, DNS/DHCP, diagnostics
+  5. `hardware.md` (6.0 KB) - 10+ scripts, battery, temperature, disk health
+  6. `server-roles.md` (7.8 KB) - 20+ scripts, IIS, file/print, SQL/MySQL
+
+### In Progress
 
 - [ ] **Phase 2.3:** Priority Script Deep Dives
   - Top 20 most-used scripts with detailed documentation
@@ -113,9 +115,9 @@ Comprehensive documentation improvement across 5 tracks:
 
 ### Track 2 Summary
 
-**Total Files Created:** 1  
-**Total Size:** 17.8 KB  
-**Completion:** 25%
+**Total Files Created:** 7 (1 catalog + 6 category guides)  
+**Total Size:** 80.2 KB  
+**Completion:** 50%
 
 ---
 
@@ -205,7 +207,7 @@ Comprehensive documentation improvement across 5 tracks:
 
 - [ ] **Phase 5.1:** Folder Structure Enhancement
   - Create missing directory structure:
-    - `/docs/scripts/categories/`
+    - `/docs/scripts/categories/` ✅ (created in Phase 2.2)
     - `/docs/scripts/detailed/`
     - `/docs/guides/quickstart/`
     - `/docs/guides/advanced/`
@@ -236,23 +238,32 @@ Comprehensive documentation improvement across 5 tracks:
 | Track | Status | Phases | Progress | Priority |
 |-------|--------|--------|----------|----------|
 | Track 1: Core Infrastructure | ✅ Complete | 5/5 | 100% | - |
-| Track 2: Script Documentation | 🔄 In Progress | 1/4 | 25% | HIGH |
+| Track 2: Script Documentation | 🔄 In Progress | 2/4 | 50% | HIGH |
 | Track 3: User Guides | ⏸️ Planned | 0/5 | 0% | MEDIUM |
 | Track 4: Reference Docs | ⏸️ Planned | 0/4 | 0% | MEDIUM |
 | Track 5: Repository Org | ⏸️ Planned | 0/3 | 0% | LOW |
-| **TOTAL** | **In Progress** | **6/21** | **29%** | - |
+| **TOTAL** | **In Progress** | **7/21** | **33%** | - |
 
 ### Files Created So Far
 
+**Core Infrastructure (Track 1):**
 1. `/README.md` (10.9 KB) - ✅
 2. `/CONTRIBUTING.md` (10.5 KB) - ✅
 3. `/CHANGELOG.md` (5.3 KB) - ✅
 4. `/LICENSE` (1.1 KB) - ✅
 5. `/docs/GETTING_STARTED.md` (14.4 KB) - ✅
-6. `/docs/scripts/SCRIPT_CATALOG.md` (17.8 KB) - ✅
-7. `/documentation_progress.md` (this file) - ✅
 
-**Total Documentation:** 60.0 KB (excluding this tracker)
+**Script Documentation (Track 2):**
+6. `/docs/scripts/SCRIPT_CATALOG.md` (17.8 KB) - ✅
+7. `/docs/scripts/categories/hyper-v.md` (15.8 KB) - ✅
+8. `/docs/scripts/categories/active-directory.md` (16.3 KB) - ✅
+9. `/docs/scripts/categories/security.md` (17.7 KB) - ✅
+10. `/docs/scripts/categories/networking.md` (7.8 KB) - ✅
+11. `/docs/scripts/categories/hardware.md` (6.0 KB) - ✅
+12. `/docs/scripts/categories/server-roles.md` (7.8 KB) - ✅
+13. `/documentation_progress.md` (this file) - ✅
+
+**Total Documentation:** 122.4 KB (excluding this tracker)
 
 ---
 
@@ -262,27 +273,26 @@ Comprehensive documentation improvement across 5 tracks:
 
 1. ✅ Create progress tracker
 2. ✅ Phase 2.1: Script Catalog
-3. 🔄 Phase 2.2: Category-Based Script Guides
-   - Start with most critical categories
-   - Hyper-V guide (most complex)
-   - Active Directory guide
-   - Security & Compliance guide
+3. ✅ Phase 2.2: Category-Based Script Guides (all 6 files)
+4. 🔄 Phase 2.3: Priority Script Deep Dives (NEXT)
+   - Identify top 20 most-used scripts
+   - Create detailed documentation for each
 
 ### Short Term (Next Session)
 
-4. Complete Track 2 remaining phases (2.3, 2.4)
-5. Begin Track 3: User Guides (quick start scenarios)
+5. Complete Phase 2.4: Header Standardization Check
+6. Begin Track 3: User Guides (quick start scenarios)
 
 ### Medium Term
 
-6. Complete Track 3 and Track 4
-7. Organize repository structure (Track 5)
+7. Complete Track 3 and Track 4
+8. Organize repository structure (Track 5)
 
 ### Long Term
 
-8. Ongoing script documentation improvements
-9. Keep documentation synchronized with script updates
-10. Community feedback integration
+9. Ongoing script documentation improvements
+10. Keep documentation synchronized with script updates
+11. Community feedback integration
 
 ---
 
@@ -291,8 +301,8 @@ Comprehensive documentation improvement across 5 tracks:
 ### Documentation Goals
 
 - [x] 100% of scripts catalogued (Phase 2.1 ✅)
+- [x] All major categories have guides (Phase 2.2 ✅ - 6/6 complete)
 - [ ] Top 20 scripts fully documented
-- [ ] All major categories have guides (0/6 complete)
 - [ ] All custom fields documented
 - [ ] 5+ complete scenario guides
 - [ ] Troubleshooting coverage for common issues
@@ -300,6 +310,8 @@ Comprehensive documentation improvement across 5 tracks:
 ### User Experience Goals
 
 - [x] New user can deploy first script in < 15 minutes (Getting Started ✅)
+- [x] Script discovery enabled (Catalog ✅)
+- [x] Category-based navigation (6 guides ✅)
 - [ ] All common questions answered in docs
 - [ ] Clear path from beginner to advanced usage
 - [ ] Zero broken documentation links
@@ -315,6 +327,8 @@ Comprehensive documentation improvement across 5 tracks:
 - **2026-02-11:** Markdown format for all documentation (GitHub-friendly)
 - **2026-02-11:** Prioritized script catalog before detailed docs
 - **2026-02-11:** Using emoji indicators for script types in catalog
+- **2026-02-11:** Created 6 comprehensive category guides (80 KB total)
+- **2026-02-11:** Category guides include NinjaOne field mappings
 
 ### Lessons Learned
 
@@ -322,11 +336,14 @@ Comprehensive documentation improvement across 5 tracks:
 - Actual script count via file scan more accurate than estimates
 - Hyper-V scripts are in `/plaintext_scripts/`, not separate folder
 - Comprehensive catalog (17.8 KB) enables better navigation than expected
+- Category guides provide excellent intermediate layer between catalog and detailed docs
+- Batch file creation (push_files) efficient for related documentation
 
 ---
 
 ## Update History
 
+- **2026-02-11 20:57:** Phase 2.2 complete - All 6 category guides created (80.2 KB)
 - **2026-02-11 20:47:** Phase 2.1 complete - Script Catalog created
 - **2026-02-11 20:36:** Created progress tracker with master plan
 - **2026-02-11 20:31:** Completed Track 1 (all 5 phases)

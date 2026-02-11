@@ -6,10 +6,10 @@ This document tracks the migration status of scripts that were moved into the `p
 
 **Total Scripts to Migrate:** 76
 **Files Renamed:** Complete (commit 1c4223f2)
-**Migrated to V3:** 4
+**Migrated to V3:** 5
 **In Progress:** 0
-**Remaining:** 72
-**Progress:** 5.3%
+**Remaining:** 71
+**Progress:** 6.6%
 
 ---
 
@@ -25,7 +25,7 @@ All scripts have been renamed to streamlined PascalCase names. Ready to begin V3
 2. [x] **SecurityPostureConsolidator.ps1** - Consolidates security posture metrics (Migrated: commit ad9f58b9)
 3. [x] **SuspiciousLoginPatternDetector.ps1** - Detects anomalous login patterns (Migrated: commit 177e65ea)
 4. [x] **SecuritySurfaceTelemetry.ps1** - Security surface area telemetry (Migrated: commit 08b767d9)
-5. [ ] **AdvancedThreatTelemetry.ps1** - Advanced threat detection telemetry
+5. [x] **AdvancedThreatTelemetry.ps1** - Advanced threat detection telemetry (Migrated: commit 647d9acb)
 6. [ ] **EndpointDetectionResponse.ps1** - EDR functionality
 7. [ ] **ComplianceAttestationReporter.ps1** - Compliance reporting
 8. [ ] **P1CriticalDeviceValidator.ps1** - Critical priority validation
@@ -179,7 +179,7 @@ For each script, complete these steps:
 
 ## Completed Migrations
 
-### Sprint 1: Security Scripts (In Progress - 4/7 complete)
+### Sprint 1: Security Scripts (In Progress - 5/7 complete)
 
 1. **SecurityAnalyzer.ps1** - Migrated 2026-02-11
    - Location: `scripts/Security/SecurityAnalyzer.ps1`
@@ -213,6 +213,16 @@ For each script, complete these steps:
    - High-Risk Ports: FTP(21), Telnet(23), RPC(135), NetBIOS(139), SMB(445), SQL(1433), RDP(3389), VNC(5900)
    - Output: HTML-formatted summary with color-coded risk indicators
    - Parameterized: Certificate expiration threshold (default 30 days)
+
+5. **AdvancedThreatTelemetry.ps1** - Migrated 2026-02-11
+   - Location: `scripts/Security/AdvancedThreatTelemetry.ps1`
+   - Commit: [647d9acb](https://github.com/Xore/waf/commit/647d9acbc9ae9653f09374198bec36fc323d46c9)
+   - Custom Fields: secFailedLoginCount24h, secAccountLockouts24h, secSuspiciousActivityCount
+   - Features: Security event detection, PowerShell script block analysis
+   - Event IDs: 4625 (failed login), 4740 (lockout), 4104 (PowerShell script block)
+   - Suspicious Patterns: IEX, DownloadString, WebClient, Base64, encoded commands, obfuscation, bypass
+   - Threat Levels: HIGH (suspicious PS or >5 lockouts or >20 failed logins), MEDIUM (>threshold), LOW
+   - Parameterized: Time window (default 24h), configurable thresholds
 
 ---
 
@@ -250,13 +260,13 @@ Several scripts have multiple versions that should be reviewed and consolidated:
 
 ## Progress Tracking
 
-### Current Sprint (In Progress - 4/12 complete)
+### Current Sprint (In Progress - 5/12 complete)
 - [x] SecurityAnalyzer.ps1
 - [x] SecurityPostureConsolidator.ps1
 - [x] SuspiciousLoginPatternDetector.ps1
 - [x] SecuritySurfaceTelemetry.ps1
-- [ ] AdvancedThreatTelemetry.ps1 (next)
-- [ ] EndpointDetectionResponse.ps1
+- [x] AdvancedThreatTelemetry.ps1
+- [ ] EndpointDetectionResponse.ps1 (next)
 - [ ] ComplianceAttestationReporter.ps1
 - [ ] Priority validators (P1, P2, P3P4)
 - [ ] Patch ring scripts (PR1, PR2)

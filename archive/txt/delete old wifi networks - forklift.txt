@@ -1,0 +1,8 @@
+netsh wlan delete profile name="M-User"
+netsh wlan delete profile name="Moeller-User"
+netsh wlan delete profile name="M2-User"
+netsh wlan delete profile name="MWE-Scan"
+netsh wlan delete profile name="M-Soti"
+netsh wlan delete profile name="M-Phone"
+netsh wlan delete profile name="M-Guest"
+netsh wlan delete profile name="Moeller-Guest"

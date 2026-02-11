@@ -1,0 +1,430 @@
+<#
+.SYNOPSIS
+    Active Directory Monitor - Domain Integration and Health Tracking
+
+.DESCRIPTION
+    Monitors Active Directory domain membership, domain controller connectivity, secure channel
+    health, computer account status, user account details, and group memberships using native
+    ADSI LDAP:// queries. No RSAT required. Updates 12 AD fields with Base64 encoded group data.
+    
+    Provides comprehensive domain integration monitoring including trust relationship validation,
+    computer and user account queries, and group membership tracking. Uses native Windows LDAP
+    capabilities for maximum compatibility without requiring Remote Server Administration Tools.
+
+.NOTES
+    Frequency: Every 4 hours (critical), Daily (informational)
+    Runtime: ~10-15 seconds
+    Timeout: 120 seconds
+    Context: SYSTEM
+    
+    Fields Updated:
+    - ADDomainJoined (Text: "true"/"false")
+    - ADDomainName (Text: domain name or workgroup)
+    - ADDomainController (Text: DC hostname)
+    - ADSiteName (Text: AD site name)
+    - ADComputerOU (Text: computer distinguished name)
+    - ADComputerGroups
+    - ADLastLogonUser (Text: username in domain\user format)
+    - ADUserFirstName (Text: given name)
+    - ADUserLastName (Text: surname)
+    - ADUserGroups
+    - ADPasswordLastSet (DateTime: Unix Epoch seconds since 1970-01-01 UTC)
+    - ADTrustRelationshipHealthy (Text: "true"/"false")
+    
+    Dependencies:
+    - None (uses native ADSI LDAP:// queries)
+    - Requires domain-joined computer for full functionality
+    - Network connectivity to domain controller required
+    
+    Framework Version: 4.0
+    Last Updated: February 4, 2026
+#>
+
+[CmdletBinding()]
+param()
+
+function Test-ADConnection {
+    <#
+    .SYNOPSIS
+        Check Active Directory connectivity using LDAP:// protocol
+    #>
+    try {
+        $rootDSE = [ADSI]"LDAP://RootDSE"
+        $defaultNamingContext = $rootDSE.defaultNamingContext
+        
+        if ([string]::IsNullOrEmpty($defaultNamingContext)) {
+            Write-Host "ERROR: Unable to connect to Active Directory via LDAP"
+            return $false
+        }
+        
+        Write-Host "INFO: Active Directory LDAP connection established"
+        Write-Host "INFO: Default naming context: $defaultNamingContext"
+        return $true
+    } catch {
+        Write-Host "ERROR: Active Directory LDAP connection failed - $($_.Exception.Message)"
+        return $false
+    }
+}
+
+function Get-ADComputerViaADSI {
+    <#
+    .SYNOPSIS
+        Query computer information using LDAP:// protocol only
+    #>
+    param(
+        [string]$ComputerName = $env:COMPUTERNAME
+    )
+    
+    try {
+        $rootDSE = [ADSI]"LDAP://RootDSE"
+        $defaultNamingContext = $rootDSE.defaultNamingContext
+        
+        $searcher = New-Object System.DirectoryServices.DirectorySearcher
+        $searcher.SearchRoot = [ADSI]"LDAP://$defaultNamingContext"
+        $searcher.Filter = "(&(objectClass=computer)(cn=$ComputerName))"
+        $searcher.PropertiesToLoad.AddRange(@(
+            'cn',
+            'dNSHostName',
+            'sAMAccountName',
+            'operatingSystem',
+            'operatingSystemVersion',
+            'memberOf',
+            'userAccountControl',
+            'pwdLastSet',
+            'distinguishedName',
+            'whenCreated'
+        ))
+        $searcher.SearchScope = [System.DirectoryServices.SearchScope]::Subtree
+        
+        $result = $searcher.FindOne()
+        
+        if ($result) {
+            $computer = $result.Properties
+            
+            $groups = @()
+            if ($computer['memberOf']) {
+                foreach ($groupDN in $computer['memberOf']) {
+                    if ($groupDN -match 'CN=([^,]+)') {
+                        $groups += $matches[1]
+                    }
+                }
+            }
+            
+            $pwdLastSet = 0
+            if ($computer['pwdLastSet'] -and $computer['pwdLastSet'][0]) {
+                try {
+                    $pwdLastSetValue = $computer['pwdLastSet'][0]
+                    if ($pwdLastSetValue -is [System.__ComObject]) {
+                        $pwdLastSetValue = [Int64]$pwdLastSetValue
+                    }
+                    $pwdLastSetDate = [DateTime]::FromFileTime($pwdLastSetValue)
+                    $pwdLastSet = [int64](([DateTimeOffset]$pwdLastSetDate).ToUniversalTime() - [DateTimeOffset]::new(1970, 1, 1, 0, 0, 0, [TimeSpan]::Zero)).TotalSeconds
+                    Write-Host "INFO: Password last set: $($pwdLastSetDate.ToString('yyyy-MM-dd HH:mm:ss'))"
+                } catch {
+                    Write-Host "WARNING: Failed to convert pwdLastSet - $($_.Exception.Message)"
+                    $pwdLastSet = 0
+                }
+            }
+            
+            return [PSCustomObject]@{
+                Name = if ($computer['cn']) { $computer['cn'][0] } else { "" }
+                SamAccountName = if ($computer['sAMAccountName']) { $computer['sAMAccountName'][0] } else { "" }
+                DNSHostName = if ($computer['dNSHostName']) { $computer['dNSHostName'][0] } else { "" }
+                OperatingSystem = if ($computer['operatingSystem']) { $computer['operatingSystem'][0] } else { "" }
+                OSVersion = if ($computer['operatingSystemVersion']) { $computer['operatingSystemVersion'][0] } else { "" }
+                DistinguishedName = if ($computer['distinguishedName']) { $computer['distinguishedName'][0] } else { "" }
+                Groups = $groups -join ", "
+                GroupCount = $groups.Count
+                GroupsArray = $groups
+                PasswordLastSet = $pwdLastSet
+                Enabled = if ($computer['userAccountControl']) { 
+                    -not ([int]$computer['userAccountControl'][0] -band 2) 
+                } else { 
+                    $false 
+                }
+            }
+        } else {
+            Write-Host "WARNING: Computer not found in AD via LDAP - $ComputerName"
+            return $null
+        }
+    } catch {
+        Write-Host "ERROR: Failed to query computer via LDAP - $($_.Exception.Message)"
+        return $null
+    }
+}
+
+function Get-ADUserViaADSI {
+    <#
+    .SYNOPSIS
+        Query user information using LDAP:// protocol only
+    #>
+    param(
+        [string]$SamAccountName
+    )
+    
+    try {
+        $rootDSE = [ADSI]"LDAP://RootDSE"
+        $defaultNamingContext = $rootDSE.defaultNamingContext
+        
+        $searcher = New-Object System.DirectoryServices.DirectorySearcher
+        $searcher.SearchRoot = [ADSI]"LDAP://$defaultNamingContext"
+        $searcher.Filter = "(&(objectClass=user)(objectCategory=person)(sAMAccountName=$SamAccountName))"
+        $searcher.PropertiesToLoad.AddRange(@(
+            'givenName',
+            'sn',
+            'displayName',
+            'userPrincipalName',
+            'sAMAccountName',
+            'memberOf',
+            'userAccountControl',
+            'mail',
+            'distinguishedName'
+        ))
+        $searcher.SearchScope = [System.DirectoryServices.SearchScope]::Subtree
+        
+        $result = $searcher.FindOne()
+        
+        if ($result) {
+            $user = $result.Properties
+            
+            $groups = @()
+            if ($user['memberOf']) {
+                foreach ($groupDN in $user['memberOf']) {
+                    if ($groupDN -match 'CN=([^,]+)') {
+                        $groups += $matches[1]
+                    }
+                }
+            }
+            
+            return [PSCustomObject]@{
+                SamAccountName = if ($user['sAMAccountName']) { $user['sAMAccountName'][0] } else { "" }
+                FirstName = if ($user['givenName']) { $user['givenName'][0] } else { "" }
+                LastName = if ($user['sn']) { $user['sn'][0] } else { "" }
+                DisplayName = if ($user['displayName']) { $user['displayName'][0] } else { "" }
+                UserPrincipalName = if ($user['userPrincipalName']) { $user['userPrincipalName'][0] } else { "" }
+                EmailAddress = if ($user['mail']) { $user['mail'][0] } else { "" }
+                DistinguishedName = if ($user['distinguishedName']) { $user['distinguishedName'][0] } else { "" }
+                Groups = $groups -join ", "
+                GroupCount = $groups.Count
+                GroupsArray = $groups
+                Enabled = if ($user['userAccountControl']) { 
+                    -not ([int]$user['userAccountControl'][0] -band 2) 
+                } else { 
+                    $false 
+                }
+            }
+        } else {
+            Write-Host "WARNING: User not found via LDAP - $SamAccountName"
+            return $null
+        }
+    } catch {
+        Write-Host "ERROR: Failed to query user via LDAP - $($_.Exception.Message)"
+        return $null
+    }
+}
+
+# Main Script
+
+try {
+    Write-Host "Starting Active Directory Monitor (Script 42 v4.0)..."
+    Write-Host "INFO: Using native ADSI LDAP:// queries (no RSAT required)"
+    $ErrorActionPreference = 'Stop'
+    
+    # Check if computer is domain-joined
+    Write-Host "INFO: Checking domain membership..."
+    $computerSystem = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
+    
+    if ($computerSystem.PartOfDomain -eq $false) {
+        Write-Host "INFO: Computer is not domain-joined (Workgroup: $($computerSystem.Workgroup))"
+        
+        # Update fields for non-domain computers
+        Ninja-Property-Set adDomainJoined "false"
+        Ninja-Property-Set adDomainName $computerSystem.Workgroup
+        Ninja-Property-Set adDomainController "N/A"
+        Ninja-Property-Set adSiteName "N/A"
+        Ninja-Property-Set adComputerOU "N/A"
+        Ninja-Property-Set adComputerGroups ""
+        Ninja-Property-Set adLastLogonUser "N/A"
+        Ninja-Property-Set adUserFirstName ""
+        Ninja-Property-Set adUserLastName ""
+        Ninja-Property-Set adUserGroups ""
+        Ninja-Property-Set adPasswordLastSet 0
+        Ninja-Property-Set adTrustRelationshipHealthy "true"
+        
+        Write-Host "SUCCESS: Active Directory Monitor complete (not domain-joined)"
+        exit 0
+    }
+    
+    $domainName = $computerSystem.Domain
+    Write-Host "INFO: Computer is domain-joined: $domainName"
+    
+    # Test LDAP connection
+    if (-not (Test-ADConnection)) {
+        Write-Host "ERROR: Cannot proceed without Active Directory LDAP connection"
+        
+        # Set error state
+        Ninja-Property-Set adDomainJoined "true"
+        Ninja-Property-Set adDomainName $domainName
+        Ninja-Property-Set adDomainController "LDAP connection failed"
+        Ninja-Property-Set adTrustRelationshipHealthy "false"
+        
+        exit 1
+    }
+    
+    # Get domain controller using nltest
+    $domainController = "Unknown"
+    $siteName = "Unknown"
+    
+    try {
+        Write-Host "INFO: Locating domain controller..."
+        $dcInfo = nltest /dsgetdc:$domainName 2>&1
+        
+        if ($LASTEXITCODE -eq 0) {
+            $dcLine = $dcInfo | Where-Object { $_ -match 'DC:\s*\\\\(.+)' }
+            if ($dcLine -match 'DC:\s*\\\\(.+)') {
+                $domainController = $matches[1]
+                Write-Host "INFO: Domain Controller: $domainController"
+            }
+            
+            $siteLine = $dcInfo | Where-Object { $_ -match 'Site Name:\s*(.+)' }
+            if ($siteLine -match 'Site Name:\s*(.+)') {
+                $siteName = $matches[1].Trim()
+                Write-Host "INFO: Site Name: $siteName"
+            }
+        } else {
+            Write-Host "WARNING: Failed to locate domain controller"
+            $domainController = "Unable to locate"
+        }
+    } catch {
+        Write-Host "WARNING: Error getting domain controller: $($_.Exception.Message)"
+        $domainController = "Error"
+    }
+    
+    # Test secure channel (trust relationship)
+    $trustHealthy = "true"
+    try {
+        Write-Host "INFO: Testing secure channel to domain..."
+        $testResult = Test-ComputerSecureChannel -ErrorAction Stop
+        $trustHealthy = if ($testResult) { "true" } else { "false" }
+        
+        if ($testResult) {
+            Write-Host "INFO: Secure channel is healthy"
+        } else {
+            Write-Host "WARNING: Secure channel test failed - trust relationship broken"
+        }
+    } catch {
+        Write-Host "WARNING: Failed to test secure channel: $($_.Exception.Message)"
+        $trustHealthy = "false"
+    }
+    
+    # Query computer account via LDAP://
+    Write-Host "INFO: Querying computer account via LDAP://..."
+    $computerInfo = Get-ADComputerViaADSI -ComputerName $env:COMPUTERNAME
+    
+    $computerOU = "Unable to query"
+    $passwordLastSet = 0
+    
+    if ($computerInfo) {
+        $computerOU = $computerInfo.DistinguishedName
+        Write-Host "INFO: Computer DN: $computerOU"
+        Write-Host "INFO: Computer Groups: $($computerInfo.GroupCount) memberships"
+        
+        $passwordLastSet = $computerInfo.PasswordLastSet
+    } else {
+        Write-Host "WARNING: Failed to query computer account"
+    }
+    
+    # Get last logged-on user
+    $lastLogonUser = "Unknown"
+    try {
+        $lastLogonReg = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI" -Name "LastLoggedOnUser" -ErrorAction SilentlyContinue
+        
+        if ($lastLogonReg) {
+            $lastLogonUser = $lastLogonReg.LastLoggedOnUser
+            Write-Host "INFO: Last Logon User: $lastLogonUser"
+        } else {
+            $currentUser = (Get-CimInstance -ClassName Win32_ComputerSystem).UserName
+            if ($currentUser) {
+                $lastLogonUser = $currentUser
+                Write-Host "INFO: Current User: $lastLogonUser"
+            }
+        }
+    } catch {
+        Write-Host "WARNING: Failed to get last logon user: $($_.Exception.Message)"
+    }
+    
+    # Query user account via LDAP:// (if we have a username)
+    $userFirstName = ""
+    $userLastName = ""
+    
+    if ($lastLogonUser -ne "Unknown" -and $lastLogonUser -ne "N/A") {
+        # Extract username from domain\username format
+        $username = $lastLogonUser
+        if ($lastLogonUser -match '\\(.+)$') {
+            $username = $matches[1]
+        }
+        
+        Write-Host "INFO: Querying user account via LDAP:// for $username..."
+        $userInfo = Get-ADUserViaADSI -SamAccountName $username
+        
+        if ($userInfo) {
+            $userFirstName = $userInfo.FirstName
+            $userLastName = $userInfo.LastName
+            Write-Host "INFO: User: $($userInfo.DisplayName)"
+            Write-Host "INFO: User Groups: $($userInfo.GroupCount) memberships"
+        } else {
+            Write-Host "WARNING: Failed to query user account"
+        }
+    }
+    
+    # Test connectivity to domain controller
+    if ($domainController -ne "Unable to locate" -and $domainController -ne "Error" -and $domainController -ne "Unknown") {
+        try {
+            Write-Host "INFO: Testing connectivity to domain controller..."
+            $pingResult = Test-Connection -ComputerName $domainController -Count 2 -Quiet -ErrorAction SilentlyContinue
+            
+            if (-not $pingResult) {
+                Write-Host "WARNING: Unable to ping domain controller $domainController"
+                $trustHealthy = "false"
+            } else {
+                Write-Host "INFO: Domain controller is reachable"
+            }
+        } catch {
+            Write-Host "WARNING: Failed to test DC connectivity: $($_.Exception.Message)"
+        }
+    }
+    
+    # Update NinjaRMM custom fields
+    Write-Host "INFO: Updating NinjaRMM custom fields..."
+    
+    Ninja-Property-Set adDomainJoined "true"
+    Ninja-Property-Set adDomainName $domainName
+    Ninja-Property-Set adDomainController $domainController
+    Ninja-Property-Set adSiteName $siteName
+    Ninja-Property-Set adComputerOU $computerOU
+    Ninja-Property-Set adComputerGroups $computerInfo.GroupsArray
+    Ninja-Property-Set adLastLogonUser $lastLogonUser
+    Ninja-Property-Set adUserFirstName $userFirstName
+    Ninja-Property-Set adUserLastName $userLastName
+    Ninja-Property-Set adUserGroups $userInfo.GroupsArray
+    Ninja-Property-Set adPasswordLastSet $passwordLastSet
+    Ninja-Property-Set adTrustRelationshipHealthy $trustHealthy
+    
+    Write-Host "SUCCESS: Active Directory Monitor complete"
+    Write-Host "INFO: Domain: $domainName, Trust Healthy: $trustHealthy"
+    Write-Host "INFO: Computer Groups: $($computerInfo.GroupCount)"
+    Write-Host "INFO: User Groups: $($userInfo.GroupCount)"
+    
+    exit 0
+    
+} catch {
+    $errorMessage = $_.Exception.Message
+    Write-Host "ERROR: Active Directory Monitor failed - $errorMessage"
+    
+    # Set error state in fields
+    Ninja-Property-Set adDomainJoined "false"
+    Ninja-Property-Set adDomainName "Error"
+    Ninja-Property-Set adTrustRelationshipHealthy "false"
+    
+    exit 1
+}

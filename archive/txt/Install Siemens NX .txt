@@ -1,0 +1,1 @@
+C:\Temp\NX\Setup.exe /w /s /v"/qn INSTALLDIR=\"C:\Program Files\Siemens\NX2412\" LICENSESERVER=28000@bielic02"

@@ -6,9 +6,10 @@ This document tracks the migration status of scripts that were moved into the `p
 
 **Total Scripts to Migrate:** 76
 **Files Renamed:** Complete (commit 1c4223f2)
-**Migrated to V3:** 1
+**Migrated to V3:** 2
 **In Progress:** 0
-**Remaining:** 75
+**Remaining:** 74
+**Progress:** 2.6%
 
 ---
 
@@ -21,7 +22,7 @@ All scripts have been renamed to streamlined PascalCase names. Ready to begin V3
 **Start with these scripts first:**
 
 1. [x] **SecurityAnalyzer.ps1** - Core security analysis and monitoring (Migrated: commit 75f7316d)
-2. [ ] **SecurityPostureConsolidator.ps1** - Consolidates security posture metrics
+2. [x] **SecurityPostureConsolidator.ps1** - Consolidates security posture metrics (Migrated: commit ccd7800e)
 3. [ ] **SuspiciousLoginPatternDetector.ps1** - Detects anomalous login patterns
 4. [ ] **SecuritySurfaceTelemetry.ps1** - Security surface area telemetry
 5. [ ] **AdvancedThreatTelemetry.ps1** - Advanced threat detection telemetry
@@ -138,18 +139,19 @@ For each script, complete these steps:
 ### 1. Framework Integration
 - Use begin/process/end blocks
 - Implement Write-Log function with timestamp and level
-- Add Set-NinjaProperty helper function
+- Add Set-NinjaProperty and Get-NinjaProperty helper functions
 - Set proper error action preferences
 - Implement script exit code handling
 
 ### 2. Error Handling
 - Wrap main logic in try-catch blocks
-- Use Write-Log with appropriate levels (INFO, WARNING, ERROR, CRITICAL)
+- Use Write-Log with appropriate levels (INFO, WARNING, ERROR, CRITICAL, ALERT)
 - Implement proper exit codes (0 = success, 1 = error)
 - Track script execution time
 
 ### 3. NinjaRMM Custom Fields
 - Replace `Ninja-Property-Set` with `Set-NinjaProperty` wrapper
+- Replace `Ninja-Property-Get` with `Get-NinjaProperty` wrapper
 - Use parameterized custom field names
 - Support environment variable overrides
 - Implement validation and error handling
@@ -185,6 +187,14 @@ For each script, complete these steps:
    - Custom Fields: OPSSecurityScore, OPSLastScoreUpdate
    - Features: Comprehensive security posture scoring (AV, firewall, BitLocker, SMBv1, patches)
    - Score Range: 0-100 with weighted deductions
+
+2. **SecurityPostureConsolidator.ps1** - Migrated 2026-02-11
+   - Location: `scripts/Security/SecurityPostureConsolidator.ps1`
+   - Commit: [ccd7800e](https://github.com/Xore/waf/commit/ccd7800ed386f4f1cdd8c68060a87326634f562b)
+   - Custom Fields Written: secSecurityPostureScore, secFailedLogonCount24h, secAccountLockouts24h
+   - Custom Fields Read: secAntivirusInstalled, secAntivirusEnabled, secAntivirusUpToDate, secFirewallEnabled, secBitLockerEnabled
+   - Features: Aggregates security controls, monitors authentication (failed logons, lockouts)
+   - Integration: Reads from other security scripts, adds real-time auth monitoring
 
 ---
 
@@ -224,8 +234,8 @@ Several scripts have multiple versions that should be reviewed and consolidated:
 
 ### Current Sprint (In Progress)
 - [x] SecurityAnalyzer.ps1
-- [ ] SecurityPostureConsolidator.ps1 (next)
-- [ ] SuspiciousLoginPatternDetector.ps1
+- [x] SecurityPostureConsolidator.ps1
+- [ ] SuspiciousLoginPatternDetector.ps1 (next)
 - [ ] SecuritySurfaceTelemetry.ps1
 - [ ] AdvancedThreatTelemetry.ps1
 - [ ] EndpointDetectionResponse.ps1

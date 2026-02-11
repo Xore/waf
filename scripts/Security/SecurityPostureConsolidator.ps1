@@ -47,15 +47,15 @@
     - Below 60: Poor security, immediate action required
 
 .PARAMETER PostureScoreField
-    NinjaRMM custom field name for consolidated security posture score.
+    NinjaRMM custom field name to store the consolidated security posture score (0-100).
     Default: secSecurityPostureScore
 
 .PARAMETER FailedLogonField
-    NinjaRMM custom field name for failed logon count.
+    NinjaRMM custom field name to store failed logon count in last 24 hours.
     Default: secFailedLogonCount24h
 
 .PARAMETER LockoutField
-    NinjaRMM custom field name for account lockout count.
+    NinjaRMM custom field name to store account lockout count in last 24 hours.
     Default: secAccountLockouts24h
 
 .EXAMPLE
@@ -64,7 +64,7 @@
     Runs security posture consolidation with default custom field names.
 
 .EXAMPLE
-    .\SecurityPostureConsolidator.ps1 -PostureScoreField "PostureScore" -FailedLogonField "FailedLogons"
+    .\SecurityPostureConsolidator.ps1 -PostureScoreField "SecurityScore" -FailedLogonField "FailedLogins"
 
     Runs with custom field names.
 
@@ -85,24 +85,24 @@
     
     Change Log:
     - 3.0.0: V3 migration with standardized logging, error handling, and custom field management
-    - 4.0: Previous version with basic consolidation
-    
-    Fields Updated:
-    - secSecurityPostureScore (Integer: 0-100 consolidated security score)
-    - secFailedLogonCount24h (Integer: failed logon attempts in last 24 hours)
-    - secAccountLockouts24h (Integer: account lockout events in last 24 hours)
+    - 4.0: Previous version with consolidation logic
     
     Fields Read (from other scripts):
-    - secAntivirusInstalled (Checkbox: from endpoint protection scripts)
-    - secAntivirusEnabled (Checkbox: from endpoint protection scripts)
-    - secAntivirusUpToDate (Checkbox: from endpoint protection scripts)
-    - secFirewallEnabled (Checkbox: from firewall monitoring)
-    - secBitLockerEnabled (Checkbox: from BitLocker monitoring)
+    - secAntivirusInstalled: Checkbox indicating AV installation status
+    - secAntivirusEnabled: Checkbox indicating AV enabled status
+    - secAntivirusUpToDate: Checkbox indicating AV definition freshness
+    - secFirewallEnabled: Checkbox indicating firewall status
+    - secBitLockerEnabled: Checkbox indicating BitLocker status
+    
+    Fields Updated:
+    - secSecurityPostureScore: Integer 0-100 consolidated security score
+    - secFailedLogonCount24h: Integer failed logon attempts in last 24 hours
+    - secAccountLockouts24h: Integer account lockout events in last 24 hours
     
     Dependencies:
     - Windows Security event log
     - Get-WindowsOptionalFeature cmdlet
-    - Security monitoring scripts must run first
+    - Security monitoring scripts must run first to populate input fields
     
     Event IDs Monitored:
     - 4625: Failed logon attempt
@@ -174,7 +174,8 @@ begin {
         try {
             $Value = Ninja-Property-Get $Name 2>&1
             if ($Value.Exception) {
-                throw $Value
+                Write-Log "Unable to read property '$Name': $($Value.Exception.Message)" -Level WARNING
+                return $null
             }
             return $Value
         }
@@ -213,7 +214,7 @@ process {
         $findings = @()
         $metrics = @{}
 
-        Write-Log "Evaluating endpoint protection controls..."
+        Write-Log "Evaluating endpoint protection status..."
         try {
             $avInstalled = Get-NinjaProperty -Name "secAntivirusInstalled"
             $avEnabled = Get-NinjaProperty -Name "secAntivirusEnabled"
@@ -222,29 +223,29 @@ process {
             if ($avInstalled -eq $false) {
                 $score -= 40
                 $findings += "No antivirus installed (-40 points)"
-                $metrics['Antivirus'] = 'Not Installed'
+                $metrics['EndpointProtection'] = 'Not Installed'
                 Write-Log "No antivirus installed" -Level CRITICAL
             } 
             elseif ($avEnabled -eq $false) {
                 $score -= 30
                 $findings += "Antivirus disabled (-30 points)"
-                $metrics['Antivirus'] = 'Disabled'
-                Write-Log "Antivirus is disabled" -Level CRITICAL
+                $metrics['EndpointProtection'] = 'Disabled'
+                Write-Log "Antivirus disabled" -Level CRITICAL
             } 
             elseif ($avUpToDate -eq $false) {
                 $score -= 15
                 $findings += "Antivirus definitions outdated (-15 points)"
-                $metrics['Antivirus'] = 'Outdated Definitions'
-                Write-Log "Antivirus definitions are outdated" -Level WARNING
+                $metrics['EndpointProtection'] = 'Outdated Definitions'
+                Write-Log "Antivirus definitions outdated" -Level WARNING
             } 
             else {
-                $metrics['Antivirus'] = 'Protected'
+                $metrics['EndpointProtection'] = 'Current'
                 Write-Log "Endpoint protection is current"
             }
         }
         catch {
             Write-Log "Failed to evaluate endpoint protection: $_" -Level ERROR
-            $metrics['Antivirus'] = 'Check Failed'
+            $metrics['EndpointProtection'] = 'Evaluation Failed'
         }
 
         Write-Log "Evaluating firewall status..."
@@ -255,36 +256,36 @@ process {
                 $score -= 30
                 $findings += "Firewall disabled (-30 points)"
                 $metrics['Firewall'] = 'Disabled'
-                Write-Log "Firewall is disabled" -Level CRITICAL
+                Write-Log "Firewall disabled" -Level CRITICAL
             } 
             else {
                 $metrics['Firewall'] = 'Enabled'
-                Write-Log "Firewall is enabled"
+                Write-Log "Firewall enabled"
             }
         }
         catch {
             Write-Log "Failed to evaluate firewall status: $_" -Level ERROR
-            $metrics['Firewall'] = 'Check Failed'
+            $metrics['Firewall'] = 'Evaluation Failed'
         }
 
-        Write-Log "Evaluating disk encryption..."
+        Write-Log "Evaluating disk encryption status..."
         try {
             $blEnabled = Get-NinjaProperty -Name "secBitLockerEnabled"
             
             if ($blEnabled -eq $false) {
                 $score -= 15
                 $findings += "BitLocker not enabled (-15 points)"
-                $metrics['BitLocker'] = 'Disabled'
-                Write-Log "BitLocker is not enabled" -Level WARNING
+                $metrics['DiskEncryption'] = 'Not Enabled'
+                Write-Log "BitLocker not enabled" -Level WARNING
             } 
             else {
-                $metrics['BitLocker'] = 'Enabled'
-                Write-Log "BitLocker encryption is enabled"
+                $metrics['DiskEncryption'] = 'Enabled'
+                Write-Log "BitLocker encryption enabled"
             }
         }
         catch {
             Write-Log "Failed to evaluate disk encryption: $_" -Level ERROR
-            $metrics['BitLocker'] = 'Check Failed'
+            $metrics['DiskEncryption'] = 'Evaluation Failed'
         }
 
         Write-Log "Checking SMBv1 protocol status..."
@@ -294,11 +295,11 @@ process {
                 $score -= 10
                 $findings += "SMBv1 protocol enabled (known vulnerability, -10 points)"
                 $metrics['SMBv1'] = 'Enabled (Vulnerable)'
-                Write-Log "SMBv1 protocol is enabled" -Level WARNING
+                Write-Log "SMBv1 protocol enabled" -Level WARNING
             } 
             else {
                 $metrics['SMBv1'] = 'Disabled'
-                Write-Log "SMBv1 protocol is disabled"
+                Write-Log "SMBv1 protocol disabled"
             }
         }
         catch {
@@ -324,24 +325,29 @@ process {
             if ($failedLogons -gt 50) {
                 $score -= 20
                 $findings += "Excessive failed logons: $failedLogons (-20 points)"
-                Write-Log "Excessive failed logons: $failedLogons (possible attack)" -Level ALERT
+                $metrics['FailedLogons'] = "$failedLogons (Possible Attack)"
+                Write-Log "Excessive failed logons: $failedLogons" -Level ALERT
             } 
             elseif ($failedLogons -gt 20) {
                 $score -= 10
                 $findings += "High failed logons: $failedLogons (-10 points)"
-                Write-Log "High failed logon count: $failedLogons (suspicious activity)" -Level WARNING
+                $metrics['FailedLogons'] = "$failedLogons (Suspicious)"
+                Write-Log "High failed logon count: $failedLogons" -Level WARNING
             } 
             elseif ($failedLogons -gt 10) {
                 $score -= 5
                 $findings += "Elevated failed logons: $failedLogons (-5 points)"
-                Write-Log "Elevated failed logon count: $failedLogons" -Level WARNING
+                $metrics['FailedLogons'] = "$failedLogons (Elevated)"
+                Write-Log "Elevated failed logon count: $failedLogons"
             } 
             else {
+                $metrics['FailedLogons'] = "$failedLogons (Normal)"
                 Write-Log "Failed logon count acceptable: $failedLogons"
             }
         }
         catch {
             Write-Log "Unable to query failed logon events: $_" -Level WARNING
+            $metrics['FailedLogons'] = 'Unable to query'
         }
 
         Write-Log "Checking account lockout events (Event ID 4740)..."
@@ -355,14 +361,17 @@ process {
             $lockouts = ($lockoutEvents | Measure-Object).Count
             
             if ($lockouts -gt 0) {
-                Write-Log "Detected $lockouts account lockout(s) in last 24 hours" -Level WARNING
+                $metrics['AccountLockouts'] = "$lockouts detected"
+                Write-Log "Detected $lockouts account lockout(s) in last 24 hours"
             } 
             else {
+                $metrics['AccountLockouts'] = 'None detected'
                 Write-Log "No account lockouts detected"
             }
         }
         catch {
             Write-Log "Unable to query lockout events: $_" -Level WARNING
+            $metrics['AccountLockouts'] = 'Unable to query'
         }
 
         if ($score -lt 0) { $score = 0 }
@@ -375,7 +384,7 @@ process {
             default { 'Poor - immediate action required' }
         }
 
-        Write-Log "Consolidated security score calculated: $score/100"
+        Write-Log "Consolidated security score: $score/100"
         Write-Log "Security posture assessment: $assessment"
 
         Write-Log "Updating NinjaRMM custom fields..."
@@ -403,14 +412,14 @@ process {
             Write-Log "Failed to update lockout field: $_" -Level ERROR
         }
 
-        Write-Log "AUTHENTICATION METRICS:"
-        Write-Log "  Failed Logons (24h): $failedLogons"
-        Write-Log "  Account Lockouts (24h): $lockouts"
-
         Write-Log "SECURITY CONTROL STATUS:"
         foreach ($control in $metrics.Keys | Sort-Object) {
             Write-Log "  $control : $($metrics[$control])"
         }
+
+        Write-Log "AUTHENTICATION METRICS:"
+        Write-Log "  Failed Logons (24h): $failedLogons"
+        Write-Log "  Account Lockouts (24h): $lockouts"
 
         if ($findings.Count -gt 0) {
             Write-Log "SECURITY GAPS IDENTIFIED:"

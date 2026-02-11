@@ -6,10 +6,10 @@ This document tracks the migration status of scripts that were moved into the `p
 
 **Total Scripts to Migrate:** 76
 **Files Renamed:** Complete (commit 1c4223f2)
-**Migrated to V3:** 2
+**Migrated to V3:** 4
 **In Progress:** 0
-**Remaining:** 74
-**Progress:** 2.6%
+**Remaining:** 72
+**Progress:** 5.3%
 
 ---
 
@@ -22,9 +22,9 @@ All scripts have been renamed to streamlined PascalCase names. Ready to begin V3
 **Start with these scripts first:**
 
 1. [x] **SecurityAnalyzer.ps1** - Core security analysis and monitoring (Migrated: commit 75f7316d)
-2. [x] **SecurityPostureConsolidator.ps1** - Consolidates security posture metrics (Migrated: commit ccd7800e)
-3. [ ] **SuspiciousLoginPatternDetector.ps1** - Detects anomalous login patterns
-4. [ ] **SecuritySurfaceTelemetry.ps1** - Security surface area telemetry
+2. [x] **SecurityPostureConsolidator.ps1** - Consolidates security posture metrics (Migrated: commit ad9f58b9)
+3. [x] **SuspiciousLoginPatternDetector.ps1** - Detects anomalous login patterns (Migrated: commit 177e65ea)
+4. [x] **SecuritySurfaceTelemetry.ps1** - Security surface area telemetry (Migrated: commit 08b767d9)
 5. [ ] **AdvancedThreatTelemetry.ps1** - Advanced threat detection telemetry
 6. [ ] **EndpointDetectionResponse.ps1** - EDR functionality
 7. [ ] **ComplianceAttestationReporter.ps1** - Compliance reporting
@@ -179,7 +179,7 @@ For each script, complete these steps:
 
 ## Completed Migrations
 
-### Sprint 1: Security Scripts
+### Sprint 1: Security Scripts (In Progress - 4/7 complete)
 
 1. **SecurityAnalyzer.ps1** - Migrated 2026-02-11
    - Location: `scripts/Security/SecurityAnalyzer.ps1`
@@ -190,11 +190,29 @@ For each script, complete these steps:
 
 2. **SecurityPostureConsolidator.ps1** - Migrated 2026-02-11
    - Location: `scripts/Security/SecurityPostureConsolidator.ps1`
-   - Commit: [ccd7800e](https://github.com/Xore/waf/commit/ccd7800ed386f4f1cdd8c68060a87326634f562b)
+   - Commit: [ad9f58b9](https://github.com/Xore/waf/commit/ad9f58b9a1932cdba9bc121be26aea460fd93e8c)
    - Custom Fields Written: secSecurityPostureScore, secFailedLogonCount24h, secAccountLockouts24h
    - Custom Fields Read: secAntivirusInstalled, secAntivirusEnabled, secAntivirusUpToDate, secFirewallEnabled, secBitLockerEnabled
    - Features: Aggregates security controls, monitors authentication (failed logons, lockouts)
    - Integration: Reads from other security scripts, adds real-time auth monitoring
+
+3. **SuspiciousLoginPatternDetector.ps1** - Migrated 2026-02-11
+   - Location: `scripts/Security/SuspiciousLoginPatternDetector.ps1`
+   - Commit: [177e65ea](https://github.com/Xore/waf/commit/177e65eaad8fba2a0dbcc59ee0da0f9cf1fa4ef1)
+   - Custom Fields: secSuspiciousLoginScore
+   - Features: Behavioral analytics for authentication patterns, 4-hour rolling window
+   - Indicators: Failed logons (20pts), Off-hours activity (15pts), Account lockouts (25pts), Privilege escalation (10pts)
+   - Parameterized: Time window, all thresholds configurable
+   - Threat Levels: Normal (0-25), Low (26-49), Medium (50-75), High (76-100)
+
+4. **SecuritySurfaceTelemetry.ps1** - Migrated 2026-02-11
+   - Location: `scripts/Security/SecuritySurfaceTelemetry.ps1`
+   - Commit: [08b767d9](https://github.com/Xore/waf/commit/08b767d929b5c12cb9ad12bc6ee360aa279a2261)
+   - Custom Fields: secInternetExposedPortsCount, secHighRiskServicesExposed, secSoonExpiringCertsCount, secSecuritySurfaceSummaryHtml
+   - Features: Attack surface analysis, high-risk port detection, certificate expiration monitoring
+   - High-Risk Ports: FTP(21), Telnet(23), RPC(135), NetBIOS(139), SMB(445), SQL(1433), RDP(3389), VNC(5900)
+   - Output: HTML-formatted summary with color-coded risk indicators
+   - Parameterized: Certificate expiration threshold (default 30 days)
 
 ---
 
@@ -232,12 +250,12 @@ Several scripts have multiple versions that should be reviewed and consolidated:
 
 ## Progress Tracking
 
-### Current Sprint (In Progress)
+### Current Sprint (In Progress - 4/12 complete)
 - [x] SecurityAnalyzer.ps1
 - [x] SecurityPostureConsolidator.ps1
-- [ ] SuspiciousLoginPatternDetector.ps1 (next)
-- [ ] SecuritySurfaceTelemetry.ps1
-- [ ] AdvancedThreatTelemetry.ps1
+- [x] SuspiciousLoginPatternDetector.ps1
+- [x] SecuritySurfaceTelemetry.ps1
+- [ ] AdvancedThreatTelemetry.ps1 (next)
 - [ ] EndpointDetectionResponse.ps1
 - [ ] ComplianceAttestationReporter.ps1
 - [ ] Priority validators (P1, P2, P3P4)

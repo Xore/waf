@@ -37,7 +37,7 @@
 .PARAMETER LicenseServer
     License server specification in format: port@hostname
     Example: 28000@licenseserver.company.com
-    Default: 28000@bielic02
+    Default: 28000@licenseserver.company.com
 
 .EXAMPLE
     .\Software-InstallSiemensNX.ps1
@@ -100,7 +100,7 @@ param (
     [string]$InstallDir = "C:\Program Files\Siemens\NX2412",
     
     [Parameter(Mandatory=$false, HelpMessage="License server (port@hostname)")]
-    [string]$LicenseServer = "28000@bielic02"
+    [string]$LicenseServer = "28000@licenseserver.company.com"
 )
 
 begin {

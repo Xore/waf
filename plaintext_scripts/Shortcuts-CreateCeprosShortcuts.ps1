@@ -115,7 +115,7 @@ begin {
     
     $CeprosPath = "C:\Program Files\CONTACT CIM Database Desktop 11.7\cdbpc.exe"
     $WorkspacesPath = "C:\Program Files\CONTACT Workspaces Desktop\bin\WorkspacesDesktop.exe"
-    $CeprosTestURL = "https://biecdb20.de.mgp.int/"
+    $CeprosTestURL = "https://CDBSERVERURL.de.mgp.int/"
     $NinjaRMMCLI = "C:\ProgramData\NinjaRMMAgent\ninjarmm-cli.exe"
     
     $script:WshShell = $null

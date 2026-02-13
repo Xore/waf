@@ -21,14 +21,14 @@
     Installation Parameters:
     - INSTALLDIR: C:\Program Files\Siemens\NX2412
     - SETUPFILE: C:\Temp\NX\SiemensNX.msi
-    - LICENSESERVER: 28000@bielic02 (configurable)
+    - LICENSESERVER: 28000@licenseserver.company.com (configurable)
     - LANGUAGE: english
     - SETUPTYPE: typical
     - ADDLOCAL: all (installs all components)
     
     License Server Configuration:
     The script uses SPLM_LICENSE_SERVER (Siemens PLM License Server) pointing to
-    port 28000 on server bielic02. This must be accessible from the target system.
+    port 28000 on server licenseserver.company.com. This must be accessible from the target system.
     
     MSI Exit Codes:
     - 0: Success
@@ -38,7 +38,7 @@
     
     Prerequisites:
     - Siemens NX 2412 MSI installer at C:\Temp\NX\SiemensNX.msi
-    - Network access to license server (28000@bielic02)
+    - Network access to license server (28000@licenseserver.company.com)
     - Sufficient disk space (typically 10-30 GB depending on components)
     - Administrator privileges
     
@@ -181,7 +181,7 @@ begin {
 
     # Configuration
     $TempDir = "C:\TEMP"
-    $LicenseServer = "28000@bielic02"
+    $LicenseServer = "28000@licenseserver.company.com"
     $InstallDir = "C:\Program Files\Siemens\NX2412"
     $SetupFile = "C:\Temp\NX\SiemensNX.msi"
     $LogFile = "C:\Temp\NX2412_MB_Daimler_Install.log"

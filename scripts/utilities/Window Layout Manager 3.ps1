@@ -14,6 +14,7 @@
     Key features:
     - Direct border overlap approach (no DWM API calls)
     - Configurable border width (default 8px for Windows 10/11)
+    - Per-window border overlap control via UseOverlap config option
     - Supports left/right/full window zones
     - Profile-based configurations
     - Accounts for taskbar in calculations
@@ -32,8 +33,9 @@
     Optional path to external configuration file.
 
 .PARAMETER BorderWidth
-    Width of invisible window border in pixels. Default is 8 for Windows 10/11.
-    Use 7 for older Windows 10 builds, or 0 to disable overlap.
+    Default width of invisible window border in pixels. Default is 8 for Windows 10/11.
+    Use 7 for older Windows 10 builds, or 0 to disable overlap globally.
+    Can be overridden per-window using UseOverlap = $false in rule config.
 
 .PARAMETER DryRun
     If specified, shows what would be done without actually moving windows.
@@ -53,7 +55,7 @@
 .NOTES
     Script Name:    Window Layout Manager 3.ps1
     Author:         Windows Automation Framework
-    Version:        3.1
+    Version:        3.2
     Creation Date:  2026-02-14
     Last Modified:  2026-02-14
     
@@ -82,6 +84,11 @@
     - No DWM API calls required (simpler, more compatible)
     - Fixed border width may not be perfect for all applications
     
+    Config Option - UseOverlap:
+    Each window rule can include 'UseOverlap' (default: $true):
+    - UseOverlap = $true  : Apply border overlap (eliminate gaps)
+    - UseOverlap = $false : No overlap (may show gaps, but precise positioning)
+    
 .LINK
     https://github.com/Xore/waf
 #>
@@ -107,7 +114,7 @@ param(
 # CONFIGURATION
 # ============================================================================
 
-$ScriptVersion = "3.1"
+$ScriptVersion = "3.2"
 $LogLevel = "INFO"
 $VerbosePreference = 'SilentlyContinue'
 $DefaultTimeout = 30
@@ -124,6 +131,7 @@ $LayoutProfiles = @{
             TitlePattern    = $null
             MonitorNumber   = 1
             Position        = 'left'
+            UseOverlap      = $true
         }
         ChromeRight = @{
             ApplicationName = 'chrome'
@@ -131,6 +139,7 @@ $LayoutProfiles = @{
             TitlePattern    = $null
             MonitorNumber   = 1
             Position        = 'right'
+            UseOverlap      = $true
         }
         VSCodeFull = @{
             ApplicationName = 'Code'
@@ -138,6 +147,7 @@ $LayoutProfiles = @{
             TitlePattern    = $null
             MonitorNumber   = 2
             Position        = 'full'
+            UseOverlap      = $null
         }
     }
     
@@ -148,6 +158,7 @@ $LayoutProfiles = @{
             TitlePattern    = $null
             MonitorNumber   = 1
             Position        = 'left'
+            UseOverlap      = $true
         }
         BDERight = @{
             ApplicationName = 'BDE'
@@ -155,6 +166,7 @@ $LayoutProfiles = @{
             TitlePattern    = $null
             MonitorNumber   = 1
             Position        = 'right'
+            UseOverlap      = $true
         }
         SAPLeft = @{
             ApplicationName = 'saplogon'
@@ -162,6 +174,7 @@ $LayoutProfiles = @{
             TitlePattern    = $null
             MonitorNumber   = 2
             Position        = 'left'
+            UseOverlap      = $true
         }
         SAPRight = @{
             ApplicationName = 'saplogon'
@@ -169,6 +182,7 @@ $LayoutProfiles = @{
             TitlePattern    = $null
             MonitorNumber   = 2
             Position        = 'right'
+            UseOverlap      = $true
         }
     }
     
@@ -179,6 +193,7 @@ $LayoutProfiles = @{
             TitlePattern    = '*Jira*'
             MonitorNumber   = 1
             Position        = 'left'
+            UseOverlap      = $true
         }
         ChromeGitHub = @{
             ApplicationName = 'chrome'
@@ -186,6 +201,7 @@ $LayoutProfiles = @{
             TitlePattern    = '*GitHub*'
             MonitorNumber   = 1
             Position        = 'right'
+            UseOverlap      = $true
         }
         VSCodeFull = @{
             ApplicationName = 'Code'
@@ -193,6 +209,7 @@ $LayoutProfiles = @{
             TitlePattern    = $null
             MonitorNumber   = 2
             Position        = 'full'
+            UseOverlap      = $null
         }
     }
     
@@ -203,6 +220,7 @@ $LayoutProfiles = @{
             TitlePattern    = $null
             MonitorNumber   = 1
             Position        = 'left'
+            UseOverlap      = $true
         }
         ChromeRight = @{
             ApplicationName = 'chrome'
@@ -210,6 +228,26 @@ $LayoutProfiles = @{
             TitlePattern    = $null
             MonitorNumber   = 1
             Position        = 'right'
+            UseOverlap      = $true
+        }
+    }
+    
+    'MixedOverlap' = @{
+        ChromeLeftOverlap = @{
+            ApplicationName = 'chrome'
+            DisplayName     = 'Chrome Left (with overlap)'
+            TitlePattern    = $null
+            MonitorNumber   = 1
+            Position        = 'left'
+            UseOverlap      = $true
+        }
+        ChromeRightNoOverlap = @{
+            ApplicationName = 'chrome'
+            DisplayName     = 'Chrome Right (no overlap)'
+            TitlePattern    = $null
+            MonitorNumber   = 1
+            Position        = 'right'
+            UseOverlap      = $false
         }
     }
 }
@@ -221,6 +259,7 @@ $DefaultWindowLayoutConfig = @{
         TitlePattern    = $null
         MonitorNumber   = 1
         Position        = 'left'
+        UseOverlap      = $true
     }
     ChromeRight = @{
         ApplicationName = 'chrome'
@@ -228,6 +267,7 @@ $DefaultWindowLayoutConfig = @{
         TitlePattern    = $null
         MonitorNumber   = 1
         Position        = 'right'
+        UseOverlap      = $true
     }
 }
 
@@ -668,6 +708,16 @@ function Get-ZonesForMonitor {
 }
 
 function Set-WindowSnapBorderOverlap {
+    <#
+    .SYNOPSIS
+        Snaps window with optional border overlap
+    .DESCRIPTION
+        Positions window in zone with optional border overlap based on UseOverlap setting.
+        
+        UseOverlap = $true  : Expands window by BorderWidth on left, right, bottom
+        UseOverlap = $false : Positions window exactly at zone boundaries (no overlap)
+        UseOverlap = $null  : Same as $false for 'full' position, $true for others
+    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)]
@@ -683,11 +733,20 @@ function Set-WindowSnapBorderOverlap {
         [int]$BorderWidth,
         
         [Parameter(Mandatory=$false)]
+        [object]$UseOverlap = $true,
+        
+        [Parameter(Mandatory=$false)]
         [switch]$DryRun
     )
     
+    if ($null -eq $UseOverlap) {
+        $UseOverlap = ($Position -ne 'full')
+    }
+    
+    $OverlapText = if ($UseOverlap) { "with ${BorderWidth}px overlap" } else { "no overlap" }
+    
     if ($DryRun) {
-        Write-Log "  [DRY RUN] Would snap to $Position with ${BorderWidth}px overlap (X=$($Zone.X), Y=$($Zone.Y), W=$($Zone.Width), H=$($Zone.Height))" -Level INFO
+        Write-Log "  [DRY RUN] Would snap to $Position $OverlapText (X=$($Zone.X), Y=$($Zone.Y), W=$($Zone.Width), H=$($Zone.Height))" -Level INFO
         return $true
     }
     
@@ -703,7 +762,7 @@ function Set-WindowSnapBorderOverlap {
                 return $false
             }
         } else {
-            Write-Log "  Snapping to $Position with border overlap" -Level DEBUG
+            Write-Log "  Snapping to $Position ($OverlapText)" -Level DEBUG
             
             $Placement = New-Object WINDOWPLACEMENT
             $Placement.length = [System.Runtime.InteropServices.Marshal]::SizeOf($Placement)
@@ -715,23 +774,30 @@ function Set-WindowSnapBorderOverlap {
             
             $Placement.showCmd = [Win32]::SW_RESTORE
             
-            $OverlapX = $Zone.X - $BorderWidth
-            $OverlapY = $Zone.Y
-            $OverlapWidth = $Zone.Width + ($BorderWidth * 2)
-            $OverlapHeight = $Zone.Height + $BorderWidth
+            if ($UseOverlap) {
+                $FinalX = $Zone.X - $BorderWidth
+                $FinalY = $Zone.Y
+                $FinalWidth = $Zone.Width + ($BorderWidth * 2)
+                $FinalHeight = $Zone.Height + $BorderWidth
+            } else {
+                $FinalX = $Zone.X
+                $FinalY = $Zone.Y
+                $FinalWidth = $Zone.Width
+                $FinalHeight = $Zone.Height
+            }
             
-            $Placement.rcNormalPosition.Left = $OverlapX
-            $Placement.rcNormalPosition.Top = $OverlapY
-            $Placement.rcNormalPosition.Right = $OverlapX + $OverlapWidth
-            $Placement.rcNormalPosition.Bottom = $OverlapY + $OverlapHeight
+            $Placement.rcNormalPosition.Left = $FinalX
+            $Placement.rcNormalPosition.Top = $FinalY
+            $Placement.rcNormalPosition.Right = $FinalX + $FinalWidth
+            $Placement.rcNormalPosition.Bottom = $FinalY + $FinalHeight
             
             $Placement.flags = 0
             
             if ([Win32]::SetWindowPlacement($hWnd, [ref]$Placement)) {
-                Write-Log "  Snapped with ${BorderWidth}px border overlap (visible center: X=$($Zone.X), Y=$($Zone.Y), W=$($Zone.Width), H=$($Zone.Height))" -Level INFO
+                Write-Log "  Snapped $OverlapText (zone: X=$($Zone.X), Y=$($Zone.Y), W=$($Zone.Width), H=$($Zone.Height))" -Level INFO
                 
                 $Flags = [Win32]::SWP_NOZORDER -bor [Win32]::SWP_NOACTIVATE -bor [Win32]::SWP_FRAMECHANGED
-                [Win32]::SetWindowPos($hWnd, [IntPtr]::Zero, $OverlapX, $OverlapY, $OverlapWidth, $OverlapHeight, $Flags) | Out-Null
+                [Win32]::SetWindowPos($hWnd, [IntPtr]::Zero, $FinalX, $FinalY, $FinalWidth, $FinalHeight, $Flags) | Out-Null
                 
                 return $true
             } else {
@@ -815,7 +881,7 @@ try {
     Write-Log "========================================" -Level INFO
     Write-Log "Starting: $ScriptName v$ScriptVersion" -Level INFO
     Write-Log "Using Direct Border Overlap approach" -Level INFO
-    Write-Log "Border width: ${BorderWidth}px" -Level INFO
+    Write-Log "Default border width: ${BorderWidth}px" -Level INFO
     if ($DryRun) {
         Write-Log "DRY RUN MODE - No changes will be made" -Level WARN
     }
@@ -879,6 +945,10 @@ try {
                 Write-Log "  Title filter: '$($Rule.TitlePattern)'" -Level INFO
             }
             
+            $UseOverlap = if ($Rule.ContainsKey('UseOverlap')) { $Rule.UseOverlap } else { $true }
+            $OverlapStatus = if ($null -eq $UseOverlap) { "auto" } elseif ($UseOverlap) { "enabled" } else { "disabled" }
+            Write-Log "  Border overlap: $OverlapStatus" -Level INFO
+            
             $Window = Select-WindowForRule -Windows $Windows -Rule $Rule
             
             if (-not $Window) {
@@ -894,7 +964,7 @@ try {
             
             $Zone = $Zones[$Rule.Position]
             
-            if (Set-WindowSnapBorderOverlap -hWnd $Window.Handle -Position $Rule.Position -Zone $Zone -BorderWidth $BorderWidth -DryRun:$DryRun) {
+            if (Set-WindowSnapBorderOverlap -hWnd $Window.Handle -Position $Rule.Position -Zone $Zone -BorderWidth $BorderWidth -UseOverlap $UseOverlap -DryRun:$DryRun) {
                 $MovedCount++
             } else {
                 $SkippedCount++

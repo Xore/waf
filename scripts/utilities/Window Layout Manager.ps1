@@ -20,6 +20,7 @@
     - Accounts for taskbar in calculations
     - Wildcard pattern support for window titles
     - Smart cross-monitor window distribution
+    - Process creation time sorting (oldest windows selected first)
     
     This script runs unattended without user interaction.
 
@@ -41,21 +42,21 @@
     If specified, shows what would be done without actually moving windows.
 
 .EXAMPLE
-    PS> .\Window Layout Manager 3.ps1 -LayoutProfile '2xChrome'
+    PS> .\Window Layout Manager.ps1 -LayoutProfile '2xChrome'
     Applies 2 Chrome windows with 8px border overlap
     
 .EXAMPLE
-    PS> .\Window Layout Manager 3.ps1 -LayoutProfile '2xChrome' -BorderWidth 7
+    PS> .\Window Layout Manager.ps1 -LayoutProfile '2xChrome' -BorderWidth 7
     Uses 7px border overlap for older Windows 10
     
 .EXAMPLE
-    PS> .\Window Layout Manager 3.ps1 -LayoutProfile 'DevSetup' -DryRun
+    PS> .\Window Layout Manager.ps1 -LayoutProfile 'DevSetup' -DryRun
     Shows what would happen without moving windows
 
 .NOTES
-    Script Name:    Window Layout Manager 3.ps1
+    Script Name:    Window Layout Manager.ps1
     Author:         Windows Automation Framework
-    Version:        3.3
+    Version:        3.4
     Creation Date:  2026-02-14
     Last Modified:  2026-02-14
     
@@ -114,7 +115,7 @@ param(
 # CONFIGURATION
 # ============================================================================
 
-$ScriptVersion = "3.3"
+$ScriptVersion = "3.4"
 $LogLevel = "INFO"
 $VerbosePreference = 'SilentlyContinue'
 $DefaultTimeout = 30
@@ -481,8 +482,8 @@ function Convert-WildcardToRegex {
     
     if ($Pattern -match '[*?]') {
         $Escaped = [regex]::Escape($Pattern)
-        $Escaped = $Escaped -replace '\*', '.*'
-        $Escaped = $Escaped -replace '\?', '.'
+        $Escaped = $Escaped -replace '\\\*', '.*'
+        $Escaped = $Escaped -replace '\\\?', '.'
         
         Write-Log "  Converted wildcard '$Pattern' to regex '$Escaped'" -Level DEBUG
         return $Escaped
@@ -607,10 +608,18 @@ function Get-ApplicationWindows {
                         
                         $IsMaximized = [Win32]::IsZoomed($hWnd)
                         
+                        $ProcessStartTime = $null
+                        try {
+                            $ProcessStartTime = $Process.StartTime
+                        } catch {
+                            Write-Log "  Could not retrieve StartTime for PID $ProcessId" -Level DEBUG
+                        }
+                        
                         $WindowObj = [PSCustomObject]@{
                             Handle        = $hWnd
                             ProcessId     = $ProcessId
                             ProcessName   = $Process.ProcessName
+                            StartTime     = $ProcessStartTime
                             Title         = Get-WindowTitle -hWnd $hWnd
                             MonitorNumber = if ($MonitorObj) { $MonitorObj.DisplayNumber } else { 0 }
                             IsMaximized   = $IsMaximized
@@ -817,16 +826,18 @@ function Set-WindowSnapBorderOverlap {
 function Select-WindowForRule {
     <#
     .SYNOPSIS
-        Improved window selection with cross-monitor awareness
+        Window selection with StartTime sorting and cross-monitor awareness
     .DESCRIPTION
         Finds an unassigned window matching the process name and optional title pattern.
-        Priority:
-        1. Windows matching title pattern on target monitor
-        2. Windows matching title pattern on any monitor
-        3. Windows without title pattern on target monitor  
-        4. Windows without title pattern on any monitor
+        Windows are sorted by process StartTime (oldest first) to ensure consistent selection.
         
-        This ensures windows are distributed across monitors correctly.
+        Priority:
+        1. Sort all candidates by StartTime (oldest first)
+        2. Prefer windows on target monitor
+        3. Fallback to any monitor
+        
+        This ensures the first opened window is selected first, providing predictable behavior
+        when multiple instances of the same application exist.
     #>
     [CmdletBinding()]
     param(
@@ -863,14 +874,37 @@ function Select-WindowForRule {
         Write-Log "  Found $($Candidates.Count) window(s) matching title pattern" -Level DEBUG
     }
     
-    $OnTargetMonitor = $Candidates | Where-Object { $_.MonitorNumber -eq $Rule.MonitorNumber }
-    if ($OnTargetMonitor) {
-        Write-Log "  Selected window already on target monitor $($Rule.MonitorNumber)" -Level DEBUG
-        return $OnTargetMonitor | Select-Object -First 1
+    $CandidatesWithStartTime = $Candidates | Where-Object { $null -ne $_.StartTime }
+    $CandidatesWithoutStartTime = $Candidates | Where-Object { $null -eq $_.StartTime }
+    
+    $SortedCandidates = @()
+    if ($CandidatesWithStartTime.Count -gt 0) {
+        $SortedCandidates += $CandidatesWithStartTime | Sort-Object StartTime
+        Write-Log "  Sorted $($CandidatesWithStartTime.Count) window(s) by StartTime (oldest first)" -Level DEBUG
+    }
+    if ($CandidatesWithoutStartTime.Count -gt 0) {
+        $SortedCandidates += $CandidatesWithoutStartTime
+        Write-Log "  Added $($CandidatesWithoutStartTime.Count) window(s) without StartTime" -Level DEBUG
     }
     
-    Write-Log "  No window on target monitor $($Rule.MonitorNumber), selecting from any monitor" -Level DEBUG
-    return $Candidates | Select-Object -First 1
+    $OnTargetMonitor = $SortedCandidates | Where-Object { $_.MonitorNumber -eq $Rule.MonitorNumber }
+    if ($OnTargetMonitor) {
+        $Selected = $OnTargetMonitor | Select-Object -First 1
+        if ($Selected.StartTime) {
+            Write-Log "  Selected oldest window on target monitor $($Rule.MonitorNumber) (started: $($Selected.StartTime))" -Level DEBUG
+        } else {
+            Write-Log "  Selected window on target monitor $($Rule.MonitorNumber)" -Level DEBUG
+        }
+        return $Selected
+    }
+    
+    $Selected = $SortedCandidates | Select-Object -First 1
+    if ($Selected.StartTime) {
+        Write-Log "  Selected oldest window from any monitor (started: $($Selected.StartTime))" -Level DEBUG
+    } else {
+        Write-Log "  Selected window from any monitor" -Level DEBUG
+    }
+    return $Selected
 }
 
 # ============================================================================
@@ -959,7 +993,8 @@ try {
             
             $Window.AssignedToRule = $RuleName
             
-            Write-Log "  Found window: '$($Window.Title)' (PID: $($Window.ProcessId))" -Level INFO
+            $StartTimeInfo = if ($Window.StartTime) { " (started: $($Window.StartTime.ToString('HH:mm:ss')))" } else { "" }
+            Write-Log "  Found window: '$($Window.Title)' (PID: $($Window.ProcessId))$StartTimeInfo" -Level INFO
             Write-Log "  Current: Monitor $($Window.MonitorNumber), $($Window.Rect.Width)x$($Window.Rect.Height)$(if($Window.IsMaximized){' [Maximized]'})" -Level INFO
             
             $Zone = $Zones[$Rule.Position]

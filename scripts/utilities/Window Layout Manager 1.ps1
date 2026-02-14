@@ -16,8 +16,15 @@
     - Handles multiple windows of same application with distinct placement
     - Supports wildcard patterns in TitlePattern (e.g., *Chrome*, Jira*)
     - Uses proper restore/maximize states (no keystroke forwarding)
+    - Profile-based configurations via -LayoutProfile parameter
     
     This script runs unattended without user interaction.
+
+.PARAMETER LayoutProfile
+    Layout profile name to apply. Format examples:
+    - '2xChrome1xVSCode' - 2 Chrome windows (left/right), 1 VS Code (full)
+    - '2xBDE2xSAP' - 2 BDE windows, 2 SAP windows
+    - Custom profiles defined in script or loaded from file
 
 .PARAMETER ConfigPath
     Optional path to external configuration file. If not provided, uses internal config.
@@ -26,17 +33,21 @@
     If specified, shows what would be done without actually moving windows.
 
 .EXAMPLE
-    PS> .\Window Layout Manager 1.ps1
-    Applies the default window layout configuration
+    PS> .\Window Layout Manager 1.ps1 -LayoutProfile '2xChrome1xVSCode'
+    Applies preset: 2 Chrome windows (left/right), 1 VS Code (full)
     
 .EXAMPLE
-    PS> .\Window Layout Manager 1.ps1 -DryRun
-    Shows planned window movements without executing them
+    PS> .\Window Layout Manager 1.ps1 -LayoutProfile '2xBDE2xSAP'
+    Applies preset: 2 BDE windows (left/right), 2 SAP windows (left/right)
+    
+.EXAMPLE
+    PS> .\Window Layout Manager 1.ps1 -LayoutProfile 'DevSetup' -DryRun
+    Shows what DevSetup profile would do without moving windows
 
 .NOTES
     Script Name:    Window Layout Manager 1.ps1
     Author:         Windows Automation Framework
-    Version:        1.2
+    Version:        1.3
     Creation Date:  2026-02-14
     Last Modified:  2026-02-14
     
@@ -66,6 +77,9 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$false)]
+    [string]$LayoutProfile = "",
+    
+    [Parameter(Mandatory=$false)]
     [string]$ConfigPath = "",
     
     [Parameter(Mandatory=$false)]
@@ -78,23 +92,200 @@ param(
 # CONFIGURATION
 # ============================================================================
 
-$ScriptVersion = "1.2"
+$ScriptVersion = "1.3"
 $LogLevel = "INFO"
 $VerbosePreference = 'SilentlyContinue'
 $DefaultTimeout = 30
 
-# Window layout configuration
-# Each entry defines one window placement rule
-# Key: Unique rule name
-# ApplicationName: Process name (e.g., 'chrome', 'Code')
-# DisplayName: Friendly name for logging
-# TitlePattern: Optional pattern to match window titles
-#               Supports wildcards: *Chrome*, Jira*, *Email*
-#               Or regex: '^Google Chrome.*'
-#               Set to $null to match any window
-# MonitorNumber: Target monitor (1, 2, 3... matching Windows display settings)
-# Position: 'left', 'right', or 'full'
-$WindowLayoutConfig = @{
+# ============================================================================
+# LAYOUT PROFILES
+# ============================================================================
+# Define preset layout configurations
+# Format: ProfileName = hashtable of window rules
+
+$LayoutProfiles = @{
+    # Development setup: 2 Chrome + 1 VS Code
+    '2xChrome1xVSCode' = @{
+        ChromeLeft = @{
+            ApplicationName = 'chrome'
+            DisplayName     = 'Chrome Left'
+            TitlePattern    = $null
+            MonitorNumber   = 1
+            Position        = 'left'
+        }
+        ChromeRight = @{
+            ApplicationName = 'chrome'
+            DisplayName     = 'Chrome Right'
+            TitlePattern    = $null
+            MonitorNumber   = 1
+            Position        = 'right'
+        }
+        VSCodeFull = @{
+            ApplicationName = 'Code'
+            DisplayName     = 'VS Code Full'
+            TitlePattern    = $null
+            MonitorNumber   = 2
+            Position        = 'full'
+        }
+    }
+    
+    # Business applications: 2 BDE + 2 SAP
+    '2xBDE2xSAP' = @{
+        BDELeft = @{
+            ApplicationName = 'BDE'
+            DisplayName     = 'BDE Left'
+            TitlePattern    = $null
+            MonitorNumber   = 1
+            Position        = 'left'
+        }
+        BDERight = @{
+            ApplicationName = 'BDE'
+            DisplayName     = 'BDE Right'
+            TitlePattern    = $null
+            MonitorNumber   = 1
+            Position        = 'right'
+        }
+        SAPLeft = @{
+            ApplicationName = 'saplogon'
+            DisplayName     = 'SAP Left'
+            TitlePattern    = $null
+            MonitorNumber   = 2
+            Position        = 'left'
+        }
+        SAPRight = @{
+            ApplicationName = 'saplogon'
+            DisplayName     = 'SAP Right'
+            TitlePattern    = $null
+            MonitorNumber   = 2
+            Position        = 'right'
+        }
+    }
+    
+    # Web development: Chrome with specific tabs
+    'WebDev' = @{
+        ChromeJira = @{
+            ApplicationName = 'chrome'
+            DisplayName     = 'Chrome Jira'
+            TitlePattern    = '*Jira*'
+            MonitorNumber   = 1
+            Position        = 'left'
+        }
+        ChromeGitHub = @{
+            ApplicationName = 'chrome'
+            DisplayName     = 'Chrome GitHub'
+            TitlePattern    = '*GitHub*'
+            MonitorNumber   = 1
+            Position        = 'right'
+        }
+        VSCodeFull = @{
+            ApplicationName = 'Code'
+            DisplayName     = 'VS Code'
+            TitlePattern    = $null
+            MonitorNumber   = 2
+            Position        = 'full'
+        }
+    }
+    
+    # Data analysis: Excel + PowerBI
+    'DataAnalysis' = @{
+        ExcelLeft = @{
+            ApplicationName = 'EXCEL'
+            DisplayName     = 'Excel'
+            TitlePattern    = $null
+            MonitorNumber   = 1
+            Position        = 'left'
+        }
+        PowerBIRight = @{
+            ApplicationName = 'PBIDesktop'
+            DisplayName     = 'Power BI'
+            TitlePattern    = $null
+            MonitorNumber   = 1
+            Position        = 'right'
+        }
+    }
+    
+    # Triple Chrome setup for multi-tasking
+    '3xChrome' = @{
+        ChromeLeft = @{
+            ApplicationName = 'chrome'
+            DisplayName     = 'Chrome Left'
+            TitlePattern    = $null
+            MonitorNumber   = 1
+            Position        = 'left'
+        }
+        ChromeRight = @{
+            ApplicationName = 'chrome'
+            DisplayName     = 'Chrome Right'
+            TitlePattern    = $null
+            MonitorNumber   = 1
+            Position        = 'right'
+        }
+        ChromeFull = @{
+            ApplicationName = 'chrome'
+            DisplayName     = 'Chrome Full'
+            TitlePattern    = $null
+            MonitorNumber   = 2
+            Position        = 'full'
+        }
+    }
+    
+    # Simple dual browser
+    '2xChrome' = @{
+        ChromeLeft = @{
+            ApplicationName = 'chrome'
+            DisplayName     = 'Chrome Left'
+            TitlePattern    = $null
+            MonitorNumber   = 1
+            Position        = 'left'
+        }
+        ChromeRight = @{
+            ApplicationName = 'chrome'
+            DisplayName     = 'Chrome Right'
+            TitlePattern    = $null
+            MonitorNumber   = 1
+            Position        = 'right'
+        }
+    }
+    
+    # Email + Calendar
+    'EmailCalendar' = @{
+        OutlookLeft = @{
+            ApplicationName = 'OUTLOOK'
+            DisplayName     = 'Outlook Mail'
+            TitlePattern    = '*Inbox*'
+            MonitorNumber   = 1
+            Position        = 'left'
+        }
+        OutlookRight = @{
+            ApplicationName = 'OUTLOOK'
+            DisplayName     = 'Outlook Calendar'
+            TitlePattern    = '*Calendar*'
+            MonitorNumber   = 1
+            Position        = 'right'
+        }
+    }
+    
+    # Teams + OneNote for meetings
+    'MeetingSetup' = @{
+        TeamsLeft = @{
+            ApplicationName = 'ms-teams'
+            DisplayName     = 'Microsoft Teams'
+            TitlePattern    = $null
+            MonitorNumber   = 1
+            Position        = 'left'
+        }
+        OneNoteRight = @{
+            ApplicationName = 'ONENOTE'
+            DisplayName     = 'OneNote'
+            TitlePattern    = $null
+            MonitorNumber   = 1
+            Position        = 'right'
+        }
+    }
+}
+
+# Default configuration (used when no profile specified)
+$DefaultWindowLayoutConfig = @{
     ChromeLeft = @{
         ApplicationName = 'chrome'
         DisplayName     = 'Chrome Left'
@@ -109,28 +300,6 @@ $WindowLayoutConfig = @{
         MonitorNumber   = 1
         Position        = 'right'
     }
-    # Example: Specific Chrome window by wildcard
-    # ChromeJira = @{
-    #     ApplicationName = 'chrome'
-    #     DisplayName     = 'Chrome Jira'
-    #     TitlePattern    = '*Jira*'  # Matches any window with "Jira" in title
-    #     MonitorNumber   = 2
-    #     Position        = 'left'
-    # }
-    # ChromeGmail = @{
-    #     ApplicationName = 'chrome'
-    #     DisplayName     = 'Chrome Gmail'
-    #     TitlePattern    = '*Gmail*'  # Matches any window with "Gmail" in title
-    #     MonitorNumber   = 2
-    #     Position        = 'right'
-    # }
-    # VSCodeFull = @{
-    #     ApplicationName = 'Code'
-    #     DisplayName     = 'VS Code'
-    #     TitlePattern    = $null
-    #     MonitorNumber   = 2
-    #     Position        = 'full'
-    # }
 }
 
 # ============================================================================
@@ -297,6 +466,70 @@ function Write-Log {
             $script:ErrorCount++ 
         }
     }
+}
+
+function Get-LayoutConfiguration {
+    <#
+    .SYNOPSIS
+        Loads layout configuration based on profile or file
+    .DESCRIPTION
+        Priority order:
+        1. External config file (if ConfigPath provided)
+        2. Named profile (if LayoutProfile provided)
+        3. Default configuration
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$false)]
+        [string]$ProfileName,
+        
+        [Parameter(Mandatory=$false)]
+        [string]$FilePath
+    )
+    
+    # Priority 1: External file
+    if ($FilePath -and (Test-Path $FilePath)) {
+        Write-Log "Loading configuration from file: $FilePath" -Level INFO
+        try {
+            $Config = Import-Clixml $FilePath
+            Write-Log "Loaded custom configuration from file" -Level INFO
+            return $Config
+        } catch {
+            Write-Log "Failed to load config file: $_" -Level ERROR
+            throw "Configuration file load failed"
+        }
+    }
+    
+    # Priority 2: Named profile
+    if ($ProfileName) {
+        if ($LayoutProfiles.ContainsKey($ProfileName)) {
+            Write-Log "Loading layout profile: $ProfileName" -Level INFO
+            $Config = $LayoutProfiles[$ProfileName]
+            
+            # Count applications and positions
+            $AppCounts = @{}
+            $Config.Keys | ForEach-Object {
+                $App = $Config[$_].ApplicationName
+                if (-not $AppCounts.ContainsKey($App)) {
+                    $AppCounts[$App] = 0
+                }
+                $AppCounts[$App]++
+            }
+            
+            $Summary = ($AppCounts.GetEnumerator() | ForEach-Object { "$($_.Value)x$($_.Key)" }) -join ', '
+            Write-Log "Profile contains: $Summary" -Level INFO
+            
+            return $Config
+        } else {
+            Write-Log "Profile '$ProfileName' not found" -Level ERROR
+            Write-Log "Available profiles: $($LayoutProfiles.Keys -join ', ')" -Level INFO
+            throw "Unknown layout profile: $ProfileName"
+        }
+    }
+    
+    # Priority 3: Default
+    Write-Log "Using default configuration" -Level INFO
+    return $DefaultWindowLayoutConfig
 }
 
 function Convert-WildcardToRegex {
@@ -723,11 +956,8 @@ try {
     }
     Write-Log "========================================" -Level INFO
     
-    # Load external config if provided
-    if ($ConfigPath -and (Test-Path $ConfigPath)) {
-        Write-Log "Loading configuration from: $ConfigPath" -Level INFO
-        $WindowLayoutConfig = Import-Clixml $ConfigPath
-    }
+    # Load configuration based on parameters
+    $WindowLayoutConfig = Get-LayoutConfiguration -ProfileName $LayoutProfile -FilePath $ConfigPath
     
     # Validate configuration
     if ($WindowLayoutConfig.Count -eq 0) {

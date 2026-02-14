@@ -2,9 +2,9 @@
 
 ## Overview
 
-Window Layout Manager is a PowerShell automation script that precisely positions application windows across multiple monitors using the Direct Border Overlap approach. Version 3.3 implements configurable border overlap to eliminate gaps between snapped windows while maintaining compatibility across Windows 10/11.
+Window Layout Manager is a PowerShell automation script that precisely positions application windows across multiple monitors using the Direct Border Overlap approach. Version 3.4 implements process creation time sorting to ensure consistent window selection order when multiple instances of the same application exist.
 
-**Current Version:** 3.3  
+**Current Version:** 3.4  
 **Script:** `scripts/utilities/Window Layout Manager.ps1`  
 **Approach:** Direct Border Overlap (intentional window expansion)  
 **Default Border:** 8px for Windows 10/11
@@ -51,13 +51,20 @@ Windows have invisible borders (DWM-rendered) that create gaps when snapped side
 - Application name and title pattern filtering
 - Monitor number assignment
 
-### Smart Window Selection
+### Smart Window Selection (v3.4 Enhanced)
 
+- **Process StartTime sorting** - Windows sorted by creation time (oldest first)
 - Priority-based window matching
 - Title pattern filtering with wildcards
 - Monitor affinity consideration
 - Assignment tracking to prevent duplicates
 - Process name matching (case-insensitive)
+
+**StartTime Sorting Benefits:**
+- Deterministic window selection order
+- Oldest window selected first (e.g., left position)
+- Consistent behavior across script executions
+- Predictable layouts regardless of Z-order
 
 ## Architecture
 
@@ -84,10 +91,10 @@ Window Layout Manager.ps1
 │   ├── Get-LayoutConfiguration
 │   ├── Convert-WildcardToRegex
 │   ├── Get-MonitorLayout
-│   ├── Get-ApplicationWindows
+│   ├── Get-ApplicationWindows (v3.4: captures StartTime)
 │   ├── Get-ZonesForMonitor
 │   ├── Set-WindowSnapBorderOverlap
-│   └── Select-WindowForRule
+│   └── Select-WindowForRule (v3.4: sorts by StartTime)
 └── Main Execution
     ├── Load configuration
     ├── Enumerate monitors
@@ -121,12 +128,13 @@ Window Layout Manager.ps1
 }
 ```
 
-**Window Object:**
+**Window Object (v3.4):**
 ```powershell
 @{
     Handle        = [IntPtr]             # Window handle
     ProcessId     = [int]                # Process ID
     ProcessName   = [string]             # Process name
+    StartTime     = [DateTime]           # Process creation time (v3.4)
     Title         = [string]             # Window title
     MonitorNumber = [int]                # Current monitor
     IsMaximized   = [bool]               # Maximized state
@@ -135,22 +143,55 @@ Window Layout Manager.ps1
 }
 ```
 
-## Window Selection Algorithm
+## Window Selection Algorithm (v3.4)
 
-The script uses a priority-based approach to select windows for each rule:
+The script uses StartTime-based sorting to ensure consistent window selection:
+
+### Selection Process
 
 1. **Filter by process name** - Only windows matching ApplicationName
 2. **Exclude assigned windows** - Skip windows already assigned to rules
 3. **Apply title pattern** (if specified) - Filter by wildcard pattern
-4. **Prefer target monitor** - Select windows already on target monitor
-5. **Fallback to any monitor** - If no match on target, select from any
+4. **Sort by StartTime** - Order candidates oldest to newest
+5. **Apply monitor affinity** - Prefer windows on target monitor (within sorted order)
+6. **Select oldest match** - Return first window from sorted list
 
-This ensures:
-- Windows are not assigned to multiple rules
-- Windows with title patterns are correctly filtered
-- Windows are distributed across monitors as intended
+### StartTime Sorting Logic
 
-## Wildcard Pattern Matching (v3.3 Fix)
+```powershell
+# Separate windows by StartTime availability
+$WithStartTime = $Candidates | Where-Object { $null -ne $_.StartTime }
+$WithoutStartTime = $Candidates | Where-Object { $null -eq $_.StartTime }
+
+# Sort by StartTime (oldest first)
+$Sorted = @()
+$Sorted += $WithStartTime | Sort-Object StartTime
+$Sorted += $WithoutStartTime
+
+# Apply monitor preference within sorted order
+$OnTargetMonitor = $Sorted | Where-Object { $_.MonitorNumber -eq $TargetMonitor }
+if ($OnTargetMonitor) {
+    return $OnTargetMonitor | Select-Object -First 1  # Oldest on target
+}
+
+return $Sorted | Select-Object -First 1  # Oldest overall
+```
+
+### Example Behavior
+
+If you have 3 Chrome windows:
+- **Window A** - Opened at 6:00 PM (oldest)
+- **Window B** - Opened at 6:15 PM
+- **Window C** - Opened at 6:30 PM (newest)
+
+With `2xChrome` profile:
+- **ChromeLeft** rule → Selects Window A (6:00 PM)
+- **ChromeRight** rule → Selects Window B (6:15 PM)
+- **Unassigned** → Window C (6:30 PM) remains untouched
+
+This ensures predictable, repeatable layouts regardless of window Z-order or enumeration order.
+
+## Wildcard Pattern Matching
 
 ### Convert-WildcardToRegex Function
 
@@ -161,9 +202,9 @@ function Convert-WildcardToRegex {
     param([string]$Pattern)
     
     if ($Pattern -match '[*?]') {
-        $Escaped = [regex]::Escape($Pattern)  # Escape special regex chars
-        $Escaped = $Escaped -replace '\*', '.*'  # * -> .* (any chars)
-        $Escaped = $Escaped -replace '\?', '.'   # ? -> . (single char)
+        $Escaped = [regex]::Escape($Pattern)
+        $Escaped = $Escaped -replace '\\\*', '.*'  # * -> .* (any chars)
+        $Escaped = $Escaped -replace '\\\?', '.'   # ? -> . (single char)
         return $Escaped
     } else {
         return $Pattern
@@ -178,7 +219,7 @@ function Convert-WildcardToRegex {
 | `*GitHub*` | `.*GitHub.*` | "GitHub - Chrome", "MyGitHub" | "chrome", "hub" |
 | `*waf/script*` | `.*waf/script.*` | "waf/scripts/test.ps1" | "waf-scripts" |
 | `Document1*` | `Document1.*` | "Document1.docx" | "Document2" |
-| `*.xlsx*` | `.*\.xlsx.*` | "Report.xlsx - Excel" | "Report.docx" |
+| `*.xlsx*` | `.*\\.xlsx.*` | "Report.xlsx - Excel" | "Report.docx" |
 | `*How Fast*` | `.*How Fast.*` | "How Fast Can You..." | "how fast" (case!) |
 
 **Important:** Title pattern matching is **case-sensitive**.
@@ -261,12 +302,16 @@ Monitor 1: Chrome (left) + Chrome (right)
 Monitor 2: VS Code (full)
 ```
 
+Demonstrates multi-application layout with StartTime sorting for Chrome instances.
+
 ### 2xBDE2xSAP
 
 ```powershell
 Monitor 1: BDE (left) + BDE (right)
 Monitor 2: SAP (left) + SAP (right)
 ```
+
+Dual-monitor layout with two applications, each having two instances.
 
 ### WebDev
 
@@ -275,13 +320,15 @@ Monitor 1: Chrome Jira (left, *Jira*) + Chrome GitHub (right, *GitHub*)
 Monitor 2: VS Code (full)
 ```
 
-Demonstrates title pattern filtering.
+Demonstrates title pattern filtering combined with StartTime sorting.
 
 ### 2xChrome
 
 ```powershell
 Monitor 1: Chrome (left) + Chrome (right)
 ```
+
+Simple two-window layout where oldest Chrome window goes left.
 
 ### MixedOverlap
 
@@ -299,7 +346,7 @@ Demonstrates per-window overlap control.
 .\Window Layout Manager.ps1
 ```
 
-Applies default 2xChrome configuration.
+Applies default 2xChrome configuration with StartTime sorting.
 
 ### Apply Named Profile
 
@@ -307,7 +354,7 @@ Applies default 2xChrome configuration.
 .\Window Layout Manager.ps1 -LayoutProfile 'WebDev'
 ```
 
-Applies WebDev profile with title filtering.
+Applies WebDev profile with title filtering and StartTime sorting.
 
 ### Adjust Border Width
 
@@ -323,7 +370,7 @@ Use 7px border for older Windows 10 builds.
 .\Window Layout Manager.ps1 -LayoutProfile 'WebDev' -DryRun
 ```
 
-Shows what would happen without moving windows.
+Shows what would happen without moving windows, including StartTime information.
 
 ### External Configuration
 
@@ -426,6 +473,14 @@ TitlePattern = $null               # No filtering (all windows)
 **ShowWindow** - Change window state
 - Used to maximize windows (full position)
 
+### Process Information (v3.4)
+
+**Get-Process cmdlet** - Retrieve process details
+- Returns Process object with StartTime property
+- StartTime uses Windows API GetProcessTimes internally
+- Gracefully handles access denied scenarios
+- Some system processes may not expose StartTime
+
 ### Positioning Sequence
 
 For `left` and `right` positions:
@@ -451,47 +506,54 @@ For `full` position:
 - **WARN** - Non-fatal issues (yellow warning)
 - **ERROR** - Fatal errors (red color)
 
-### Execution Summary
+### Execution Summary (v3.4)
 
 ```
-[2026-02-14 18:00:00] [INFO] ========================================
-[2026-02-14 18:00:00] [INFO] Starting: Window Layout Manager.ps1 v3.3
-[2026-02-14 18:00:00] [INFO] Using Direct Border Overlap approach
-[2026-02-14 18:00:00] [INFO] Default border width: 8px
-[2026-02-14 18:00:00] [INFO] ========================================
-[2026-02-14 18:00:00] [INFO] Loading layout profile: WebDev
-[2026-02-14 18:00:00] [INFO] Profile contains: 2xchrome, 1xCode
-[2026-02-14 18:00:00] [INFO] Loaded 3 window placement rule(s)
-[2026-02-14 18:00:00] [INFO] Enumerating monitors...
-[2026-02-14 18:00:00] [INFO] Found 2 monitor(s)
-[2026-02-14 18:00:00] [INFO]   Monitor 1: 2560x1400 at (0,0) [Primary]
-[2026-02-14 18:00:00] [INFO]   Monitor 2: 1920x1080 at (2560,0)
-[2026-02-14 18:00:00] [INFO] Enumerating application windows...
-[2026-02-14 18:00:00] [INFO] Found 24 total visible windows
-[2026-02-14 18:00:00] [INFO] Processing monitor 1...
-[2026-02-14 18:00:00] [INFO] Applying rule 'ChromeJira' (Chrome Jira)...
-[2026-02-14 18:00:00] [INFO]   Target: Monitor 1, Position: left
-[2026-02-14 18:00:00] [INFO]   Title filter: '*Jira*'
-[2026-02-14 18:00:00] [INFO]   Border overlap: enabled
-[2026-02-14 18:00:00] [INFO]   Found window: 'PROJ-123 - Jira - Chrome' (PID: 12345)
-[2026-02-14 18:00:00] [INFO]   Current: Monitor 2, 1920x1080
-[2026-02-14 18:00:00] [INFO]   Snapped with 8px overlap (zone: X=0, Y=0, W=1280, H=1400)
-[2026-02-14 18:00:01] [INFO] Placement complete: 3 moved, 0 skipped
-[2026-02-14 18:00:01] [INFO] Script execution completed successfully
-[2026-02-14 18:00:01] [INFO] ========================================
-[2026-02-14 18:00:01] [INFO] Execution Summary:
-[2026-02-14 18:00:01] [INFO]   Duration: 1.2345678 seconds
-[2026-02-14 18:00:01] [INFO]   Errors: 0
-[2026-02-14 18:00:01] [INFO]   Warnings: 0
-[2026-02-14 18:00:01] [INFO] ========================================
+[2026-02-14 19:00:00] [INFO] ========================================
+[2026-02-14 19:00:00] [INFO] Starting: Window Layout Manager.ps1 v3.4
+[2026-02-14 19:00:00] [INFO] Using Direct Border Overlap approach
+[2026-02-14 19:00:00] [INFO] Default border width: 8px
+[2026-02-14 19:00:00] [INFO] ========================================
+[2026-02-14 19:00:00] [INFO] Loading layout profile: 2xChrome
+[2026-02-14 19:00:00] [INFO] Profile contains: 2xchrome
+[2026-02-14 19:00:00] [INFO] Loaded 2 window placement rule(s)
+[2026-02-14 19:00:00] [INFO] Enumerating monitors...
+[2026-02-14 19:00:00] [INFO] Found 1 monitor(s)
+[2026-02-14 19:00:00] [INFO]   Monitor 1: 1920x1080 at (0,0) [Primary]
+[2026-02-14 19:00:00] [INFO] Enumerating application windows...
+[2026-02-14 19:00:00] [INFO] Found 42 total visible windows
+[2026-02-14 19:00:00] [INFO] Processing monitor 1...
+[2026-02-14 19:00:00] [INFO] Applying rule 'ChromeLeft' (Chrome Left)...
+[2026-02-14 19:00:00] [INFO]   Target: Monitor 1, Position: left
+[2026-02-14 19:00:00] [INFO]   Border overlap: enabled
+[2026-02-14 19:00:00] [INFO]   Found window: 'GitHub - Chrome' (PID: 12345) (started: 18:00:00)
+[2026-02-14 19:00:00] [INFO]   Current: Monitor 1, 960x1040
+[2026-02-14 19:00:00] [INFO]   Snapped with 8px overlap (zone: X=0, Y=0, W=960, H=1040)
+[2026-02-14 19:00:00] [INFO] Applying rule 'ChromeRight' (Chrome Right)...
+[2026-02-14 19:00:00] [INFO]   Target: Monitor 1, Position: right
+[2026-02-14 19:00:00] [INFO]   Border overlap: enabled
+[2026-02-14 19:00:00] [INFO]   Found window: 'Gmail - Chrome' (PID: 12346) (started: 18:15:00)
+[2026-02-14 19:00:00] [INFO]   Current: Monitor 1, 960x1040
+[2026-02-14 19:00:00] [INFO]   Snapped with 8px overlap (zone: X=960, Y=0, W=960, H=1040)
+[2026-02-14 19:00:01] [INFO] Placement complete: 2 moved, 0 skipped
+[2026-02-14 19:00:01] [INFO] Script execution completed successfully
+[2026-02-14 19:00:01] [INFO] ========================================
+[2026-02-14 19:00:01] [INFO] Execution Summary:
+[2026-02-14 19:00:01] [INFO]   Duration: 1.2345678 seconds
+[2026-02-14 19:00:01] [INFO]   Errors: 0
+[2026-02-14 19:00:01] [INFO]   Warnings: 0
+[2026-02-14 19:00:01] [INFO] ========================================
 ```
+
+**Note:** v3.4 logs now include `(started: HH:mm:ss)` showing when each process was created.
 
 ### Sample Dry Run Output
 
 ```
-[2026-02-14 18:00:00] [WARN] DRY RUN MODE - No changes will be made
+[2026-02-14 19:00:00] [WARN] DRY RUN MODE - No changes will be made
 ...
-[2026-02-14 18:00:00] [INFO]   [DRY RUN] Would snap to left with 8px overlap (X=0, Y=0, W=1280, H=1400)
+[2026-02-14 19:00:00] [INFO]   Found window: 'GitHub - Chrome' (PID: 12345) (started: 18:00:00)
+[2026-02-14 19:00:00] [INFO]   [DRY RUN] Would snap to left with 8px overlap (X=0, Y=0, W=960, H=1040)
 ```
 
 ## Error Handling
@@ -525,9 +587,14 @@ For `full` position:
 - DPI scaling may affect measurements
 
 **Title pattern not matching**
-- v3.3 fixed wildcard conversion bug
 - Check case sensitivity ("GitHub" vs "github")
 - Verify wildcards: `*text*` not `*text`
+- Wildcard conversion bug fixed in v3.3
+
+**StartTime unavailable (v3.4)**
+- Some system processes deny StartTime access
+- Windows without StartTime are sorted after those with StartTime
+- Logged as DEBUG message, not a fatal error
 
 ## Performance Characteristics
 
@@ -535,6 +602,7 @@ For `full` position:
 
 - Monitor enumeration: <100ms
 - Window enumeration: 100-500ms (depends on window count)
+- StartTime retrieval: <10ms per process (v3.4)
 - Window positioning: 50-100ms per window
 - Total typical: 2-5 seconds for 3-5 windows
 
@@ -542,13 +610,14 @@ For `full` position:
 
 - Monitor enumeration: O(m) where m = monitor count
 - Window enumeration: O(n) where n = total window count
+- StartTime sorting: O(n log n) for each application (v3.4)
 - Window matching: O(n * r) where r = rule count
-- Overall: O(n * r) - linear with windows and rules
+- Overall: O(n * r * log n) - sorting adds logarithmic factor
 
 ### Resource Usage
 
 - Memory: ~20-30 MB
-- CPU: Low (burst during enumeration)
+- CPU: Low (burst during enumeration and sorting)
 - I/O: None (unless loading external config)
 
 ## Dependencies
@@ -569,6 +638,7 @@ For `full` position:
 4. **Case-sensitive patterns** - Title patterns respect case
 5. **Single pattern per rule** - Cannot specify multiple patterns
 6. **No window class filtering** - Cannot filter by window class name
+7. **StartTime may be unavailable** - Some processes deny access (gracefully handled)
 
 ### Not Supported
 
@@ -579,6 +649,7 @@ For `full` position:
 - Animated transitions
 - Window state persistence
 - Dynamic border detection
+- Command-line argument based selection (only process name)
 
 ## Future Enhancements
 
@@ -594,6 +665,7 @@ For `full` position:
 8. **Window class filtering** - Filter by window class name
 9. **Animated positioning** - Smooth transitions
 10. **Profile auto-detection** - Detect layout based on running apps
+11. **Command-line based selection** - Distinguish processes by arguments
 
 ### Backward Compatibility
 
@@ -605,12 +677,20 @@ All enhancements should:
 
 ## Version History
 
+### v3.4 (2026-02-14)
+- **Added process StartTime sorting**
+- Windows now sorted by creation time (oldest first)
+- Ensures consistent window selection order
+- Enhanced Get-ApplicationWindows to capture StartTime
+- Modified Select-WindowForRule with StartTime-based sorting
+- Graceful handling of processes without StartTime
+- Logs show process start time for transparency
+
 ### v3.3 (2026-02-14)
-- **Fixed wildcard to regex conversion bug**
+- Fixed wildcard to regex conversion bug
 - Corrected escape sequences in Convert-WildcardToRegex
 - Wildcards now properly convert: `*` -> `.*`, `?` -> `.`
 - Title pattern filtering now works correctly
-- Pattern examples: `*GitHub*` matches "GitHub - Chrome"
 
 ### v3.2 (2026-02-14)
 - Improved logging detail
@@ -677,7 +757,7 @@ powershell.exe -ExecutionPolicy Bypass -File "\\server\scripts\Window Layout Man
 
 ### Test Scenarios
 
-1. **Single monitor, 2 windows** - Verify left/right split
+1. **Single monitor, 2 windows** - Verify left/right split with StartTime ordering
 2. **Dual monitor, 4 windows** - Verify cross-monitor distribution
 3. **Title pattern matching** - Verify wildcard filtering works
 4. **No matching windows** - Verify graceful handling
@@ -687,6 +767,8 @@ powershell.exe -ExecutionPolicy Bypass -File "\\server\scripts\Window Layout Man
 8. **Invalid profile** - Verify error handling
 9. **Monitor disconnect** - Verify resilience
 10. **Window close during execution** - Verify error recovery
+11. **Multiple instances** - Verify StartTime sorting (oldest selected first)
+12. **StartTime unavailable** - Verify graceful handling
 
 ### Validation Checks
 
@@ -698,6 +780,8 @@ powershell.exe -ExecutionPolicy Bypass -File "\\server\scripts\Window Layout Man
 - DryRun makes no changes
 - Exit codes correct
 - Logs show expected operations
+- **Oldest window selected first (v3.4)**
+- **StartTime logged correctly (v3.4)**
 
 ## Related Documentation
 
@@ -706,7 +790,7 @@ powershell.exe -ExecutionPolicy Bypass -File "\\server\scripts\Window Layout Man
 
 ## Conclusion
 
-Window Layout Manager v3.3 provides a robust, production-ready solution for automated window positioning across multiple monitors. The Direct Border Overlap approach eliminates gaps while maintaining simplicity and compatibility.
+Window Layout Manager v3.4 provides a robust, production-ready solution for automated window positioning across multiple monitors. The Direct Border Overlap approach eliminates gaps while maintaining simplicity and compatibility. StartTime sorting ensures consistent, predictable window selection.
 
 Key strengths:
 - No DWM API complexity
@@ -715,8 +799,10 @@ Key strengths:
 - Profile-based configuration
 - Smart window selection
 - Cross-monitor awareness
-- **Fixed wildcard pattern matching (v3.3)**
-- Comprehensive logging
+- Fixed wildcard pattern matching (v3.3)
+- **Process StartTime sorting (v3.4)**
+- **Deterministic window order (v3.4)**
+- Comprehensive logging with StartTime visibility
 - DryRun mode for testing
 
-Ideal for power users, developers, and enterprise deployments requiring consistent window layouts across login sessions.
+Ideal for power users, developers, and enterprise deployments requiring consistent, repeatable window layouts across login sessions.

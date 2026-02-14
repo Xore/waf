@@ -778,22 +778,51 @@ function Get-ZonesForMonitor {
     
     # If both left and right exist, ensure no gap
     if ($HasLeftRule -and $HasRightRule) {
-        $LeftWidth = [Math]::Floor($WA.Width / 2)
-        $RightWidth = $WA.Width - $LeftWidth  # Ensures total = WorkArea.Width
+        $MidPoint = [Math]::Floor($WA.Width / 2)
         
         $Zones = @{
-            left  = @{ X = $WA.X; Y = $WA.Y; Width = $LeftWidth; Height = $WA.Height }
-            right = @{ X = $WA.X + $LeftWidth; Y = $WA.Y; Width = $RightWidth; Height = $WA.Height }
-            full  = @{ X = $WA.X; Y = $WA.Y; Width = $WA.Width; Height = $WA.Height }
+            left  = @{ 
+                X = $WA.X
+                Y = $WA.Y
+                Width = $MidPoint
+                Height = $WA.Height
+            }
+            right = @{ 
+                X = $WA.X + $MidPoint
+                Y = $WA.Y
+                Width = $WA.Width - $MidPoint
+                Height = $WA.Height
+            }
+            full  = @{ 
+                X = $WA.X
+                Y = $WA.Y
+                Width = $WA.Width
+                Height = $WA.Height
+            }
         }
     } else {
         # Standard half-split (small gap acceptable if only one side used)
         $HalfWidth = [Math]::Floor($WA.Width / 2)
         
         $Zones = @{
-            left  = @{ X = $WA.X; Y = $WA.Y; Width = $HalfWidth; Height = $WA.Height }
-            right = @{ X = $WA.X + $HalfWidth; Y = $WA.Y; Width = $WA.Width - $HalfWidth; Height = $WA.Height }
-            full  = @{ X = $WA.X; Y = $WA.Y; Width = $WA.Width; Height = $WA.Height }
+           left  = @{ 
+                X = $WA.X
+                Y = $WA.Y
+                Width = $HalfWidth
+                Height = $WA.Height
+            }
+            right = @{ 
+                X = $WA.X + $HalfWidth
+                Y = $WA.Y
+                Width = $WA.Width - $HalfWidth
+                Height = $WA.Height
+            }
+            full  = @{ 
+                X = $WA.X
+                Y = $WA.Y
+                Width = $WA.Width
+                Height = $WA.Height
+            }
         }
     }
     

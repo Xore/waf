@@ -55,7 +55,7 @@
 .NOTES
     Script Name:    Window Layout Manager 3.ps1
     Author:         Windows Automation Framework
-    Version:        3.2
+    Version:        3.3
     Creation Date:  2026-02-14
     Last Modified:  2026-02-14
     
@@ -114,7 +114,7 @@ param(
 # CONFIGURATION
 # ============================================================================
 
-$ScriptVersion = "3.2"
+$ScriptVersion = "3.3"
 $LogLevel = "INFO"
 $VerbosePreference = 'SilentlyContinue'
 $DefaultTimeout = 30
@@ -481,8 +481,8 @@ function Convert-WildcardToRegex {
     
     if ($Pattern -match '[*?]') {
         $Escaped = [regex]::Escape($Pattern)
-        $Escaped = $Escaped -replace '\\\\\\*', '.*'
-        $Escaped = $Escaped -replace '\\\\\\?', '.'
+        $Escaped = $Escaped -replace '\*', '.*'
+        $Escaped = $Escaped -replace '\?', '.'
         
         Write-Log "  Converted wildcard '$Pattern' to regex '$Escaped'" -Level DEBUG
         return $Escaped

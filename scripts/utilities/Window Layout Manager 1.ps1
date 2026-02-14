@@ -17,7 +17,7 @@
     - Supports wildcard patterns in TitlePattern (e.g., *Chrome*, Jira*)
     - Uses proper restore/maximize states (no keystroke forwarding)
     - Profile-based configurations via -LayoutProfile parameter
-    - True edge-to-edge snapping without visible gaps
+    - Brings windows to foreground after relocation
     
     This script runs unattended without user interaction.
 
@@ -48,7 +48,7 @@
 .NOTES
     Script Name:    Window Layout Manager 1.ps1
     Author:         Windows Automation Framework
-    Version:        1.5
+    Version:        1.4
     Creation Date:  2026-02-14
     Last Modified:  2026-02-14
     
@@ -93,7 +93,7 @@ param(
 # CONFIGURATION
 # ============================================================================
 
-$ScriptVersion = "1.5"
+$ScriptVersion = "1.4"
 $LogLevel = "INFO"
 $VerbosePreference = 'SilentlyContinue'
 $DefaultTimeout = 30
@@ -405,6 +405,21 @@ public class Win32 {
     [DllImport("user32.dll")]
     public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     
+    [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
+    
+    [DllImport("user32.dll")]
+    public static extern bool BringWindowToTop(IntPtr hWnd);
+    
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetForegroundWindow();
+    
+    [DllImport("user32.dll")]
+    public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+    
+    [DllImport("kernel32.dll")]
+    public static extern uint GetCurrentThreadId();
+    
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
     
@@ -422,11 +437,15 @@ public class Win32 {
     public const uint SWP_NOACTIVATE = 0x0010;
     public const uint SWP_SHOWWINDOW = 0x0040;
     public const uint SWP_FRAMECHANGED = 0x0020;
+    public const IntPtr HWND_TOP = 0;
+    public const IntPtr HWND_TOPMOST = -1;
+    public const IntPtr HWND_NOTOPMOST = -2;
     
     // ShowWindow constants
     public const int SW_RESTORE = 9;
     public const int SW_MAXIMIZE = 3;
     public const int SW_SHOWNOACTIVATE = 4;
+    public const int SW_SHOW = 5;
     
     // Window placement constants
     public const uint WPF_ASYNCWINDOWPLACEMENT = 0x0004;
@@ -531,6 +550,75 @@ function Get-LayoutConfiguration {
     # Priority 3: Default
     Write-Log "Using default configuration" -Level INFO
     return $DefaultWindowLayoutConfig
+}
+
+function Set-ForegroundWindowForced {
+    <#
+    .SYNOPSIS
+        Brings a window to the foreground using multiple techniques
+    .DESCRIPTION
+        Uses thread attachment and multiple API calls to reliably
+        bring a window to the foreground, even if it belongs to
+        another process.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [IntPtr]$hWnd,
+        
+        [Parameter(Mandatory=$false)]
+        [switch]$DryRun
+    )
+    
+    if ($DryRun) {
+        Write-Log "  [DRY RUN] Would bring window to foreground" -Level DEBUG
+        return $true
+    }
+    
+    try {
+        # Get current foreground window and its thread
+        $ForegroundWindow = [Win32]::GetForegroundWindow()
+        $CurrentThreadId = [Win32]::GetCurrentThreadId()
+        
+        # Get target window thread
+        $TargetProcessId = 0
+        $TargetThreadId = [Win32]::GetWindowThreadProcessId($hWnd, [ref]$TargetProcessId)
+        
+        # Attach to the foreground window's thread to gain permission to change focus
+        if ($ForegroundWindow -ne [IntPtr]::Zero -and $ForegroundWindow -ne $hWnd) {
+            $ForegroundThreadId = [Win32]::GetWindowThreadProcessId($ForegroundWindow, [ref]$TargetProcessId)
+            
+            if ($ForegroundThreadId -ne $CurrentThreadId) {
+                [Win32]::AttachThreadInput($CurrentThreadId, $ForegroundThreadId, $true) | Out-Null
+            }
+        }
+        
+        # Bring window to top and set as foreground
+        [Win32]::BringWindowToTop($hWnd) | Out-Null
+        [Win32]::ShowWindow($hWnd, [Win32]::SW_SHOW) | Out-Null
+        $Result = [Win32]::SetForegroundWindow($hWnd)
+        
+        # Detach thread input
+        if ($ForegroundWindow -ne [IntPtr]::Zero -and $ForegroundWindow -ne $hWnd) {
+            $ForegroundThreadId = [Win32]::GetWindowThreadProcessId($ForegroundWindow, [ref]$TargetProcessId)
+            
+            if ($ForegroundThreadId -ne $CurrentThreadId) {
+                [Win32]::AttachThreadInput($CurrentThreadId, $ForegroundThreadId, $false) | Out-Null
+            }
+        }
+        
+        if ($Result) {
+            Write-Log "  Window brought to foreground" -Level DEBUG
+        } else {
+            Write-Log "  Failed to bring window to foreground (may require additional permissions)" -Level DEBUG
+        }
+        
+        return $true
+        
+    } catch {
+        Write-Log "  Error bringing window to foreground: $_" -Level DEBUG
+        return $false
+    }
 }
 
 function Convert-WildcardToRegex {
@@ -754,10 +842,10 @@ function Get-ZonesForMonitor {
     .SYNOPSIS
         Calculates zone rectangles for a monitor
     .DESCRIPTION
-        Computes left, right, and full zones based on Monitor Bounds (not WorkArea)
-        to ensure true edge-to-edge snapping without gaps.
+        Computes left, right, and full zones based on WorkArea.
+        Handles snap-to-edge logic when both left and right are used.
     .PARAMETER Monitor
-        Monitor object with Bounds and WorkArea properties
+        Monitor object with WorkArea property
     .PARAMETER HasLeftRule
         Whether a 'left' rule exists for this monitor
     .PARAMETER HasRightRule
@@ -775,56 +863,26 @@ function Get-ZonesForMonitor {
         [bool]$HasRightRule = $false
     )
     
-    # Use WorkArea for proper taskbar accounting
     $WA = $Monitor.WorkArea
     
-    # Calculate zones - when both left and right exist, split exactly at midpoint
+    # If both left and right exist, ensure no gap
     if ($HasLeftRule -and $HasRightRule) {
-        $MidPoint = [Math]::Floor($WA.Width / 2)
+        $LeftWidth = [Math]::Floor($WA.Width / 2)
+        $RightWidth = $WA.Width - $LeftWidth  # Ensures total = WorkArea.Width
         
         $Zones = @{
-            left  = @{ 
-                X = $WA.X
-                Y = $WA.Y
-                Width = $MidPoint
-                Height = $WA.Height
-            }
-            right = @{ 
-                X = $WA.X + $MidPoint
-                Y = $WA.Y
-                Width = $WA.Width - $MidPoint
-                Height = $WA.Height
-            }
-            full  = @{ 
-                X = $WA.X
-                Y = $WA.Y
-                Width = $WA.Width
-                Height = $WA.Height
-            }
+            left  = @{ X = $WA.X; Y = $WA.Y; Width = $LeftWidth; Height = $WA.Height }
+            right = @{ X = $WA.X + $LeftWidth; Y = $WA.Y; Width = $RightWidth; Height = $WA.Height }
+            full  = @{ X = $WA.X; Y = $WA.Y; Width = $WA.Width; Height = $WA.Height }
         }
     } else {
-        # Single window or independent positioning
+        # Standard half-split (small gap acceptable if only one side used)
         $HalfWidth = [Math]::Floor($WA.Width / 2)
         
         $Zones = @{
-            left  = @{ 
-                X = $WA.X
-                Y = $WA.Y
-                Width = $HalfWidth
-                Height = $WA.Height
-            }
-            right = @{ 
-                X = $WA.X + $HalfWidth
-                Y = $WA.Y
-                Width = $WA.Width - $HalfWidth
-                Height = $WA.Height
-            }
-            full  = @{ 
-                X = $WA.X
-                Y = $WA.Y
-                Width = $WA.Width
-                Height = $WA.Height
-            }
+            left  = @{ X = $WA.X; Y = $WA.Y; Width = $HalfWidth; Height = $WA.Height }
+            right = @{ X = $WA.X + $HalfWidth; Y = $WA.Y; Width = $WA.Width - $HalfWidth; Height = $WA.Height }
+            full  = @{ X = $WA.X; Y = $WA.Y; Width = $WA.Width; Height = $WA.Height }
         }
     }
     
@@ -836,9 +894,11 @@ function Set-WindowSnap {
     .SYNOPSIS
         Snaps window to zone using proper Windows snap behavior
     .DESCRIPTION
-        Uses WINDOWPLACEMENT to properly snap windows edge-to-edge.
+        Uses WINDOWPLACEMENT to properly snap windows like Windows Snap Assist.
         For 'full' position, maximizes the window.
-        For 'left' and 'right', uses SetWindowPlacement for true snap behavior.
+        For 'left' and 'right', restores window and positions to zone.
+        This mimics Win+Left, Win+Right, Win+Up behavior without keystrokes.
+        After relocation, brings window to foreground.
     #>
     [CmdletBinding()]
     param(
@@ -899,11 +959,18 @@ function Set-WindowSnap {
             # Apply the placement
             if ([Win32]::SetWindowPlacement($hWnd, [ref]$Placement)) {
                 Write-Log "  Snapped to X=$($Zone.X), Y=$($Zone.Y), W=$($Zone.Width), H=$($Zone.Height)" -Level INFO
+                
+                # Force frame update
+                $Flags = [Win32]::SWP_NOZORDER -bor [Win32]::SWP_NOACTIVATE -bor [Win32]::SWP_FRAMECHANGED
+                [Win32]::SetWindowPos($hWnd, [IntPtr]::Zero, $Zone.X, $Zone.Y, $Zone.Width, $Zone.Height, $Flags) | Out-Null
             } else {
                 Write-Log "  Failed to set window placement" -Level WARN
                 return $false
             }
         }
+        
+        # Bring window to foreground after relocation
+        Set-ForegroundWindowForced -hWnd $hWnd -DryRun:$DryRun | Out-Null
         
         return $true
         

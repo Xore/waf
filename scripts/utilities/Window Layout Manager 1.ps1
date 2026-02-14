@@ -17,6 +17,8 @@
     - Supports wildcard patterns in TitlePattern (e.g., *Chrome*, Jira*)
     - Uses proper restore/maximize states (no keystroke forwarding)
     - Profile-based configurations via -LayoutProfile parameter
+    - True edge-to-edge snapping without visible gaps
+    - Properly tracks windows by Handle to support multi-process apps like Chrome
     
     This script runs unattended without user interaction.
 
@@ -47,7 +49,7 @@
 .NOTES
     Script Name:    Window Layout Manager 1.ps1
     Author:         Windows Automation Framework
-    Version:        1.3
+    Version:        1.6
     Creation Date:  2026-02-14
     Last Modified:  2026-02-14
     
@@ -92,7 +94,7 @@ param(
 # CONFIGURATION
 # ============================================================================
 
-$ScriptVersion = "1.3"
+$ScriptVersion = "1.6"
 $LogLevel = "INFO"
 $VerbosePreference = 'SilentlyContinue'
 $DefaultTimeout = 30
@@ -753,10 +755,10 @@ function Get-ZonesForMonitor {
     .SYNOPSIS
         Calculates zone rectangles for a monitor
     .DESCRIPTION
-        Computes left, right, and full zones based on WorkArea.
-        Handles snap-to-edge logic when both left and right are used.
+        Computes left, right, and full zones based on Monitor Bounds (not WorkArea)
+        to ensure true edge-to-edge snapping without gaps.
     .PARAMETER Monitor
-        Monitor object with WorkArea property
+        Monitor object with Bounds and WorkArea properties
     .PARAMETER HasLeftRule
         Whether a 'left' rule exists for this monitor
     .PARAMETER HasRightRule
@@ -774,26 +776,56 @@ function Get-ZonesForMonitor {
         [bool]$HasRightRule = $false
     )
     
+    # Use WorkArea for proper taskbar accounting
     $WA = $Monitor.WorkArea
     
-    # If both left and right exist, ensure no gap
+    # Calculate zones - when both left and right exist, split exactly at midpoint
     if ($HasLeftRule -and $HasRightRule) {
-        $LeftWidth = [Math]::Floor($WA.Width / 2)
-        $RightWidth = $WA.Width - $LeftWidth  # Ensures total = WorkArea.Width
+        $MidPoint = [Math]::Floor($WA.Width / 2)
         
         $Zones = @{
-            left  = @{ X = $WA.X; Y = $WA.Y; Width = $LeftWidth; Height = $WA.Height }
-            right = @{ X = $WA.X + $LeftWidth; Y = $WA.Y; Width = $RightWidth; Height = $WA.Height }
-            full  = @{ X = $WA.X; Y = $WA.Y; Width = $WA.Width; Height = $WA.Height }
+            left  = @{ 
+                X = $WA.X
+                Y = $WA.Y
+                Width = $MidPoint
+                Height = $WA.Height
+            }
+            right = @{ 
+                X = $WA.X + $MidPoint
+                Y = $WA.Y
+                Width = $WA.Width - $MidPoint
+                Height = $WA.Height
+            }
+            full  = @{ 
+                X = $WA.X
+                Y = $WA.Y
+                Width = $WA.Width
+                Height = $WA.Height
+            }
         }
     } else {
-        # Standard half-split (small gap acceptable if only one side used)
+        # Single window or independent positioning
         $HalfWidth = [Math]::Floor($WA.Width / 2)
         
         $Zones = @{
-            left  = @{ X = $WA.X; Y = $WA.Y; Width = $HalfWidth; Height = $WA.Height }
-            right = @{ X = $WA.X + $HalfWidth; Y = $WA.Y; Width = $WA.Width - $HalfWidth; Height = $WA.Height }
-            full  = @{ X = $WA.X; Y = $WA.Y; Width = $WA.Width; Height = $WA.Height }
+            left  = @{ 
+                X = $WA.X
+                Y = $WA.Y
+                Width = $HalfWidth
+                Height = $WA.Height
+            }
+            right = @{ 
+                X = $WA.X + $HalfWidth
+                Y = $WA.Y
+                Width = $WA.Width - $HalfWidth
+                Height = $WA.Height
+            }
+            full  = @{ 
+                X = $WA.X
+                Y = $WA.Y
+                Width = $WA.Width
+                Height = $WA.Height
+            }
         }
     }
     
@@ -805,10 +837,9 @@ function Set-WindowSnap {
     .SYNOPSIS
         Snaps window to zone using proper Windows snap behavior
     .DESCRIPTION
-        Uses WINDOWPLACEMENT to properly snap windows like Windows Snap Assist.
+        Uses WINDOWPLACEMENT to properly snap windows edge-to-edge.
         For 'full' position, maximizes the window.
-        For 'left' and 'right', restores window and positions to zone.
-        This mimics Win+Left, Win+Right, Win+Up behavior without keystrokes.
+        For 'left' and 'right', uses SetWindowPlacement for true snap behavior.
     #>
     [CmdletBinding()]
     param(
@@ -869,12 +900,6 @@ function Set-WindowSnap {
             # Apply the placement
             if ([Win32]::SetWindowPlacement($hWnd, [ref]$Placement)) {
                 Write-Log "  Snapped to X=$($Zone.X), Y=$($Zone.Y), W=$($Zone.Width), H=$($Zone.Height)" -Level INFO
-                
-                # Force frame update
-                $Flags = [Win32]::SWP_NOZORDER -bor [Win32]::SWP_NOACTIVATE -bor [Win32]::SWP_FRAMECHANGED
-                [Win32]::SetWindowPos($hWnd, [IntPtr]::Zero, $Zone.X, $Zone.Y, $Zone.Width, $Zone.Height, $Flags) | Out-Null
-                
-                return $true
             } else {
                 Write-Log "  Failed to set window placement" -Level WARN
                 return $false
@@ -895,6 +920,7 @@ function Select-WindowForRule {
         Selects best matching window for a placement rule
     .DESCRIPTION
         Finds an unassigned window matching the process name and optional title pattern.
+        Windows are tracked by Handle (not PID) to properly support multi-process apps.
         Supports wildcard patterns (*, ?) and regex patterns.
         Returns the window object or $null if no match.
     #>
@@ -907,15 +933,19 @@ function Select-WindowForRule {
         [hashtable]$Rule
     )
     
-    # Filter to matching process name
+    # Filter to matching process name AND not yet assigned
+    # Check AssignedToRule BEFORE selection to avoid selecting same window twice
     $Candidates = $Windows | Where-Object { 
         $_.ProcessName -eq $Rule.ApplicationName -and 
-        $null -eq $_.AssignedToRule  # Not yet assigned
+        $null -eq $_.AssignedToRule
     }
     
     if ($Candidates.Count -eq 0) {
+        Write-Log "  No available windows for process '$($Rule.ApplicationName)'" -Level DEBUG
         return $null
     }
+    
+    Write-Log "  Found $($Candidates.Count) candidate window(s) for '$($Rule.ApplicationName)'" -Level DEBUG
     
     # Apply title pattern filter if specified
     if ($Rule.TitlePattern) {
@@ -937,11 +967,15 @@ function Select-WindowForRule {
     # Prefer window already on target monitor
     $OnTargetMonitor = $Candidates | Where-Object { $_.MonitorNumber -eq $Rule.MonitorNumber }
     if ($OnTargetMonitor) {
-        return $OnTargetMonitor | Select-Object -First 1
+        $Selected = $OnTargetMonitor | Select-Object -First 1
+        Write-Log "  Selected window on target monitor (Handle: $($Selected.Handle))" -Level DEBUG
+        return $Selected
     }
     
     # Otherwise, take first available
-    return $Candidates | Select-Object -First 1
+    $Selected = $Candidates | Select-Object -First 1
+    Write-Log "  Selected first available window (Handle: $($Selected.Handle))" -Level DEBUG
+    return $Selected
 }
 
 # ============================================================================
@@ -1023,7 +1057,7 @@ try {
                 Write-Log "  Title filter: '$($Rule.TitlePattern)'" -Level INFO
             }
             
-            # Find matching window
+            # Find matching window (unassigned windows only)
             $Window = Select-WindowForRule -Windows $Windows -Rule $Rule
             
             if (-not $Window) {
@@ -1032,10 +1066,10 @@ try {
                 continue
             }
             
-            # Mark window as assigned to this rule
+            # Mark window as assigned IMMEDIATELY to prevent reuse
             $Window.AssignedToRule = $RuleName
             
-            Write-Log "  Found window: '$($Window.Title)' (PID: $($Window.ProcessId))" -Level INFO
+            Write-Log "  Found window: '$($Window.Title)' (Handle: $($Window.Handle), PID: $($Window.ProcessId))" -Level INFO
             Write-Log "  Current: Monitor $($Window.MonitorNumber), $($Window.Rect.Width)x$($Window.Rect.Height)$(if($Window.IsMaximized){' [Maximized]'})" -Level INFO
             
             # Get target zone

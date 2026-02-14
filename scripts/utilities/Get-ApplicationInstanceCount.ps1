@@ -13,7 +13,7 @@
     - Excludes minimized windows by default
     - Option to include minimized windows
     - Clean integer output for automation
-    - Detailed logging available via -Verbose
+    - Detailed logging available by default
     
     This script runs unattended without user interaction.
 
@@ -33,17 +33,23 @@
     By default, only visible non-minimized windows are counted.
 
 .PARAMETER Quiet
-    Suppresses all output except the final integer count.
+    Suppresses all log output except the final integer count.
     Useful for scripting and automation scenarios.
 
 .EXAMPLE
     PS> .\Get-ApplicationInstanceCount.ps1 -ProcessName 'chrome'
+    [2026-02-14 18:30:00] [INFO] ========================================
+    [2026-02-14 18:30:00] [INFO] Get-ApplicationInstanceCount v1.1
+    ...
     3
     
-    Counts all visible Chrome windows.
+    Counts all visible Chrome windows with detailed logs.
 
 .EXAMPLE
     PS> .\Get-ApplicationInstanceCount.ps1 -ProcessName 'chrome' -TitlePattern '*GitHub*'
+    [2026-02-14 18:30:00] [INFO] Starting enumeration for process: chrome
+    [2026-02-14 18:30:00] [INFO] Using title pattern: '*GitHub*'
+    ...
     1
     
     Counts Chrome windows with 'GitHub' in the title.
@@ -75,7 +81,7 @@
 .NOTES
     Script Name:    Get-ApplicationInstanceCount.ps1
     Author:         Windows Automation Framework
-    Version:        1.0
+    Version:        1.1
     Creation Date:  2026-02-14
     Last Modified:  2026-02-14
     
@@ -131,7 +137,7 @@ param(
 # CONFIGURATION
 # ============================================================================
 
-$ScriptVersion = "1.0"
+$ScriptVersion = "1.1"
 $ErrorActionPreference = 'Stop'
 $script:InstanceCount = 0
 
@@ -188,7 +194,7 @@ function Write-Log {
     $LogMessage = "[$Timestamp] [$Level] $Message"
     
     switch ($Level) {
-        'INFO'  { Write-Verbose $LogMessage }
+        'INFO'  { Write-Host $LogMessage -ForegroundColor Cyan }
         'WARN'  { Write-Warning $LogMessage }
         'ERROR' { Write-Host $LogMessage -ForegroundColor Red }
     }
@@ -269,14 +275,13 @@ function Test-WindowMatch {
             $WindowTitle = Get-WindowTitle -hWnd $hWnd
             
             if ($WindowTitle -notmatch $TitleRegex) {
-                Write-Log "Window excluded - Title '$WindowTitle' does not match pattern" -Level INFO
                 return $false
             }
             
-            Write-Log "Window matched - Process: $($Process.ProcessName), Title: '$WindowTitle'" -Level INFO
+            Write-Log "  Window matched - Process: $($Process.ProcessName), Title: '$WindowTitle'" -Level INFO
         } else {
             $WindowTitle = Get-WindowTitle -hWnd $hWnd
-            Write-Log "Window matched - Process: $($Process.ProcessName), Title: '$WindowTitle'" -Level INFO
+            Write-Log "  Window matched - Process: $($Process.ProcessName), Title: '$WindowTitle'" -Level INFO
         }
         
         return $true

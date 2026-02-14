@@ -39,7 +39,7 @@
 .EXAMPLE
     PS> .\Get-ApplicationInstanceCount.ps1 -ProcessName 'chrome'
     [2026-02-14 18:30:00] [INFO] ========================================
-    [2026-02-14 18:30:00] [INFO] Get-ApplicationInstanceCount v1.1
+    [2026-02-14 18:30:00] [INFO] Get-ApplicationInstanceCount v1.2
     ...
     3
     
@@ -81,7 +81,7 @@
 .NOTES
     Script Name:    Get-ApplicationInstanceCount.ps1
     Author:         Windows Automation Framework
-    Version:        1.1
+    Version:        1.2
     Creation Date:  2026-02-14
     Last Modified:  2026-02-14
     
@@ -137,7 +137,7 @@ param(
 # CONFIGURATION
 # ============================================================================
 
-$ScriptVersion = "1.1"
+$ScriptVersion = "1.2"
 $ErrorActionPreference = 'Stop'
 $script:InstanceCount = 0
 
@@ -225,8 +225,8 @@ function Convert-WildcardToRegex {
     
     if ($Pattern -match '[*?]') {
         $Escaped = [regex]::Escape($Pattern)
-        $Escaped = $Escaped -replace '\\\\\\*', '.*'
-        $Escaped = $Escaped -replace '\\\\\\?', '.'
+        $Escaped = $Escaped -replace '\*', '.*'
+        $Escaped = $Escaped -replace '\?', '.'
         return $Escaped
     } else {
         return [regex]::Escape($Pattern)

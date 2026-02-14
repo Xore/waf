@@ -2,55 +2,62 @@
 
 ## Overview
 
-The Window Layout Manager is an automated PowerShell script that positions application windows across multiple monitors using configurable layout profiles. It implements a direct border overlap technique to eliminate gaps between side-by-side windows, mimicking Windows native snap behavior.
+Window Layout Manager is a PowerShell automation script that precisely positions application windows across multiple monitors using the Direct Border Overlap approach. Version 3.3 implements configurable border overlap to eliminate gaps between snapped windows while maintaining compatibility across Windows 10/11.
 
 **Current Version:** 3.3  
 **Script:** `scripts/utilities/Window Layout Manager.ps1`  
-**Status:** Production-ready
+**Approach:** Direct Border Overlap (intentional window expansion)  
+**Default Border:** 8px for Windows 10/11
 
 ## Core Concept
 
-### Direct Border Overlap Approach
+### Direct Border Overlap Technique
 
-Instead of attempting to compensate for invisible DWM (Desktop Window Manager) borders, the script intentionally overlaps windows by a configurable border width (default 8px for Windows 10/11). This creates seamless adjacent window positioning without gaps.
+Windows have invisible borders (DWM-rendered) that create gaps when snapped side-by-side. This script eliminates gaps by intentionally overlapping windows by the border width.
 
 **How it works:**
-- Each window in a left/right position is expanded by BorderWidth pixels on left, right, and bottom
-- Adjacent windows physically overlap in the border area
-- The topmost window's border remains visible at edges
+- Each window expands by BorderWidth pixels on left, right, and bottom edges
+- Adjacent windows overlap in the border region
+- The topmost window's border is visible, creating seamless appearance
 - No DWM API calls required (simpler, more compatible)
 
 **Trade-offs:**
-- Windows overlap slightly in border regions
+- Windows overlap slightly (typically 8px)
 - Only the topmost window has active resize handles in overlap area
+- Simpler implementation than border compensation
 - Fixed border width may not be perfect for all applications
-- Per-window control via `UseOverlap` config option
 
 ## Features
 
 ### Window Positioning
-- Three position types: `left`, `right`, `full`
-- Automatic zone calculation based on monitor work area
-- Dynamic zone splitting when both left and right rules exist on same monitor
-- Full-screen windows are maximized using native Windows API
+
+- **left** - Window occupies left half of monitor
+- **right** - Window occupies right half of monitor
+- **full** - Window maximized to fill entire monitor
 
 ### Multi-Monitor Support
-- Automatic monitor enumeration and numbering
-- Primary monitor = 1, secondary monitors numbered by position
+
+- Automatic monitor detection and enumeration
+- Primary monitor always numbered as Monitor 1
+- Secondary monitors sorted by position
 - Cross-monitor window distribution
-- Monitor-aware window selection
+- Per-monitor zone calculation
 
 ### Configuration System
-- Built-in layout profiles (2xChrome1xVSCode, 2xBDE2xSAP, WebDev, etc.)
-- External configuration file support via `-ConfigPath`
-- Per-window overlap control via `UseOverlap` parameter
-- Wildcard title pattern matching
 
-### Window Selection Intelligence
-- Priority-based selection algorithm
-- Preference for windows already on target monitor
-- Cross-monitor conflict detection
-- Application instance tracking to prevent double-assignment
+- Built-in layout profiles
+- External configuration file support
+- Per-window border overlap control
+- Application name and title pattern filtering
+- Monitor number assignment
+
+### Smart Window Selection
+
+- Priority-based window matching
+- Title pattern filtering with wildcards
+- Monitor affinity consideration
+- Assignment tracking to prevent duplicates
+- Process name matching (case-insensitive)
 
 ## Architecture
 
@@ -58,483 +65,658 @@ Instead of attempting to compensate for invisible DWM (Desktop Window Manager) b
 
 ```
 Window Layout Manager.ps1
-├── Configuration Section
-│   ├── Script metadata (version, timeouts)
-│   ├── Layout profiles hashtable
-│   └── Default configuration
+├── Parameters
+│   ├── LayoutProfile (optional)
+│   ├── ConfigPath (optional)
+│   ├── BorderWidth (default: 8)
+│   └── DryRun (switch)
+├── Layout Profiles
+│   ├── 2xChrome1xVSCode
+│   ├── 2xBDE2xSAP
+│   ├── WebDev
+│   ├── 2xChrome
+│   └── MixedOverlap
 ├── Windows API Definitions
-│   ├── RECT, MONITORINFO, WINDOWPLACEMENT structures
-│   └── Win32 API imports (User32.dll)
-├── Core Functions
-│   ├── Write-Log (logging with levels)
-│   ├── Get-LayoutConfiguration (profile loading)
-│   ├── Get-MonitorLayout (monitor enumeration)
-│   ├── Get-ApplicationWindows (window discovery)
-│   ├── Get-ZonesForMonitor (zone calculation)
-│   ├── Select-WindowForRule (smart window selection)
-│   └── Set-WindowSnapBorderOverlap (window positioning)
+│   ├── Monitor enumeration
+│   ├── Window enumeration
+│   └── Window positioning
+├── Functions
+│   ├── Get-LayoutConfiguration
+│   ├── Convert-WildcardToRegex
+│   ├── Get-MonitorLayout
+│   ├── Get-ApplicationWindows
+│   ├── Get-ZonesForMonitor
+│   ├── Set-WindowSnapBorderOverlap
+│   └── Select-WindowForRule
 └── Main Execution
-    ├── Configuration loading
-    ├── Monitor discovery
-    ├── Window enumeration
-    ├── Rule application per monitor
-    └── Summary reporting
+    ├── Load configuration
+    ├── Enumerate monitors
+    ├── Enumerate windows
+    ├── Process rules by monitor
+    └── Apply window positioning
 ```
 
 ### Key Data Structures
 
-#### Window Layout Rule
+**Window Placement Rule:**
 ```powershell
 @{
-    ApplicationName = 'chrome'           # Process name to match
-    DisplayName     = 'Chrome Left'      # Human-readable name
+    ApplicationName = 'chrome'           # Process name (without .exe)
+    DisplayName     = 'Chrome Left'      # Friendly name for logs
     TitlePattern    = '*GitHub*'         # Optional wildcard pattern
-    MonitorNumber   = 1                  # Target monitor (1=primary)
-    Position        = 'left'             # left|right|full
-    UseOverlap      = $true              # Enable/disable border overlap
+    MonitorNumber   = 1                  # Target monitor (1-based)
+    Position        = 'left'             # left/right/full
+    UseOverlap      = $true              # Enable border overlap
 }
 ```
 
-#### Monitor Object
+**Monitor Object:**
 ```powershell
-[PSCustomObject]@{
-    Handle        = [IntPtr]             # Windows monitor handle
-    IsPrimary     = [bool]
-    DisplayNumber = [int]                # 1=primary, 2+secondary
-    Bounds        = @{ X, Y, Width, Height }
-    WorkArea      = @{ X, Y, Width, Height }  # Excludes taskbar
+@{
+    Handle        = [IntPtr]             # Monitor handle
+    IsPrimary     = [bool]               # Is primary monitor
+    DisplayNumber = [int]                # 1-based display number
+    Bounds        = @{ X, Y, Width, Height }    # Full monitor bounds
+    WorkArea      = @{ X, Y, Width, Height }    # Usable area (minus taskbar)
 }
 ```
 
-#### Window Object
+**Window Object:**
 ```powershell
-[PSCustomObject]@{
+@{
     Handle        = [IntPtr]             # Window handle
-    ProcessId     = [int]
-    ProcessName   = [string]             # e.g., 'chrome'
-    Title         = [string]
+    ProcessId     = [int]                # Process ID
+    ProcessName   = [string]             # Process name
+    Title         = [string]             # Window title
     MonitorNumber = [int]                # Current monitor
-    IsMaximized   = [bool]
-    Rect          = @{ X, Y, Width, Height }
-    AssignedToRule = [string]            # Tracks assignment
+    IsMaximized   = [bool]               # Maximized state
+    Rect          = @{ X, Y, Width, Height }    # Current position
+    AssignedToRule = [string]            # Assigned rule name
 }
 ```
 
 ## Window Selection Algorithm
 
-### Selection Priority (v3.3)
+The script uses a priority-based approach to select windows for each rule:
 
-1. **Exact monitor match with title pattern**
-   - Window on target monitor + matching title pattern
-   - Highest priority to minimize cross-monitor moves
+1. **Filter by process name** - Only windows matching ApplicationName
+2. **Exclude assigned windows** - Skip windows already assigned to rules
+3. **Apply title pattern** (if specified) - Filter by wildcard pattern
+4. **Prefer target monitor** - Select windows already on target monitor
+5. **Fallback to any monitor** - If no match on target, select from any
 
-2. **Monitor reservation check**
-   - Identifies other rules targeting same application on different monitors
-   - Excludes windows from "reserved" monitors
-   - Prevents cross-monitor conflicts
+This ensures:
+- Windows are not assigned to multiple rules
+- Windows with title patterns are correctly filtered
+- Windows are distributed across monitors as intended
 
-3. **Title pattern match on any monitor**
-   - Window with matching title pattern on any monitor
-   - Will be moved to target monitor
+## Wildcard Pattern Matching (v3.3 Fix)
 
-4. **Fallback selection**
-   - Any unassigned window of matching process name
-   - Logs warning if no suitable windows remain
+### Convert-WildcardToRegex Function
 
-### Assignment Tracking
+Converts wildcard patterns to regex for title matching:
 
-Each window has an `AssignedToRule` property set when selected. This prevents:
-- Double-assignment of same window to multiple rules
-- Cross-monitor conflicts when multiple rules target same application
-- Incorrect window distribution
+```powershell
+function Convert-WildcardToRegex {
+    param([string]$Pattern)
+    
+    if ($Pattern -match '[*?]') {
+        $Escaped = [regex]::Escape($Pattern)  # Escape special regex chars
+        $Escaped = $Escaped -replace '\*', '.*'  # * -> .* (any chars)
+        $Escaped = $Escaped -replace '\?', '.'   # ? -> . (single char)
+        return $Escaped
+    } else {
+        return $Pattern
+    }
+}
+```
+
+### Pattern Examples
+
+| Wildcard | Regex | Matches | Does Not Match |
+|---|---|---|---|
+| `*GitHub*` | `.*GitHub.*` | "GitHub - Chrome", "MyGitHub" | "chrome", "hub" |
+| `*waf/script*` | `.*waf/script.*` | "waf/scripts/test.ps1" | "waf-scripts" |
+| `Document1*` | `Document1.*` | "Document1.docx" | "Document2" |
+| `*.xlsx*` | `.*\.xlsx.*` | "Report.xlsx - Excel" | "Report.docx" |
+| `*How Fast*` | `.*How Fast.*` | "How Fast Can You..." | "how fast" (case!) |
+
+**Important:** Title pattern matching is **case-sensitive**.
 
 ## Border Overlap Control
 
 ### UseOverlap Parameter
 
-Each rule can specify overlap behavior:
+Each window rule supports `UseOverlap` to control border behavior:
 
 ```powershell
-UseOverlap = $true   # Default - apply 8px overlap (no gaps)
-UseOverlap = $false  # Precise positioning (may show gaps)
-UseOverlap = $null   # Auto: false for 'full', true for left/right
+UseOverlap = $true   # Apply border overlap (default)
+UseOverlap = $false  # No overlap (precise positioning)
+UseOverlap = $null   # Auto (false for 'full', true for 'left'/'right')
 ```
 
 ### Overlap Calculation
 
-For left/right positions with `UseOverlap = $true`:
+For `UseOverlap = $true`:
 ```
-FinalX      = Zone.X - BorderWidth
-FinalY      = Zone.Y
-FinalWidth  = Zone.Width + (BorderWidth * 2)
-FinalHeight = Zone.Height + BorderWidth
+FinalX      = Zone.X - BorderWidth           # Expand left
+FinalY      = Zone.Y                         # No top expansion
+FinalWidth  = Zone.Width + (BorderWidth * 2) # Expand left + right
+FinalHeight = Zone.Height + BorderWidth      # Expand bottom
 ```
 
-For `UseOverlap = $false` or `full` position:
+For `UseOverlap = $false`:
 ```
-FinalX      = Zone.X
+FinalX      = Zone.X                         # No expansion
 FinalY      = Zone.Y
 FinalWidth  = Zone.Width
 FinalHeight = Zone.Height
 ```
 
+### Why No Top Expansion
+
+The top edge is not expanded because:
+- Taskbar is typically at bottom or sides
+- Top expansion would conflict with title bar
+- Windows native snap doesn't expand top
+- Work area already accounts for taskbar
+
 ## Zone Calculation
 
-### Dynamic Zone Splitting
+Zones are calculated dynamically based on monitor work area:
 
-Zones adapt based on rules defined for each monitor:
+### With Both Left and Right Rules
 
-**When both left AND right rules exist:**
-- Split at exact midpoint for symmetry
-- Left zone: 0 to MidPoint
-- Right zone: MidPoint to Width
-
-**When only left OR right rule exists:**
-- Default 50/50 split using HalfWidth
-- Allows manual window placement in unused half
-
-**Full position:**
-- Always spans entire work area
-- Maximized via Windows API (not resized)
-
-### Work Area Respect
-
-All zones use monitor WorkArea (excludes taskbar) instead of full Bounds:
-```powershell
-$WA = $Monitor.WorkArea  # Accounts for taskbar automatically
 ```
+MidPoint = Floor(WorkArea.Width / 2)
+
+left zone:
+  X      = WorkArea.X
+  Y      = WorkArea.Y
+  Width  = MidPoint
+  Height = WorkArea.Height
+
+right zone:
+  X      = WorkArea.X + MidPoint
+  Y      = WorkArea.Y
+  Width  = WorkArea.Width - MidPoint
+  Height = WorkArea.Height
+```
+
+### With Only One Side Rule
+
+Still splits at 50% for consistency:
+```
+HalfWidth = Floor(WorkArea.Width / 2)
+```
+
+This ensures windows positioned with single rule can later accommodate second window.
 
 ## Built-in Profiles
 
 ### 2xChrome1xVSCode
-Two Chrome windows (left/right) on monitor 1, VS Code fullscreen on monitor 2.
+
+```powershell
+Monitor 1: Chrome (left) + Chrome (right)
+Monitor 2: VS Code (full)
+```
 
 ### 2xBDE2xSAP
-Two BDE windows on monitor 1, two SAP windows on monitor 2.
+
+```powershell
+Monitor 1: BDE (left) + BDE (right)
+Monitor 2: SAP (left) + SAP (right)
+```
 
 ### WebDev
-Chrome windows filtered by title (Jira/GitHub) on monitor 1, VS Code fullscreen on monitor 2.
+
+```powershell
+Monitor 1: Chrome Jira (left, *Jira*) + Chrome GitHub (right, *GitHub*)
+Monitor 2: VS Code (full)
+```
+
+Demonstrates title pattern filtering.
 
 ### 2xChrome
-Two Chrome windows side-by-side on monitor 1.
+
+```powershell
+Monitor 1: Chrome (left) + Chrome (right)
+```
 
 ### MixedOverlap
-Demonstrates per-window overlap control - left window with overlap, right without.
+
+```powershell
+Monitor 1: Chrome (left, UseOverlap=true) + Chrome (right, UseOverlap=false)
+```
+
+Demonstrates per-window overlap control.
 
 ## Usage Examples
 
-### Basic Profile Application
+### Apply Default Profile
+
 ```powershell
-.\Window Layout Manager.ps1 -LayoutProfile '2xChrome'
+.\Window Layout Manager.ps1
 ```
 
-### Custom Border Width
+Applies default 2xChrome configuration.
+
+### Apply Named Profile
+
+```powershell
+.\Window Layout Manager.ps1 -LayoutProfile 'WebDev'
+```
+
+Applies WebDev profile with title filtering.
+
+### Adjust Border Width
+
 ```powershell
 .\Window Layout Manager.ps1 -LayoutProfile '2xChrome' -BorderWidth 7
 ```
 
+Use 7px border for older Windows 10 builds.
+
 ### Dry Run Mode
+
 ```powershell
 .\Window Layout Manager.ps1 -LayoutProfile 'WebDev' -DryRun
 ```
 
+Shows what would happen without moving windows.
+
 ### External Configuration
+
 ```powershell
-.\Window Layout Manager.ps1 -ConfigPath 'C:\Configs\layout.xml'
+.\Window Layout Manager.ps1 -ConfigPath 'C:\Config\MyLayout.xml'
 ```
 
-### No Profile (Default Config)
-```powershell
-.\Window Layout Manager.ps1
-# Uses $DefaultWindowLayoutConfig
-```
+Load configuration from external file.
 
 ## Custom Configuration
 
-### Creating External Config
+### Configuration File Format
 
 ```powershell
-$CustomConfig = @{
-    Edge1 = @{
-        ApplicationName = 'msedge'
-        DisplayName     = 'Edge Browser 1'
-        TitlePattern    = $null
+# Create configuration
+$Config = @{
+    ChromeLeft = @{
+        ApplicationName = 'chrome'
+        DisplayName     = 'Chrome Left'
+        TitlePattern    = '*Documentation*'
         MonitorNumber   = 1
         Position        = 'left'
         UseOverlap      = $true
     }
-    Edge2 = @{
-        ApplicationName = 'msedge'
-        DisplayName     = 'Edge Browser 2'
-        TitlePattern    = $null
+    ChromeRight = @{
+        ApplicationName = 'chrome'
+        DisplayName     = 'Chrome Right'
+        TitlePattern    = '*GitHub*'
         MonitorNumber   = 1
         Position        = 'right'
         UseOverlap      = $true
     }
-    Teams = @{
-        ApplicationName = 'Teams'
-        DisplayName     = 'Microsoft Teams'
-        TitlePattern    = $null
-        MonitorNumber   = 2
-        Position        = 'full'
-        UseOverlap      = $null
-    }
 }
 
-$CustomConfig | Export-Clixml -Path 'C:\Configs\my-layout.xml'
+# Export to file
+$Config | Export-Clixml -Path 'C:\Config\MyLayout.xml'
 
-.\Window Layout Manager.ps1 -ConfigPath 'C:\Configs\my-layout.xml'
+# Use configuration
+.\Window Layout Manager.ps1 -ConfigPath 'C:\Config\MyLayout.xml'
 ```
 
 ### Title Pattern Examples
 
 ```powershell
-# Match any window containing "GitHub"
-TitlePattern = '*GitHub*'
-
-# Match windows starting with "Project"
-TitlePattern = 'Project*'
-
-# Match specific window title
-TitlePattern = 'My Document.docx - Word'
-
-# No pattern (match any window)
-TitlePattern = $null
+TitlePattern = '*GitHub*'          # Matches: 'GitHub - Chrome', 'MyGitHub Project'
+TitlePattern = 'Document1*'        # Matches: 'Document1.docx', 'Document10'
+TitlePattern = '*.xlsx*'           # Matches: 'Report.xlsx - Excel'
+TitlePattern = '*Jira* - *'        # Matches: 'PROJ-123 - Jira - Chrome'
+TitlePattern = $null               # No filtering (all windows)
 ```
+
+**Important:** Title patterns are case-sensitive.
 
 ## Windows API Integration
 
-### Key APIs Used
+### Monitor APIs
 
-- **EnumDisplayMonitors** - Enumerate all monitors
-- **GetMonitorInfo** - Get monitor bounds and work area
-- **MonitorFromWindow** - Determine window's current monitor
-- **EnumWindows** - Enumerate all top-level windows
-- **GetWindowThreadProcessId** - Get process ID from window
-- **IsWindowVisible** - Filter visible windows
-- **IsIconic** - Filter minimized windows
-- **IsZoomed** - Check if window is maximized
-- **GetWindowRect** - Get window position and size
-- **GetWindowPlacement** - Get window state and position
-- **SetWindowPlacement** - Set window state and position
-- **SetWindowPos** - Final positioning with flags
-- **ShowWindow** - Maximize or restore window
+**EnumDisplayMonitors** - Enumerate all monitors
+- Callback invoked for each monitor
+- Returns monitor handle and bounds
 
-### Window Positioning Sequence
+**GetMonitorInfo** - Get monitor details
+- Work area (minus taskbar)
+- Primary monitor flag
+- Full monitor bounds
 
-1. **Get current placement** via GetWindowPlacement
-2. **Set showCmd to SW_RESTORE** (un-maximize if needed)
-3. **Calculate final rectangle** with optional overlap
-4. **Update rcNormalPosition** in WINDOWPLACEMENT structure
-5. **Apply via SetWindowPlacement**
-6. **Force refresh via SetWindowPos** with SWP_FRAMECHANGED
+**MonitorFromWindow** - Get window's monitor
+- Returns monitor handle for window
+- Used to determine current monitor
 
-For full-screen windows:
-1. **ShowWindow with SW_MAXIMIZE** (native Windows maximize)
+### Window APIs
+
+**EnumWindows** - Enumerate all top-level windows
+- Callback invoked for each window
+- Returns window handle
+
+**IsWindowVisible** - Check visibility
+- Excludes hidden windows
+
+**IsIconic** - Check if minimized
+- Excludes minimized windows
+
+**IsZoomed** - Check if maximized
+- Used to track maximized state
+
+**GetWindowRect** - Get window position
+- Returns current rectangle
+
+**GetWindowPlacement** - Get window placement
+- Includes normal position (when not maximized)
+
+**SetWindowPlacement** - Set window placement
+- Restores window if maximized
+- Sets normal position
+
+**SetWindowPos** - Fine-tune position
+- Used after SetWindowPlacement
+- Ensures precise positioning
+
+**ShowWindow** - Change window state
+- Used to maximize windows (full position)
+
+### Positioning Sequence
+
+For `left` and `right` positions:
+```
+1. GetWindowPlacement - Get current placement
+2. Modify rcNormalPosition - Set target rectangle
+3. Set showCmd = SW_RESTORE - Restore if maximized
+4. SetWindowPlacement - Apply placement
+5. SetWindowPos - Fine-tune position with SWP_FRAMECHANGED
+```
+
+For `full` position:
+```
+1. ShowWindow(SW_MAXIMIZE) - Maximize window
+```
 
 ## Logging and Diagnostics
 
 ### Log Levels
 
-- **DEBUG** - Verbose details (only if $LogLevel = 'DEBUG')
-- **INFO** - Standard operational messages (cyan)
-- **WARN** - Non-fatal issues (yellow, increments warning count)
-- **ERROR** - Fatal errors (red, increments error count)
+- **DEBUG** - Detailed internal operations (only with LogLevel = DEBUG)
+- **INFO** - Standard operational messages (cyan color)
+- **WARN** - Non-fatal issues (yellow warning)
+- **ERROR** - Fatal errors (red color)
 
 ### Execution Summary
 
 ```
-========================================
-Execution Summary:
-  Duration: 2.34 seconds
-  Errors: 0
-  Warnings: 0
-========================================
+[2026-02-14 18:00:00] [INFO] ========================================
+[2026-02-14 18:00:00] [INFO] Starting: Window Layout Manager.ps1 v3.3
+[2026-02-14 18:00:00] [INFO] Using Direct Border Overlap approach
+[2026-02-14 18:00:00] [INFO] Default border width: 8px
+[2026-02-14 18:00:00] [INFO] ========================================
+[2026-02-14 18:00:00] [INFO] Loading layout profile: WebDev
+[2026-02-14 18:00:00] [INFO] Profile contains: 2xchrome, 1xCode
+[2026-02-14 18:00:00] [INFO] Loaded 3 window placement rule(s)
+[2026-02-14 18:00:00] [INFO] Enumerating monitors...
+[2026-02-14 18:00:00] [INFO] Found 2 monitor(s)
+[2026-02-14 18:00:00] [INFO]   Monitor 1: 2560x1400 at (0,0) [Primary]
+[2026-02-14 18:00:00] [INFO]   Monitor 2: 1920x1080 at (2560,0)
+[2026-02-14 18:00:00] [INFO] Enumerating application windows...
+[2026-02-14 18:00:00] [INFO] Found 24 total visible windows
+[2026-02-14 18:00:00] [INFO] Processing monitor 1...
+[2026-02-14 18:00:00] [INFO] Applying rule 'ChromeJira' (Chrome Jira)...
+[2026-02-14 18:00:00] [INFO]   Target: Monitor 1, Position: left
+[2026-02-14 18:00:00] [INFO]   Title filter: '*Jira*'
+[2026-02-14 18:00:00] [INFO]   Border overlap: enabled
+[2026-02-14 18:00:00] [INFO]   Found window: 'PROJ-123 - Jira - Chrome' (PID: 12345)
+[2026-02-14 18:00:00] [INFO]   Current: Monitor 2, 1920x1080
+[2026-02-14 18:00:00] [INFO]   Snapped with 8px overlap (zone: X=0, Y=0, W=1280, H=1400)
+[2026-02-14 18:00:01] [INFO] Placement complete: 3 moved, 0 skipped
+[2026-02-14 18:00:01] [INFO] Script execution completed successfully
+[2026-02-14 18:00:01] [INFO] ========================================
+[2026-02-14 18:00:01] [INFO] Execution Summary:
+[2026-02-14 18:00:01] [INFO]   Duration: 1.2345678 seconds
+[2026-02-14 18:00:01] [INFO]   Errors: 0
+[2026-02-14 18:00:01] [INFO]   Warnings: 0
+[2026-02-14 18:00:01] [INFO] ========================================
 ```
 
-### Typical Log Output
+### Sample Dry Run Output
 
 ```
-[2026-02-14 03:00:00] [INFO] Starting: Window Layout Manager.ps1 v3.3
-[2026-02-14 03:00:00] [INFO] Using Direct Border Overlap approach
-[2026-02-14 03:00:00] [INFO] Default border width: 8px
-[2026-02-14 03:00:01] [INFO] Loading layout profile: 2xChrome
-[2026-02-14 03:00:01] [INFO] Profile contains: 2xchrome
-[2026-02-14 03:00:01] [INFO] Found 2 monitor(s)
-[2026-02-14 03:00:01] [INFO]   Monitor 1: 1920x1080 at (0,0) [Primary]
-[2026-02-14 03:00:01] [INFO]   Monitor 2: 1920x1080 at (1920,0)
-[2026-02-14 03:00:01] [INFO] Found 47 total visible windows
-[2026-02-14 03:00:01] [INFO] Processing monitor 1...
-[2026-02-14 03:00:01] [INFO] Applying rule 'ChromeLeft' (Chrome Left)...
-[2026-02-14 03:00:01] [INFO]   Target: Monitor 1, Position: left
-[2026-02-14 03:00:01] [INFO]   Border overlap: enabled
-[2026-02-14 03:00:01] [INFO]   PRIORITY: Selected window already on target monitor 1
-[2026-02-14 03:00:01] [INFO]   Found window: 'GitHub - Chrome' (PID: 12345)
-[2026-02-14 03:00:01] [INFO]   Current: Monitor 1, 960x1040
-[2026-02-14 03:00:01] [INFO]   Snapped with 8px overlap (zone: X=0, Y=0, W=960, H=1040)
-[2026-02-14 03:00:02] [INFO] Placement complete: 2 moved, 0 skipped
+[2026-02-14 18:00:00] [WARN] DRY RUN MODE - No changes will be made
+...
+[2026-02-14 18:00:00] [INFO]   [DRY RUN] Would snap to left with 8px overlap (X=0, Y=0, W=1280, H=1400)
 ```
 
 ## Error Handling
 
 ### Exit Codes
 
-- **0** - Success (no errors)
-- **1** - General error or execution failure
-- **2** - Missing dependencies (reserved, not currently used)
-- **3** - Configuration error (reserved, not currently used)
+- **0** - Success (all windows positioned)
+- **1** - General error (configuration, execution failure)
+- **2** - Missing dependencies (PowerShell version, OS)
+- **3** - Configuration error (invalid profile, file not found)
 
 ### Common Issues
 
-**No monitors detected**
-- Rare edge case with API failure
-- Script throws exception and exits
-
 **No matching window found**
-- Logged as WARN, not fatal
-- Rule skipped, continues with next rule
-- Check ApplicationName matches process name exactly
+- Process name doesn't match running applications
+- Title pattern doesn't match any windows (check case sensitivity)
+- Window already assigned to another rule
 
-**Monitor number not found**
-- Logged as WARN
-- All rules for that monitor skipped
-- Check monitor numbering (1=primary)
+**Monitor not found**
+- MonitorNumber exceeds available monitors
+- Monitor disconnected during execution
 
-**Title pattern no matches**
-- Logged as DEBUG
-- Rule skipped
-- Verify wildcard pattern syntax
+**Failed to set window placement**
+- Window handle invalid (window closed)
+- Application blocking window movement
+- System policy restriction
+
+**Gaps still visible after overlap**
+- Border width may need adjustment (try 7 or 9)
+- Some applications have custom borders
+- DPI scaling may affect measurements
+
+**Title pattern not matching**
+- v3.3 fixed wildcard conversion bug
+- Check case sensitivity ("GitHub" vs "github")
+- Verify wildcards: `*text*` not `*text`
 
 ## Performance Characteristics
 
-- **Typical Duration:** 2-5 seconds
-- **Timeout Setting:** 30 seconds (not enforced, informational)
-- **Window Enumeration:** O(n) where n = total visible windows
-- **Rule Application:** O(m) where m = number of rules
-- **No User Interaction:** Fully automated, no prompts
+### Execution Time
+
+- Monitor enumeration: <100ms
+- Window enumeration: 100-500ms (depends on window count)
+- Window positioning: 50-100ms per window
+- Total typical: 2-5 seconds for 3-5 windows
+
+### Complexity Analysis
+
+- Monitor enumeration: O(m) where m = monitor count
+- Window enumeration: O(n) where n = total window count
+- Window matching: O(n * r) where r = rule count
+- Overall: O(n * r) - linear with windows and rules
+
+### Resource Usage
+
+- Memory: ~20-30 MB
+- CPU: Low (burst during enumeration)
+- I/O: None (unless loading external config)
 
 ## Dependencies
 
 - Windows PowerShell 5.1 or higher
 - Windows 10/11 or Windows Server 2016+
 - User32.dll (Windows API, always available)
-- Execution Context: User or SYSTEM (both supported)
+- Execution Context: User (requires GUI session)
+- Display: At least 1 monitor
 
 ## Limitations
 
 ### Current Limitations
 
-1. **Process name matching only** - Cannot distinguish multiple instances by command-line arguments
-2. **Fixed border width** - Not dynamically detected per application
-3. **No window state preservation** - Always applies configured layout
-4. **Single execution model** - Not a persistent service
-5. **Left/right/full only** - No quadrant or custom zones
+1. **Three positions only** - left, right, full (no quadrants)
+2. **Fixed border width** - Cannot detect actual DWM border
+3. **Top-level windows only** - No child window support
+4. **Case-sensitive patterns** - Title patterns respect case
+5. **Single pattern per rule** - Cannot specify multiple patterns
+6. **No window class filtering** - Cannot filter by window class name
 
 ### Not Supported
 
-- Custom zone shapes or percentages
-- Window stacking (z-order control)
-- Application launching
-- Process priority changes
-- Multi-desktop support (Windows Virtual Desktops)
-- Per-application border width detection
+- Vertical splits (top/bottom)
+- Quadrant layouts (4-way split)
+- Custom aspect ratios
+- Window stacking (Z-order control)
+- Animated transitions
+- Window state persistence
+- Dynamic border detection
 
 ## Future Enhancements
 
 ### Potential Improvements
 
-1. **Dynamic border detection** - Query DwmGetWindowAttribute per application
-2. **Quadrant zones** - Support 4-way split (top-left, top-right, etc.)
-3. **Custom percentages** - Allow non-50/50 splits
-4. **Window state caching** - Remember original positions for restore
-5. **Watch mode** - Persistent background process responding to display changes
-6. **GUI configuration editor** - Visual layout designer
-7. **Application launcher integration** - Start apps before positioning
-8. **Profile hotkeys** - Apply profiles via keyboard shortcuts
+1. **Dynamic border detection** - Auto-detect DWM border width
+2. **Quadrant support** - top-left, top-right, bottom-left, bottom-right
+3. **Custom zones** - User-defined zone positions and sizes
+4. **GUI configuration editor** - Visual rule builder
+5. **Window state persistence** - Save/restore layouts
+6. **Case-insensitive patterns** - Optional case-insensitive title matching
+7. **Multiple patterns per rule** - OR logic for title patterns
+8. **Window class filtering** - Filter by window class name
+9. **Animated positioning** - Smooth transitions
+10. **Profile auto-detection** - Detect layout based on running apps
+
+### Backward Compatibility
+
+All enhancements should:
+- Maintain existing parameter names
+- Preserve default behavior
+- Support existing configuration files
+- Keep same exit code meanings
 
 ## Version History
 
 ### v3.3 (2026-02-14)
-- Enhanced cross-monitor window selection
-- Strong monitor affinity priority
-- Monitor reservation to prevent conflicts
-- Improved debug logging for selection process
+- **Fixed wildcard to regex conversion bug**
+- Corrected escape sequences in Convert-WildcardToRegex
+- Wildcards now properly convert: `*` -> `.*`, `?` -> `.`
+- Title pattern filtering now works correctly
+- Pattern examples: `*GitHub*` matches "GitHub - Chrome"
 
 ### v3.2 (2026-02-14)
-- Added per-window `UseOverlap` config option
-- Support for mixed overlap scenarios
-- Auto-detect overlap for full-screen windows
+- Improved logging detail
+- Added title pattern visibility in logs
+- Enhanced error messages
 
 ### v3.1 (2026-02-14)
-- Improved window selection logging
-- Better cross-monitor awareness
-- Fixed double-assignment bugs
+- Added UseOverlap per-window control
+- Enhanced window selection algorithm
+- Improved cross-monitor distribution
 
 ### v3.0 (2026-02-14)
-- Complete rewrite using Direct Border Overlap approach
-- Removed DWM API dependencies
-- Added profile system
+- Initial Direct Border Overlap implementation
+- Configurable border width parameter
+- Profile-based configuration system
 - Multi-monitor support
 - Smart window selection
+- DryRun mode
 
 ## Integration Points
 
-### NinjaRMM Integration
+### NinjaRMM Deployment
 
-Deploy as unattended script:
 ```powershell
-# Via NinjaRMM script deployment
-powershell.exe -ExecutionPolicy Bypass -File "Window Layout Manager.ps1" -LayoutProfile "2xChrome" -ErrorAction Stop
+# Deploy as scheduled script
+# Run on user login or display change event
+
+.\Window Layout Manager.ps1 -LayoutProfile 'WebDev'
+
+# Capture exit code for monitoring
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: Window layout failed with code $LASTEXITCODE"
+    exit $LASTEXITCODE
+}
 ```
 
-### Scheduled Task Triggers
+### Scheduled Task
 
-- User logon
-- Display configuration change (via Event ID 112)
-- Manual execution via shortcut
+```xml
+<Task>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+    </LogonTrigger>
+  </Triggers>
+  <Actions>
+    <Exec>
+      <Command>powershell.exe</Command>
+      <Arguments>-ExecutionPolicy Bypass -File "C:\Scripts\Window Layout Manager.ps1" -LayoutProfile "WebDev"</Arguments>
+    </Exec>
+  </Actions>
+</Task>
+```
 
-### Group Policy
+### Group Policy Logon Script
 
-Deploy via GPO logon script with custom profile per user group.
+```powershell
+# GPO: User Configuration > Policies > Windows Settings > Scripts > Logon
+
+powershell.exe -ExecutionPolicy Bypass -File "\\server\scripts\Window Layout Manager.ps1" -LayoutProfile "Corporate"
+```
 
 ## Testing Strategy
 
 ### Test Scenarios
 
-1. **Single monitor, 2 windows (left/right)**
-2. **Dual monitor, mixed positions**
-3. **Same application on multiple monitors**
-4. **Title pattern filtering**
-5. **Missing windows (fewer than rules)**
-6. **Extra windows (more than rules)**
-7. **Maximized window handling**
-8. **Border overlap on/off comparison**
-9. **DryRun mode verification**
-10. **External config file loading**
+1. **Single monitor, 2 windows** - Verify left/right split
+2. **Dual monitor, 4 windows** - Verify cross-monitor distribution
+3. **Title pattern matching** - Verify wildcard filtering works
+4. **No matching windows** - Verify graceful handling
+5. **DryRun mode** - Verify no actual changes
+6. **Border overlap** - Verify no gaps between windows
+7. **Mixed overlap** - Verify UseOverlap per-window control
+8. **Invalid profile** - Verify error handling
+9. **Monitor disconnect** - Verify resilience
+10. **Window close during execution** - Verify error recovery
 
 ### Validation Checks
 
-- Windows positioned without gaps (with UseOverlap=true)
-- Correct monitor assignment
-- No double-assignment of windows
-- Proper handling of missing applications
-- Work area respected (no taskbar overlap)
-- Exit code accuracy
+- No gaps between left/right windows
+- Windows positioned on correct monitors
+- Title patterns filter correctly (case-sensitive)
+- Wildcard conversion works: `*test*` -> `.*test.*`
+- Maximized windows fill entire work area
+- DryRun makes no changes
+- Exit codes correct
+- Logs show expected operations
 
-## Related Scripts
+## Related Documentation
 
-- **Window Layout Manager GUI.ps1** - Visual interface for layout design
-- **Window Layout Manager 3.ps1** - Latest development version (identical to main)
+- **Get-ApplicationInstanceCount-Plan.md** - Companion script for counting windows
+- **NinjaRMM Integration Guide** - Deployment documentation
 
 ## Conclusion
 
-The Window Layout Manager provides a robust, API-driven approach to automated window positioning with minimal user interaction. The Direct Border Overlap technique delivers gap-free adjacent windows without complex DWM calculations. The profile system and multi-monitor support make it suitable for diverse enterprise and personal productivity scenarios.
+Window Layout Manager v3.3 provides a robust, production-ready solution for automated window positioning across multiple monitors. The Direct Border Overlap approach eliminates gaps while maintaining simplicity and compatibility.
 
 Key strengths:
-- Simple, maintainable architecture
-- No external dependencies
-- Predictable behavior
-- Extensive logging
-- Production-ready error handling
+- No DWM API complexity
+- Configurable border overlap
+- Per-window overlap control
+- Profile-based configuration
+- Smart window selection
+- Cross-monitor awareness
+- **Fixed wildcard pattern matching (v3.3)**
+- Comprehensive logging
+- DryRun mode for testing
 
-Ideal for environments requiring consistent window layouts across workstations, especially when integrated with endpoint management tools like NinjaRMM.
+Ideal for power users, developers, and enterprise deployments requiring consistent window layouts across login sessions.

@@ -55,7 +55,7 @@
 .NOTES
     Script Name:    Window Layout Manager 3.ps1
     Author:         Windows Automation Framework
-    Version:        3.3
+    Version:        3.2
     Creation Date:  2026-02-14
     Last Modified:  2026-02-14
     
@@ -114,7 +114,7 @@ param(
 # CONFIGURATION
 # ============================================================================
 
-$ScriptVersion = "3.3"
+$ScriptVersion = "3.2"
 $LogLevel = "INFO"
 $VerbosePreference = 'SilentlyContinue'
 $DefaultTimeout = 30
@@ -817,18 +817,16 @@ function Set-WindowSnapBorderOverlap {
 function Select-WindowForRule {
     <#
     .SYNOPSIS
-        Smart window selection with strong cross-monitor priority
+        Improved window selection with cross-monitor awareness
     .DESCRIPTION
         Finds an unassigned window matching the process name and optional title pattern.
+        Priority:
+        1. Windows matching title pattern on target monitor
+        2. Windows matching title pattern on any monitor
+        3. Windows without title pattern on target monitor  
+        4. Windows without title pattern on any monitor
         
-        NEW: Strongly prioritizes windows ALREADY on the target monitor to prevent
-        cross-monitor conflicts when multiple rules target the same application.
-        
-        Selection priority:
-        1. Exact match: Title pattern + already on target monitor
-        2. Title pattern match on any monitor (will be moved)
-        3. No title pattern + already on target monitor
-        4. No title pattern on any monitor (fallback)
+        This ensures windows are distributed across monitors correctly.
     #>
     [CmdletBinding()]
     param(
@@ -836,10 +834,7 @@ function Select-WindowForRule {
         [array]$Windows,
         
         [Parameter(Mandatory=$true)]
-        [hashtable]$Rule,
-        
-        [Parameter(Mandatory=$true)]
-        [hashtable]$AllRules
+        [hashtable]$Rule
     )
     
     $Candidates = $Windows | Where-Object { 
@@ -855,50 +850,26 @@ function Select-WindowForRule {
     
     if ($Rule.TitlePattern) {
         $RegexPattern = Convert-WildcardToRegex -Pattern $Rule.TitlePattern
+        
         Write-Log "  Filtering by title pattern: '$($Rule.TitlePattern)'" -Level DEBUG
         
-        $TitleMatches = $Candidates | Where-Object { $_.Title -match $RegexPattern }
+        $Candidates = $Candidates | Where-Object { $_.Title -match $RegexPattern }
         
-        if ($TitleMatches.Count -eq 0) {
+        if ($Candidates.Count -eq 0) {
             Write-Log "  No windows matched title pattern '$($Rule.TitlePattern)'" -Level DEBUG
             return $null
         }
         
-        Write-Log "  Found $($TitleMatches.Count) window(s) matching title pattern" -Level DEBUG
-        $Candidates = $TitleMatches
+        Write-Log "  Found $($Candidates.Count) window(s) matching title pattern" -Level DEBUG
     }
     
     $OnTargetMonitor = $Candidates | Where-Object { $_.MonitorNumber -eq $Rule.MonitorNumber }
-    if ($OnTargetMonitor.Count -gt 0) {
-        Write-Log "  PRIORITY: Selected window already on target monitor $($Rule.MonitorNumber)" -Level INFO
+    if ($OnTargetMonitor) {
+        Write-Log "  Selected window already on target monitor $($Rule.MonitorNumber)" -Level DEBUG
         return $OnTargetMonitor | Select-Object -First 1
     }
     
-    $OtherRulesForApp = $AllRules.GetEnumerator() | Where-Object {
-        $_.Value.ApplicationName -eq $Rule.ApplicationName -and
-        $_.Value.MonitorNumber -ne $Rule.MonitorNumber
-    }
-    
-    if ($OtherRulesForApp) {
-        $ReservedMonitors = $OtherRulesForApp.Value.MonitorNumber | Select-Object -Unique
-        Write-Log "  Note: Application '$($Rule.ApplicationName)' also has rules on monitor(s): $($ReservedMonitors -join ', ')" -Level DEBUG
-        
-        foreach ($ReservedMon in $ReservedMonitors) {
-            $CandidatesOnReserved = $Candidates | Where-Object { $_.MonitorNumber -eq $ReservedMon }
-            
-            if ($CandidatesOnReserved.Count -gt 0) {
-                Write-Log "  Skipping $($CandidatesOnReserved.Count) window(s) on monitor $ReservedMon (reserved for other rule)" -Level DEBUG
-                $Candidates = $Candidates | Where-Object { $_.MonitorNumber -ne $ReservedMon }
-            }
-        }
-    }
-    
-    if ($Candidates.Count -eq 0) {
-        Write-Log "  No suitable windows remain after monitor reservation check" -Level WARN
-        return $null
-    }
-    
-    Write-Log "  Selecting window from available pool (will move to monitor $($Rule.MonitorNumber))" -Level DEBUG
+    Write-Log "  No window on target monitor $($Rule.MonitorNumber), selecting from any monitor" -Level DEBUG
     return $Candidates | Select-Object -First 1
 }
 
@@ -978,7 +949,7 @@ try {
             $OverlapStatus = if ($null -eq $UseOverlap) { "auto" } elseif ($UseOverlap) { "enabled" } else { "disabled" }
             Write-Log "  Border overlap: $OverlapStatus" -Level INFO
             
-            $Window = Select-WindowForRule -Windows $Windows -Rule $Rule -AllRules $WindowLayoutConfig
+            $Window = Select-WindowForRule -Windows $Windows -Rule $Rule
             
             if (-not $Window) {
                 Write-Log "  No matching window found" -Level WARN

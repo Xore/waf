@@ -9,12 +9,13 @@
     
     Key features:
     - Matches Windows display settings monitor numbering
-    - Supports left/right/full window zones
+    - Supports left/right/full window zones with true Windows snap behavior
     - Automatically snaps left/right windows together without gaps
     - Accounts for taskbar in all calculations
     - Only moves exactly the number of windows declared in configuration
     - Handles multiple windows of same application with distinct placement
     - Supports wildcard patterns in TitlePattern (e.g., *Chrome*, Jira*)
+    - Uses proper restore/maximize states (no keystroke forwarding)
     
     This script runs unattended without user interaction.
 
@@ -35,7 +36,7 @@
 .NOTES
     Script Name:    Window Layout Manager 1.ps1
     Author:         Windows Automation Framework
-    Version:        1.1
+    Version:        1.2
     Creation Date:  2026-02-14
     Last Modified:  2026-02-14
     
@@ -77,7 +78,7 @@ param(
 # CONFIGURATION
 # ============================================================================
 
-$ScriptVersion = "1.1"
+$ScriptVersion = "1.2"
 $LogLevel = "INFO"
 $VerbosePreference = 'SilentlyContinue'
 $DefaultTimeout = 30
@@ -178,6 +179,20 @@ public struct DISPLAY_DEVICE {
     public string DeviceKey;
 }
 
+public struct WINDOWPLACEMENT {
+    public uint length;
+    public uint flags;
+    public uint showCmd;
+    public POINT ptMinPosition;
+    public POINT ptMaxPosition;
+    public RECT rcNormalPosition;
+}
+
+public struct POINT {
+    public int X;
+    public int Y;
+}
+
 public class Win32 {
     public delegate bool MonitorEnumDelegate(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
     
@@ -203,10 +218,22 @@ public class Win32 {
     public static extern bool IsIconic(IntPtr hWnd);
     
     [DllImport("user32.dll")]
+    public static extern bool IsZoomed(IntPtr hWnd);
+    
+    [DllImport("user32.dll")]
     public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
     
     [DllImport("user32.dll")]
     public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+    
+    [DllImport("user32.dll")]
+    public static extern bool GetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT lpwndpl);
+    
+    [DllImport("user32.dll")]
+    public static extern bool SetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT lpwndpl);
+    
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
@@ -219,10 +246,20 @@ public class Win32 {
     
     public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
     
+    // Constants
     public const uint MONITOR_DEFAULTTONEAREST = 2;
     public const uint SWP_NOZORDER = 0x0004;
     public const uint SWP_NOACTIVATE = 0x0010;
     public const uint SWP_SHOWWINDOW = 0x0040;
+    public const uint SWP_FRAMECHANGED = 0x0020;
+    
+    // ShowWindow constants
+    public const int SW_RESTORE = 9;
+    public const int SW_MAXIMIZE = 3;
+    public const int SW_SHOWNOACTIVATE = 4;
+    
+    // Window placement constants
+    public const uint WPF_ASYNCWINDOWPLACEMENT = 0x0004;
 }
 "@
 
@@ -440,12 +477,16 @@ function Get-ApplicationWindows {
                         $hMonitor = [Win32]::MonitorFromWindow($hWnd, [Win32]::MONITOR_DEFAULTTONEAREST)
                         $MonitorObj = $Monitors | Where-Object { $_.Handle -eq $hMonitor } | Select-Object -First 1
                         
+                        # Check if window is maximized
+                        $IsMaximized = [Win32]::IsZoomed($hWnd)
+                        
                         $WindowObj = [PSCustomObject]@{
                             Handle        = $hWnd
                             ProcessId     = $ProcessId
                             ProcessName   = $Process.ProcessName
                             Title         = Get-WindowTitle -hWnd $hWnd
                             MonitorNumber = if ($MonitorObj) { $MonitorObj.DisplayNumber } else { 0 }
+                            IsMaximized   = $IsMaximized
                             Rect          = [PSCustomObject]@{
                                 X      = $Rect.Left
                                 Y      = $Rect.Top
@@ -526,15 +567,23 @@ function Get-ZonesForMonitor {
     return $Zones
 }
 
-function Move-WindowToZone {
+function Set-WindowSnap {
     <#
     .SYNOPSIS
-        Moves a window to specified zone rectangle
+        Snaps window to zone using proper Windows snap behavior
+    .DESCRIPTION
+        Uses WINDOWPLACEMENT to properly snap windows like Windows Snap Assist.
+        For 'full' position, maximizes the window.
+        For 'left' and 'right', restores window and positions to zone.
+        This mimics Win+Left, Win+Right, Win+Up behavior without keystrokes.
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)]
         [IntPtr]$hWnd,
+        
+        [Parameter(Mandatory=$true)]
+        [string]$Position,
         
         [Parameter(Mandatory=$true)]
         [hashtable]$Zone,
@@ -544,20 +593,67 @@ function Move-WindowToZone {
     )
     
     if ($DryRun) {
-        Write-Log "  [DRY RUN] Would move to X=$($Zone.X), Y=$($Zone.Y), W=$($Zone.Width), H=$($Zone.Height)" -Level INFO
+        Write-Log "  [DRY RUN] Would snap to $Position (X=$($Zone.X), Y=$($Zone.Y), W=$($Zone.Width), H=$($Zone.Height))" -Level INFO
         return $true
     }
     
-    $Flags = [Win32]::SWP_NOZORDER -bor [Win32]::SWP_NOACTIVATE -bor [Win32]::SWP_SHOWWINDOW
-    $Result = [Win32]::SetWindowPos($hWnd, [IntPtr]::Zero, $Zone.X, $Zone.Y, $Zone.Width, $Zone.Height, $Flags)
-    
-    if ($Result) {
-        Write-Log "  Moved to X=$($Zone.X), Y=$($Zone.Y), W=$($Zone.Width), H=$($Zone.Height)" -Level INFO
-    } else {
-        Write-Log "  Failed to move window" -Level WARN
+    try {
+        if ($Position -eq 'full') {
+            # Maximize window
+            Write-Log "  Maximizing window" -Level DEBUG
+            $Result = [Win32]::ShowWindow($hWnd, [Win32]::SW_MAXIMIZE)
+            
+            if ($Result) {
+                Write-Log "  Window maximized successfully" -Level INFO
+            } else {
+                Write-Log "  Failed to maximize window" -Level WARN
+                return $false
+            }
+        } else {
+            # Left or Right snap: restore then position
+            Write-Log "  Snapping to $Position" -Level DEBUG
+            
+            # Get current window placement
+            $Placement = New-Object WINDOWPLACEMENT
+            $Placement.length = [System.Runtime.InteropServices.Marshal]::SizeOf($Placement)
+            
+            if (-not [Win32]::GetWindowPlacement($hWnd, [ref]$Placement)) {
+                Write-Log "  Failed to get window placement" -Level WARN
+                return $false
+            }
+            
+            # Set to normal (restored) state
+            $Placement.showCmd = [Win32]::SW_RESTORE
+            
+            # Set the normal position to the snap zone
+            $Placement.rcNormalPosition.Left = $Zone.X
+            $Placement.rcNormalPosition.Top = $Zone.Y
+            $Placement.rcNormalPosition.Right = $Zone.X + $Zone.Width
+            $Placement.rcNormalPosition.Bottom = $Zone.Y + $Zone.Height
+            
+            $Placement.flags = 0
+            
+            # Apply the placement
+            if ([Win32]::SetWindowPlacement($hWnd, [ref]$Placement)) {
+                Write-Log "  Snapped to X=$($Zone.X), Y=$($Zone.Y), W=$($Zone.Width), H=$($Zone.Height)" -Level INFO
+                
+                # Force frame update
+                $Flags = [Win32]::SWP_NOZORDER -bor [Win32]::SWP_NOACTIVATE -bor [Win32]::SWP_FRAMECHANGED
+                [Win32]::SetWindowPos($hWnd, [IntPtr]::Zero, $Zone.X, $Zone.Y, $Zone.Width, $Zone.Height, $Flags) | Out-Null
+                
+                return $true
+            } else {
+                Write-Log "  Failed to set window placement" -Level WARN
+                return $false
+            }
+        }
+        
+        return $true
+        
+    } catch {
+        Write-Log "  Error during snap operation: $_" -Level ERROR
+        return $false
     }
-    
-    return $Result
 }
 
 function Select-WindowForRule {
@@ -710,13 +806,13 @@ try {
             $Window.AssignedToRule = $RuleName
             
             Write-Log "  Found window: '$($Window.Title)' (PID: $($Window.ProcessId))" -Level INFO
-            Write-Log "  Current: Monitor $($Window.MonitorNumber), $($Window.Rect.Width)x$($Window.Rect.Height)" -Level INFO
+            Write-Log "  Current: Monitor $($Window.MonitorNumber), $($Window.Rect.Width)x$($Window.Rect.Height)$(if($Window.IsMaximized){' [Maximized]'})" -Level INFO
             
             # Get target zone
             $Zone = $Zones[$Rule.Position]
             
-            # Move window
-            if (Move-WindowToZone -hWnd $Window.Handle -Zone $Zone -DryRun:$DryRun) {
+            # Snap window
+            if (Set-WindowSnap -hWnd $Window.Handle -Position $Rule.Position -Zone $Zone -DryRun:$DryRun) {
                 $MovedCount++
             } else {
                 $SkippedCount++

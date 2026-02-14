@@ -11,6 +11,7 @@
     - Matches Windows display settings monitor numbering
     - Supports left/right/full window zones with true Windows snap behavior
     - Automatically snaps left/right windows together without gaps
+    - Compensates for DWM invisible extended window frames
     - Accounts for taskbar in all calculations
     - Only moves exactly the number of windows declared in configuration
     - Handles multiple windows of same application with distinct placement
@@ -47,7 +48,7 @@
 .NOTES
     Script Name:    Window Layout Manager 1.ps1
     Author:         Windows Automation Framework
-    Version:        1.3
+    Version:        1.4
     Creation Date:  2026-02-14
     Last Modified:  2026-02-14
     
@@ -62,7 +63,7 @@
     Dependencies:
         - Windows PowerShell 5.1 or higher
         - Windows 10/11 or Windows Server 2016+
-        - User32.dll (Windows API)
+        - User32.dll and Dwmapi.dll (Windows API)
     
     Exit Codes:
         0 - Success
@@ -92,7 +93,7 @@ param(
 # CONFIGURATION
 # ============================================================================
 
-$ScriptVersion = "1.3"
+$ScriptVersion = "1.4"
 $LogLevel = "INFO"
 $VerbosePreference = 'SilentlyContinue'
 $DefaultTimeout = 30
@@ -413,6 +414,9 @@ public class Win32 {
     [DllImport("user32.dll")]
     public static extern bool EnumDisplayDevices(string lpDevice, uint iDevNum, ref DISPLAY_DEVICE lpDisplayDevice, uint dwFlags);
     
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, out RECT pvAttribute, int cbAttribute);
+    
     public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
     
     // Constants
@@ -429,6 +433,9 @@ public class Win32 {
     
     // Window placement constants
     public const uint WPF_ASYNCWINDOWPLACEMENT = 0x0004;
+    
+    // DWM attributes
+    public const int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
 }
 "@
 
@@ -465,6 +472,64 @@ function Write-Log {
             Write-Host $LogMessage -ForegroundColor Red
             $script:ErrorCount++ 
         }
+    }
+}
+
+function Get-DwmFrameExtent {
+    <#
+    .SYNOPSIS
+        Gets DWM extended frame bounds for a window
+    .DESCRIPTION
+        Windows Desktop Window Manager adds invisible borders around windows.
+        This function retrieves the actual visible window frame, which differs
+        from GetWindowRect. Used to compensate for snap positioning.
+    .PARAMETER hWnd
+        Window handle
+    .OUTPUTS
+        Hashtable with Left, Top, Right, Bottom offsets from window rect
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [IntPtr]$hWnd
+    )
+    
+    try {
+        # Get standard window rect
+        $WindowRect = New-Object RECT
+        if (-not [Win32]::GetWindowRect($hWnd, [ref]$WindowRect)) {
+            return @{ Left = 0; Top = 0; Right = 0; Bottom = 0 }
+        }
+        
+        # Get DWM extended frame bounds (actual visible frame)
+        $DwmRect = New-Object RECT
+        $Result = [Win32]::DwmGetWindowAttribute(
+            $hWnd, 
+            [Win32]::DWMWA_EXTENDED_FRAME_BOUNDS,
+            [ref]$DwmRect,
+            [System.Runtime.InteropServices.Marshal]::SizeOf($DwmRect)
+        )
+        
+        if ($Result -ne 0) {
+            # DWM call failed, no compensation needed
+            return @{ Left = 0; Top = 0; Right = 0; Bottom = 0 }
+        }
+        
+        # Calculate invisible border sizes
+        $Extent = @{
+            Left   = $DwmRect.Left - $WindowRect.Left
+            Top    = $DwmRect.Top - $WindowRect.Top
+            Right  = $WindowRect.Right - $DwmRect.Right
+            Bottom = $WindowRect.Bottom - $DwmRect.Bottom
+        }
+        
+        Write-Log "  DWM frame extent: L=$($Extent.Left) T=$($Extent.Top) R=$($Extent.Right) B=$($Extent.Bottom)" -Level DEBUG
+        
+        return $Extent
+        
+    } catch {
+        Write-Log "  Failed to get DWM frame extent: $_" -Level DEBUG
+        return @{ Left = 0; Top = 0; Right = 0; Bottom = 0 }
     }
 }
 
@@ -835,9 +900,9 @@ function Set-WindowSnap {
         Snaps window to zone using proper Windows snap behavior
     .DESCRIPTION
         Uses WINDOWPLACEMENT to properly snap windows like Windows Snap Assist.
+        Compensates for DWM extended frame bounds to eliminate visible gaps.
         For 'full' position, maximizes the window.
         For 'left' and 'right', restores window and positions to zone.
-        This mimics Win+Left, Win+Right, Win+Up behavior without keystrokes.
     #>
     [CmdletBinding()]
     param(
@@ -872,8 +937,11 @@ function Set-WindowSnap {
                 return $false
             }
         } else {
-            # Left or Right snap: restore then position
+            # Left or Right snap: restore then position with DWM compensation
             Write-Log "  Snapping to $Position" -Level DEBUG
+            
+            # Get DWM frame extent (invisible borders)
+            $FrameExtent = Get-DwmFrameExtent -hWnd $hWnd
             
             # Get current window placement
             $Placement = New-Object WINDOWPLACEMENT
@@ -887,21 +955,29 @@ function Set-WindowSnap {
             # Set to normal (restored) state
             $Placement.showCmd = [Win32]::SW_RESTORE
             
-            # Set the normal position to the snap zone
-            $Placement.rcNormalPosition.Left = $Zone.X
-            $Placement.rcNormalPosition.Top = $Zone.Y
-            $Placement.rcNormalPosition.Right = $Zone.X + $Zone.Width
-            $Placement.rcNormalPosition.Bottom = $Zone.Y + $Zone.Height
+            # Compensate for DWM invisible borders
+            # Expand the window rect by the invisible border sizes so that
+            # the VISIBLE part aligns perfectly with the zone
+            $CompensatedX = $Zone.X - $FrameExtent.Left
+            $CompensatedY = $Zone.Y - $FrameExtent.Top
+            $CompensatedWidth = $Zone.Width + $FrameExtent.Left + $FrameExtent.Right
+            $CompensatedHeight = $Zone.Height + $FrameExtent.Top + $FrameExtent.Bottom
+            
+            # Set the normal position to the snap zone with compensation
+            $Placement.rcNormalPosition.Left = $CompensatedX
+            $Placement.rcNormalPosition.Top = $CompensatedY
+            $Placement.rcNormalPosition.Right = $CompensatedX + $CompensatedWidth
+            $Placement.rcNormalPosition.Bottom = $CompensatedY + $CompensatedHeight
             
             $Placement.flags = 0
             
             # Apply the placement
             if ([Win32]::SetWindowPlacement($hWnd, [ref]$Placement)) {
-                Write-Log "  Snapped to X=$($Zone.X), Y=$($Zone.Y), W=$($Zone.Width), H=$($Zone.Height)" -Level INFO
+                Write-Log "  Snapped with DWM compensation (visible: X=$($Zone.X), Y=$($Zone.Y), W=$($Zone.Width), H=$($Zone.Height))" -Level INFO
                 
                 # Force frame update
                 $Flags = [Win32]::SWP_NOZORDER -bor [Win32]::SWP_NOACTIVATE -bor [Win32]::SWP_FRAMECHANGED
-                [Win32]::SetWindowPos($hWnd, [IntPtr]::Zero, $Zone.X, $Zone.Y, $Zone.Width, $Zone.Height, $Flags) | Out-Null
+                [Win32]::SetWindowPos($hWnd, [IntPtr]::Zero, $CompensatedX, $CompensatedY, $CompensatedWidth, $CompensatedHeight, $Flags) | Out-Null
                 
                 return $true
             } else {

@@ -4,7 +4,7 @@
 
 Get-ApplicationInstanceCount is a lightweight PowerShell utility that counts running instances of a specified application. It supports optional window title filtering using wildcard patterns and returns a clean integer count suitable for monitoring, alerting, and automation workflows.
 
-**Current Version:** 1.0  
+**Current Version:** 1.2  
 **Script:** `scripts/utilities/Get-ApplicationInstanceCount.ps1`  
 **Status:** Production-ready
 
@@ -30,7 +30,7 @@ Matches windows by process name (without .exe extension):
 
 Optional wildcard pattern to filter by window title:
 - Supports `*` (any characters) and `?` (single character)
-- Case-sensitive regex conversion
+- Case-sensitive regex matching after conversion
 - Examples: `*GitHub*`, `Document1*`, `*Meeting - Teams`
 - If omitted, counts all windows of the process
 
@@ -70,6 +70,7 @@ With `-IncludeMinimized` switch:
 - Description: Wildcard pattern for window title matching
 - Supports `*` and `?` wildcards
 - Converted to regex internally
+- Case-sensitive matching
 
 ### IncludeMinimized (Optional)
 
@@ -102,12 +103,12 @@ With `-IncludeMinimized` switch:
 
 ```
 [2026-02-14 18:00:00] [INFO] ========================================
-[2026-02-14 18:00:00] [INFO] Get-ApplicationInstanceCount v1.0
+[2026-02-14 18:00:00] [INFO] Get-ApplicationInstanceCount v1.2
 [2026-02-14 18:00:00] [INFO] ========================================
 [2026-02-14 18:00:00] [INFO] Starting enumeration for process: chrome
 [2026-02-14 18:00:00] [INFO] Using title pattern: '*GitHub*' (regex: '.*GitHub.*')
 [2026-02-14 18:00:00] [INFO] Excluding minimized windows
-[2026-02-14 18:00:00] [INFO] Window matched - Process: chrome, Title: 'GitHub - Google Chrome'
+[2026-02-14 18:00:00] [INFO]   Window matched - Process: chrome, Title: 'GitHub - Google Chrome'
 [2026-02-14 18:00:00] [INFO] Enumeration complete - Found 1 instance(s)
 1
 [2026-02-14 18:00:00] [INFO] ========================================
@@ -136,7 +137,7 @@ On error, outputs `0` and exits with code `0`:
 
 ```powershell
 .\Get-ApplicationInstanceCount.ps1 -ProcessName 'chrome'
-# Output: 3
+# Output: 3 (with logs)
 ```
 
 Counts all visible Chrome windows.
@@ -145,7 +146,7 @@ Counts all visible Chrome windows.
 
 ```powershell
 .\Get-ApplicationInstanceCount.ps1 -ProcessName 'chrome' -TitlePattern '*GitHub*'
-# Output: 1
+# Output: 1 (with logs)
 ```
 
 Counts Chrome windows with "GitHub" in title.
@@ -290,10 +291,14 @@ Validate application launched with specific window.
 function Convert-WildcardToRegex {
     param([string]$Pattern)
     
-    $Escaped = [regex]::Escape($Pattern)  # Escape special chars
-    $Escaped = $Escaped -replace '\\\\\\*', '.*'  # * -> .*
-    $Escaped = $Escaped -replace '\\\\\\?', '.'   # ? -> .
-    return $Escaped
+    if ($Pattern -match '[*?]') {
+        $Escaped = [regex]::Escape($Pattern)  # Escape special chars
+        $Escaped = $Escaped -replace '\*', '.*'  # * -> .*
+        $Escaped = $Escaped -replace '\?', '.'   # ? -> .
+        return $Escaped
+    } else {
+        return [regex]::Escape($Pattern)
+    }
 }
 ```
 
@@ -303,15 +308,16 @@ function Convert-WildcardToRegex {
 |---|---|---|---|
 | `*GitHub*` | `.*GitHub.*` | "GitHub - Chrome", "MyGitHub" | "chrome", "hub" |
 | `Document1*` | `Document1.*` | "Document1.docx", "Document10" | "Document2.docx" |
-| `*.xlsx*` | `.*\\.xlsx.*` | "Report.xlsx - Excel" | "Report.docx" |
+| `*.xlsx*` | `.*\.xlsx.*` | "Report.xlsx - Excel" | "Report.docx" |
 | `???-???` | `...-...` | "ABC-123" | "AB-12", "ABCD-1234" |
+| `*How Fast*` | `.*How Fast.*` | "How Fast Can You..." | "how fast" (lowercase) |
 
 ### Case Sensitivity
 
 - Process name matching: **Case-insensitive**
 - Title pattern matching: **Case-sensitive** (regex default)
 
-To make title pattern case-insensitive, use:
+To make title pattern case-insensitive:
 ```powershell
 $WindowTitle -match "(?i)$TitleRegex"
 ```
@@ -373,7 +379,8 @@ $WindowTitle -match "(?i)$TitleRegex"
 
 **INFO** - Standard operational messages
 - Startup, parameters, matches found
-- Only shown with -Verbose or without -Quiet
+- Shown by default unless -Quiet specified
+- Output to stdout with cyan color
 
 **WARN** - Non-fatal issues
 - Currently unused (no warning scenarios)
@@ -385,10 +392,10 @@ $WindowTitle -match "(?i)$TitleRegex"
 ### Verbosity Control
 
 ```powershell
-# Standard output (INFO logged)
-.\Get-ApplicationInstanceCount.ps1 -ProcessName 'chrome' -Verbose
+# Standard output with logs (default)
+.\Get-ApplicationInstanceCount.ps1 -ProcessName 'chrome'
 
-# Quiet mode (no logs)
+# Quiet mode - no logs, only count
 .\Get-ApplicationInstanceCount.ps1 -ProcessName 'chrome' -Quiet
 
 # Capture output without logs
@@ -511,15 +518,38 @@ workflow Monitor-Applications {
 }
 ```
 
+## Version History
+
+### v1.2 (2026-02-14)
+- Fixed wildcard to regex conversion bug
+- Corrected escape sequences in pattern matching
+- Wildcards now properly convert: `*` -> `.*`, `?` -> `.`
+- Fixed `-Quiet` flag - logs now show by default, suppressed with flag
+- Changed INFO log output from Write-Verbose to Write-Host
+
+### v1.1 (2026-02-14)
+- Fixed Quiet flag behavior
+- INFO logs now visible by default
+- Quiet mode properly suppresses all logs
+
+### v1.0 (2026-02-14)
+- Initial release
+- Process name matching
+- Wildcard title pattern support
+- Include/exclude minimized windows
+- Quiet mode for scripting
+- Verbose logging
+
 ## Limitations
 
 ### Current Limitations
 
 1. **Process name only** - Cannot distinguish by executable path
 2. **Single pattern** - Only one title pattern per execution
-3. **No process arguments** - Cannot filter by command-line args
-4. **No child window support** - Only top-level windows counted
-5. **No UWP app detection** - Universal Windows Platform apps may not be detected correctly
+3. **Case-sensitive title matching** - Pattern matching respects case
+4. **No process arguments** - Cannot filter by command-line args
+5. **No child window support** - Only top-level windows counted
+6. **No UWP app detection** - Universal Windows Platform apps may not be detected correctly
 
 ### Not Supported
 
@@ -563,16 +593,18 @@ All enhancements should maintain backward compatibility:
 7. **Minimized windows excluded** - Default behavior
 8. **Minimized windows included** - With -IncludeMinimized
 9. **Quiet mode** - Only integer output
-10. **Verbose mode** - Full logging
+10. **Standard mode** - Full logging with cyan color
+11. **Case-sensitive patterns** - `*GitHub*` matches "GitHub", not "github"
 
 ### Validation Checks
 
 - Count matches manual Task Manager count
 - Title pattern correctly filters windows
+- Wildcard conversion works: `*test*` -> `.*test.*`
 - Minimized window handling correct
 - No errors on empty results
 - Clean integer output in Quiet mode
-- Verbose logging appears when expected
+- Logs appear by default (not in Quiet mode)
 
 ## Dependencies
 
@@ -581,19 +613,9 @@ All enhancements should maintain backward compatibility:
 - User32.dll (Windows API, always available)
 - Execution Context: User or SYSTEM (both supported)
 
-## Version History
-
-### v1.0 (2026-02-14)
-- Initial release
-- Process name matching
-- Wildcard title pattern support
-- Include/exclude minimized windows
-- Quiet mode for scripting
-- Verbose logging
-
 ## Related Scripts
 
-- **Window Layout Manager.ps1** - Positions application windows
+- **Window Layout Manager.ps1** - Positions application windows (uses same pattern matching)
 - **Get-Process** - Native PowerShell cmdlet (no window title filtering)
 
 ## Conclusion
@@ -606,5 +628,7 @@ Key strengths:
 - Fast execution (<1 second)
 - Clean output for scripting
 - Comprehensive logging when needed
+- Fixed wildcard pattern matching (v1.2)
+- Proper logging control with -Quiet flag
 
 Ideal for NinjaRMM monitoring, pre-deployment checks, resource management, and automated validation workflows.

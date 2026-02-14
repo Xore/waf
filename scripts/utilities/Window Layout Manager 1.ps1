@@ -17,6 +17,7 @@
     - Supports wildcard patterns in TitlePattern (e.g., *Chrome*, Jira*)
     - Uses proper restore/maximize states (no keystroke forwarding)
     - Profile-based configurations via -LayoutProfile parameter
+    - Brings windows to foreground after relocation
     
     This script runs unattended without user interaction.
 
@@ -47,7 +48,7 @@
 .NOTES
     Script Name:    Window Layout Manager 1.ps1
     Author:         Windows Automation Framework
-    Version:        1.3
+    Version:        1.4
     Creation Date:  2026-02-14
     Last Modified:  2026-02-14
     
@@ -92,7 +93,7 @@ param(
 # CONFIGURATION
 # ============================================================================
 
-$ScriptVersion = "1.3"
+$ScriptVersion = "1.4"
 $LogLevel = "INFO"
 $VerbosePreference = 'SilentlyContinue'
 $DefaultTimeout = 30
@@ -404,6 +405,21 @@ public class Win32 {
     [DllImport("user32.dll")]
     public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     
+    [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
+    
+    [DllImport("user32.dll")]
+    public static extern bool BringWindowToTop(IntPtr hWnd);
+    
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetForegroundWindow();
+    
+    [DllImport("user32.dll")]
+    public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+    
+    [DllImport("kernel32.dll")]
+    public static extern uint GetCurrentThreadId();
+    
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
     
@@ -421,11 +437,15 @@ public class Win32 {
     public const uint SWP_NOACTIVATE = 0x0010;
     public const uint SWP_SHOWWINDOW = 0x0040;
     public const uint SWP_FRAMECHANGED = 0x0020;
+    public const IntPtr HWND_TOP = 0;
+    public const IntPtr HWND_TOPMOST = -1;
+    public const IntPtr HWND_NOTOPMOST = -2;
     
     // ShowWindow constants
     public const int SW_RESTORE = 9;
     public const int SW_MAXIMIZE = 3;
     public const int SW_SHOWNOACTIVATE = 4;
+    public const int SW_SHOW = 5;
     
     // Window placement constants
     public const uint WPF_ASYNCWINDOWPLACEMENT = 0x0004;
@@ -530,6 +550,75 @@ function Get-LayoutConfiguration {
     # Priority 3: Default
     Write-Log "Using default configuration" -Level INFO
     return $DefaultWindowLayoutConfig
+}
+
+function Set-ForegroundWindowForced {
+    <#
+    .SYNOPSIS
+        Brings a window to the foreground using multiple techniques
+    .DESCRIPTION
+        Uses thread attachment and multiple API calls to reliably
+        bring a window to the foreground, even if it belongs to
+        another process.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [IntPtr]$hWnd,
+        
+        [Parameter(Mandatory=$false)]
+        [switch]$DryRun
+    )
+    
+    if ($DryRun) {
+        Write-Log "  [DRY RUN] Would bring window to foreground" -Level DEBUG
+        return $true
+    }
+    
+    try {
+        # Get current foreground window and its thread
+        $ForegroundWindow = [Win32]::GetForegroundWindow()
+        $CurrentThreadId = [Win32]::GetCurrentThreadId()
+        
+        # Get target window thread
+        $TargetProcessId = 0
+        $TargetThreadId = [Win32]::GetWindowThreadProcessId($hWnd, [ref]$TargetProcessId)
+        
+        # Attach to the foreground window's thread to gain permission to change focus
+        if ($ForegroundWindow -ne [IntPtr]::Zero -and $ForegroundWindow -ne $hWnd) {
+            $ForegroundThreadId = [Win32]::GetWindowThreadProcessId($ForegroundWindow, [ref]$TargetProcessId)
+            
+            if ($ForegroundThreadId -ne $CurrentThreadId) {
+                [Win32]::AttachThreadInput($CurrentThreadId, $ForegroundThreadId, $true) | Out-Null
+            }
+        }
+        
+        # Bring window to top and set as foreground
+        [Win32]::BringWindowToTop($hWnd) | Out-Null
+        [Win32]::ShowWindow($hWnd, [Win32]::SW_SHOW) | Out-Null
+        $Result = [Win32]::SetForegroundWindow($hWnd)
+        
+        # Detach thread input
+        if ($ForegroundWindow -ne [IntPtr]::Zero -and $ForegroundWindow -ne $hWnd) {
+            $ForegroundThreadId = [Win32]::GetWindowThreadProcessId($ForegroundWindow, [ref]$TargetProcessId)
+            
+            if ($ForegroundThreadId -ne $CurrentThreadId) {
+                [Win32]::AttachThreadInput($CurrentThreadId, $ForegroundThreadId, $false) | Out-Null
+            }
+        }
+        
+        if ($Result) {
+            Write-Log "  Window brought to foreground" -Level DEBUG
+        } else {
+            Write-Log "  Failed to bring window to foreground (may require additional permissions)" -Level DEBUG
+        }
+        
+        return $true
+        
+    } catch {
+        Write-Log "  Error bringing window to foreground: $_" -Level DEBUG
+        return $false
+    }
 }
 
 function Convert-WildcardToRegex {
@@ -809,6 +898,7 @@ function Set-WindowSnap {
         For 'full' position, maximizes the window.
         For 'left' and 'right', restores window and positions to zone.
         This mimics Win+Left, Win+Right, Win+Up behavior without keystrokes.
+        After relocation, brings window to foreground.
     #>
     [CmdletBinding()]
     param(
@@ -873,13 +963,14 @@ function Set-WindowSnap {
                 # Force frame update
                 $Flags = [Win32]::SWP_NOZORDER -bor [Win32]::SWP_NOACTIVATE -bor [Win32]::SWP_FRAMECHANGED
                 [Win32]::SetWindowPos($hWnd, [IntPtr]::Zero, $Zone.X, $Zone.Y, $Zone.Width, $Zone.Height, $Flags) | Out-Null
-                
-                return $true
             } else {
                 Write-Log "  Failed to set window placement" -Level WARN
                 return $false
             }
         }
+        
+        # Bring window to foreground after relocation
+        Set-ForegroundWindowForced -hWnd $hWnd -DryRun:$DryRun | Out-Null
         
         return $true
         

@@ -30,7 +30,7 @@
 .NOTES
     Script Name:    Window Layout Manager GUI.ps1
     Author:         Windows Automation Framework
-    Version:        1.0.1
+    Version:        1.0.2
     Creation Date:  2026-02-14
     Last Modified:  2026-02-14
     
@@ -72,7 +72,7 @@ Add-Type -AssemblyName System.Drawing
 # CONFIGURATION
 # ============================================================================
 
-$ScriptVersion = "1.0.1"
+$ScriptVersion = "1.0.2"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $LayoutManagerScript = Join-Path $ScriptDir "Window Layout Manager 1.ps1"
 
@@ -441,10 +441,10 @@ function Apply-Configuration {
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Window Layout Manager - Configuration Editor v$ScriptVersion"
-$form.Size = New-Object System.Drawing.Size(1000, 700)
+$form.Size = New-Object System.Drawing.Size(1100, 750)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "Sizable"
-$form.MinimumSize = New-Object System.Drawing.Size(900, 600)
+$form.MinimumSize = New-Object System.Drawing.Size(1000, 650)
 
 # ============================================================================
 # MENU BAR
@@ -558,14 +558,7 @@ $form.MainMenuStrip = $menuStrip
 $splitContainer = New-Object System.Windows.Forms.SplitContainer
 $splitContainer.Dock = "Fill"
 $splitContainer.Orientation = "Vertical"
-$splitContainer.SplitterDistance = 300
-
-# Calculate size explicitly to avoid array issues
-$containerWidth = $form.ClientSize.Width
-$containerHeight = ([int]$form.ClientSize.Height) - ([int]$menuStrip.Height)
-
-$splitContainer.Location = New-Object System.Drawing.Point(0, $menuStrip.Height)
-$splitContainer.Size = New-Object System.Drawing.Size($containerWidth, $containerHeight)
+$splitContainer.SplitterDistance = 320
 
 # ============================================================================
 # LEFT PANEL - RULES LIST
@@ -588,7 +581,7 @@ $panelLeft.Controls.Add($lblRuleCount)
 
 $listRules = New-Object System.Windows.Forms.ListBox
 $listRules.Location = New-Object System.Drawing.Point(10, 60)
-$listRules.Size = New-Object System.Drawing.Size(280, 400)
+$listRules.Size = New-Object System.Drawing.Size(300, 480)
 $listRules.Anchor = "Top,Bottom,Left,Right"
 $listRules.Font = New-Object System.Drawing.Font("Consolas", 9)
 $listRules.Add_SelectedIndexChanged({
@@ -602,8 +595,8 @@ $panelLeft.Controls.Add($listRules)
 
 $btnNewRule = New-Object System.Windows.Forms.Button
 $btnNewRule.Text = "New Rule"
-$btnNewRule.Location = New-Object System.Drawing.Point(10, 470)
-$btnNewRule.Size = New-Object System.Drawing.Size(135, 30)
+$btnNewRule.Location = New-Object System.Drawing.Point(10, 550)
+$btnNewRule.Size = New-Object System.Drawing.Size(145, 35)
 $btnNewRule.Anchor = "Bottom,Left"
 $btnNewRule.Add_Click({
     Clear-RuleEditor
@@ -612,8 +605,8 @@ $panelLeft.Controls.Add($btnNewRule)
 
 $btnDeleteRule = New-Object System.Windows.Forms.Button
 $btnDeleteRule.Text = "Delete Rule"
-$btnDeleteRule.Location = New-Object System.Drawing.Point(155, 470)
-$btnDeleteRule.Size = New-Object System.Drawing.Size(135, 30)
+$btnDeleteRule.Location = New-Object System.Drawing.Point(165, 550)
+$btnDeleteRule.Size = New-Object System.Drawing.Size(145, 35)
 $btnDeleteRule.Anchor = "Bottom,Left"
 $btnDeleteRule.Add_Click({
     Remove-CurrentRule
@@ -643,7 +636,7 @@ $panelRight.Controls.Add($lblRuleName)
 
 $txtRuleName = New-Object System.Windows.Forms.TextBox
 $txtRuleName.Location = New-Object System.Drawing.Point(170, $y)
-$txtRuleName.Size = New-Object System.Drawing.Size(300, 20)
+$txtRuleName.Size = New-Object System.Drawing.Size(350, 20)
 $txtRuleName.Anchor = "Top,Left,Right"
 $panelRight.Controls.Add($txtRuleName)
 
@@ -657,7 +650,7 @@ $panelRight.Controls.Add($lblDisplayName)
 
 $txtDisplayName = New-Object System.Windows.Forms.TextBox
 $txtDisplayName.Location = New-Object System.Drawing.Point(170, $y)
-$txtDisplayName.Size = New-Object System.Drawing.Size(300, 20)
+$txtDisplayName.Size = New-Object System.Drawing.Size(350, 20)
 $txtDisplayName.Anchor = "Top,Left,Right"
 $panelRight.Controls.Add($txtDisplayName)
 
@@ -682,7 +675,6 @@ $panelRight.Controls.Add($cmbProcessName)
 
 $btnRefreshProcesses = New-Object System.Windows.Forms.Button
 $btnRefreshProcesses.Text = "Refresh"
-# Fix arithmetic: explicitly calculate Y position
 $refreshButtonY = ([int]$y) - 2
 $btnRefreshProcesses.Location = New-Object System.Drawing.Point(380, $refreshButtonY)
 $btnRefreshProcesses.Size = New-Object System.Drawing.Size(90, 24)
@@ -705,7 +697,7 @@ $panelRight.Controls.Add($lblTitlePattern)
 
 $txtTitlePattern = New-Object System.Windows.Forms.TextBox
 $txtTitlePattern.Location = New-Object System.Drawing.Point(170, $y)
-$txtTitlePattern.Size = New-Object System.Drawing.Size(300, 20)
+$txtTitlePattern.Size = New-Object System.Drawing.Size(350, 20)
 $txtTitlePattern.Anchor = "Top,Left,Right"
 $txtTitlePattern.Add_TextChanged({
     Update-MatchingWindows
@@ -713,11 +705,10 @@ $txtTitlePattern.Add_TextChanged({
 $panelRight.Controls.Add($txtTitlePattern)
 
 $lblPatternHelp = New-Object System.Windows.Forms.Label
-$lblPatternHelp.Text = "(Use * for any characters, ? for single character. Leave empty for any window)"
-# Fix arithmetic: explicitly calculate Y position
+$lblPatternHelp.Text = "Use * for any characters, ? for single character (leave empty for any window)"
 $patternHelpY = ([int]$y) + 22
 $lblPatternHelp.Location = New-Object System.Drawing.Point(170, $patternHelpY)
-$lblPatternHelp.Size = New-Object System.Drawing.Size(450, 20)
+$lblPatternHelp.Size = New-Object System.Drawing.Size(500, 20)
 $lblPatternHelp.ForeColor = [System.Drawing.Color]::Gray
 $lblPatternHelp.Font = New-Object System.Drawing.Font("Segoe UI", 8)
 $panelRight.Controls.Add($lblPatternHelp)
@@ -766,7 +757,7 @@ $y += 25
 
 $txtMatchingWindows = New-Object System.Windows.Forms.TextBox
 $txtMatchingWindows.Location = New-Object System.Drawing.Point(10, $y)
-$txtMatchingWindows.Size = New-Object System.Drawing.Size(640, 150)
+$txtMatchingWindows.Size = New-Object System.Drawing.Size(700, 250)
 $txtMatchingWindows.Multiline = $true
 $txtMatchingWindows.ScrollBars = "Vertical"
 $txtMatchingWindows.ReadOnly = $true
@@ -775,12 +766,12 @@ $txtMatchingWindows.Font = New-Object System.Drawing.Font("Consolas", 9)
 $txtMatchingWindows.Text = "Enter process name to see matching windows"
 $panelRight.Controls.Add($txtMatchingWindows)
 
-$y += 160
+$y += 260
 
 $btnSaveRule = New-Object System.Windows.Forms.Button
 $btnSaveRule.Text = "Save Rule"
 $btnSaveRule.Location = New-Object System.Drawing.Point(10, $y)
-$btnSaveRule.Size = New-Object System.Drawing.Size(150, 35)
+$btnSaveRule.Size = New-Object System.Drawing.Size(150, 40)
 $btnSaveRule.Anchor = "Bottom,Left"
 $btnSaveRule.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
 $btnSaveRule.Add_Click({
@@ -793,7 +784,7 @@ $panelRight.Controls.Add($btnSaveRule)
 $btnClearFields = New-Object System.Windows.Forms.Button
 $btnClearFields.Text = "Clear Fields"
 $btnClearFields.Location = New-Object System.Drawing.Point(170, $y)
-$btnClearFields.Size = New-Object System.Drawing.Size(120, 35)
+$btnClearFields.Size = New-Object System.Drawing.Size(120, 40)
 $btnClearFields.Anchor = "Bottom,Left"
 $btnClearFields.Add_Click({
     Clear-RuleEditor

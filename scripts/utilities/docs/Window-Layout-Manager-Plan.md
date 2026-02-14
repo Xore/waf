@@ -14,28 +14,60 @@ This document outlines the design and implementation of the Window Layout Manage
 
 ---
 
-## Current Status
+## Current Status - Version 1.3
 
-### Version 1.3 - Implemented Features
+### Implemented Features
 
 - Monitor detection using Windows API with correct display numbering
 - WorkArea-based positioning (respects taskbar)
-- Profile-based configuration system
-- Multiple preset profiles (2xChrome, 2xChrome1xVSCode, WebDev, etc.)
-- Window assignment tracking to prevent double-assignment
-- Title pattern matching using wildcard syntax
-- Snap-to-edge logic for left/right windows
+- Profile-based configuration system with 8 preset profiles
+- Window assignment tracking to prevent double-assignment  
+- Title pattern matching using wildcard syntax (*Chrome*, Jira*)
+- Snap-to-edge logic using complementary width calculation
 - Proper window placement using WINDOWPLACEMENT API
+- Maximize support for 'full' position windows
 - DryRun mode for testing
 - External configuration file support
 
 ### Known Issues
 
-**Issue: Small gaps between snapped windows on Windows 10**
-- **Cause:** Windows 10 adds invisible extended window frames (DWM borders) around windows, typically 7 pixels on left/right/bottom
-- **Symptom:** Even with perfect WorkArea calculations, SetWindowPlacement positions the window INCLUDING the invisible border, creating visible gaps
-- **Status:** ACTIVE - Needs DwmGetWindowAttribute fix (see Future Enhancements)
-- **Workaround:** None currently - gaps are inherent to SetWindowPlacement behavior
+**ACTIVE ISSUE: Gaps between snapped windows on Windows 10**
+
+**Status:** NOT FIXED in v1.3
+
+**Symptoms:** When using left/right positions, small gaps (typically 7-8 pixels) appear at left, right, and bottom edges between windows.
+
+**Root Cause:** Windows Desktop Window Manager (DWM) adds invisible extended window frames around windows for visual effects. SetWindowPlacement positions the window INCLUDING these invisible borders, causing visible gaps even with perfect mathematical calculations.
+
+**Technical Details:**
+- DWM adds invisible borders around windows (typically 7px on left/right/bottom)
+- GetWindowRect returns the outer frame (including invisible borders)
+- DwmGetWindowAttribute with DWMWA_EXTENDED_FRAME_BOUNDS returns the visible frame
+- SetWindowPlacement uses the outer frame, not the visible frame
+- Result: Windows appear to have gaps because the visible content is inset by the border size
+
+**Why This Affects Windows 10:**
+- Windows 10 uses DWM extended frames for all windowed applications
+- Even with correct WorkArea calculations and complementary width math, the visual gap remains
+- This is a limitation of the SetWindowPlacement API approach
+
+**Future Fix (Planned for v1.4+):**
+```powershell
+# Detect invisible borders
+$FrameRect = New-Object RECT
+[DwmApi]::DwmGetWindowAttribute($hWnd, DWMWA_EXTENDED_FRAME_BOUNDS, [ref]$FrameRect, ...)
+
+# Calculate border sizes
+$BorderLeft = $FrameRect.Left - $WindowRect.Left
+$BorderRight = $WindowRect.Right - $FrameRect.Right  
+$BorderBottom = $WindowRect.Bottom - $FrameRect.Bottom
+
+# Compensate positioning
+$AdjustedX = $Zone.X - $BorderLeft
+$AdjustedY = $Zone.Y  # Top usually has no border
+$AdjustedWidth = $Zone.Width + $BorderLeft + $BorderRight
+$AdjustedHeight = $Zone.Height + $BorderBottom
+```
 
 ---
 
@@ -60,9 +92,10 @@ This document outlines the design and implementation of the Window Layout Manage
    - If 2 Chrome rules exist, move exactly 2 Chrome windows (not more)
 
 4. **Snap-to-Edge Logic**
-   - When both `left` and `right` rules exist on same monitor, snap them together
-   - Minimize gap between left and right windows
+   - When both `left` and `right` rules exist on same monitor, calculate zones to minimize gaps
+   - Use complementary width calculation (Width - MidPoint) to ensure no mathematical gap
    - Handle integer division rounding correctly
+   - Note: Visual gaps may still appear due to DWM extended frames (see Known Issues)
 
 5. **Profile System**
    - Predefined layout profiles for common scenarios
@@ -319,7 +352,7 @@ if ($Pattern -match '[*?]') {
 $WA = $Monitor.WorkArea
 
 if ($HasLeftRule -and $HasRightRule) {
-    # Snap-to-edge: minimize gap
+    # Snap-to-edge: minimize gap with complementary width
     $MidPoint = [Math]::Floor($WA.Width / 2)
     
     $Zones = @{
@@ -340,7 +373,7 @@ if ($HasLeftRule -and $HasRightRule) {
 
 **Returns:** Hashtable with `left`, `right`, `full` zone rectangles
 
-**Note:** Complementary width calculation (`Width - MidPoint`) ensures no mathematical gap, but DWM extended frames may still cause visual gaps.
+**Note:** Complementary width calculation (`Width - MidPoint`) ensures no mathematical gap in zone definitions. However, visual gaps still appear due to DWM extended frames (see Known Issues).
 
 ---
 
@@ -382,7 +415,7 @@ $Flags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED
 - More reliable than direct `SetWindowPos` for snapping
 - Does NOT send keystrokes (safer, faster)
 
-**Known Limitation:** SetWindowPlacement positions the window frame INCLUDING invisible DWM extended borders, causing small visual gaps.
+**Known Limitation:** SetWindowPlacement positions the window frame INCLUDING invisible DWM extended borders, causing small visual gaps (see Known Issues).
 
 ---
 
@@ -539,7 +572,7 @@ $Zones = Get-ZonesForMonitor -Monitor $Monitor
 # Bad: Can create 1-pixel gap with odd widths
 $LeftWidth = [Math]::Floor($Width / 2)   # Example: 1921 / 2 = 960
 $RightWidth = [Math]::Floor($Width / 2)  # 960
-# Total = 1920 (1-pixel gap!)
+# Total = 1920 (1-pixel mathematical gap!)
 ```
 
 ### Solution: Complementary Width Calculation
@@ -565,7 +598,7 @@ $RightZone = @{
 }
 ```
 
-**Note:** This ensures no mathematical gap in zone calculations. However, visual gaps may still appear due to DWM extended window frames (see Known Issues).
+**Important:** This ensures no mathematical gap in zone calculations. However, visual gaps still appear due to DWM extended window frames - this is a separate issue unrelated to integer division (see Known Issues).
 
 ---
 
@@ -661,6 +694,7 @@ if ($Rule.TitlePattern) {
 - Loads 2xChrome profile
 - Logs "Profile contains: 2x chrome"
 - Moves 2 Chrome windows to left/right
+- Small gaps visible at edges (known issue)
 
 ---
 
@@ -674,7 +708,7 @@ if ($Rule.TitlePattern) {
 **Expected:**
 - Window 1 moved to left half
 - Window 2 moved to right half
-- Minimal gap between windows (DWM frame limitation)
+- Gaps of ~7px at left, right, bottom edges (known DWM issue)
 - No third window affected
 
 ---
@@ -712,8 +746,8 @@ if ($Rule.TitlePattern) {
 - Profile: 2xChrome1xVSCode
 
 **Expected:**
-- Monitor 1: 2 Chrome windows snapped left/right
-- Monitor 2: VS Code fullscreen (maximized)
+- Monitor 1: 2 Chrome windows snapped left/right (with gaps)
+- Monitor 2: VS Code fullscreen (maximized, no gaps)
 - Logs "Processing monitor 1..." then "Processing monitor 2..."
 
 ---
@@ -799,7 +833,7 @@ Register-ScheduledTask -TaskName "WindowLayout" -Trigger $Trigger -Action $Actio
 
 ## Limitations
 
-1. **DWM Extended Frames:** Small gaps appear between snapped windows due to invisible window borders in Windows 10/11
+1. **DWM Extended Frames:** Small gaps (7-8px) appear between snapped windows due to invisible window borders in Windows 10 - NOT FIXED in v1.3
 2. **UWP Apps:** Some Windows Store apps may not respond to SetWindowPlacement
 3. **Full Screen Apps:** Windows in true fullscreen may not be movable
 4. **DPI Awareness:** High-DPI scaling may affect positioning accuracy
@@ -812,15 +846,15 @@ Register-ScheduledTask -TaskName "WindowLayout" -Trigger $Trigger -Action $Actio
 ### Planned for v1.4+
 
 **High Priority:**
-- [ ] **Fix DWM gap issue:** Use `DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)` to detect invisible borders and compensate position
+- [ ] **Fix DWM gap issue:** Use `DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)` to detect invisible borders and compensate window position by moving it outward by border size
 - [ ] **Per-monitor DPI awareness:** Query monitor DPI and scale coordinates accordingly
-- [ ] **More profiles:** Add common business/development scenarios
 
 **Medium Priority:**
 - [ ] Save current layout before applying new one
 - [ ] Undo/restore previous layout
 - [ ] Hotkey trigger support (Win+Alt+1, Win+Alt+2, etc.)
 - [ ] Monitor resolution change detection and auto-reapply
+- [ ] More preset profiles for common scenarios
 
 **Low Priority:**
 - [ ] GUI configuration editor
@@ -844,57 +878,83 @@ Register-ScheduledTask -TaskName "WindowLayout" -Trigger $Trigger -Action $Actio
 - Properly handles maximized→snapped transition
 - Mimics native Windows snap behavior
 - More reliable for complex window states
+- **Limitation:** Positions outer window frame, not visible content
 
-### DWM Extended Frame Bounds Issue
+### DWM Extended Frame Bounds Issue (NOT FIXED)
 
 Windows Desktop Window Manager adds invisible borders around windows for visual effects and drop shadows. These borders:
-- Are typically 7-8 pixels on left/right/bottom
+- Are typically 7-8 pixels on left/right/bottom in Windows 10
 - Are NOT included in GetWindowRect (returns outer frame)
 - ARE included in DWMWA_EXTENDED_FRAME_BOUNDS (returns visible frame)
-- Cause SetWindowPlacement to position windows with gaps
+- Cause SetWindowPlacement to position windows with gaps because it works with the outer frame
 
-**Fix approach for v1.4:**
-```powershell
-# Get visible frame
-$FrameRect = New-Object RECT
-[DwmApi]::DwmGetWindowAttribute($hWnd, DWMWA_EXTENDED_FRAME_BOUNDS, [ref]$FrameRect, ...)
-
-# Calculate border size
-$BorderLeft = $FrameRect.Left - $WindowRect.Left
-$BorderRight = $WindowRect.Right - $FrameRect.Right
-
-# Compensate position
-$AdjustedX = $Zone.X - $BorderLeft
-$AdjustedWidth = $Zone.Width + $BorderLeft + $BorderRight
+**Why gaps appear:**
 ```
+Zone calculation:     [0-----------------960][960--------------1920]  (perfect math)
+SetWindowPlacement:  [7----------------953][967--------------1913]   (outer frame positioned)
+Visible content:      [7----------------953] [967-------------1913]   (7px gap visible)
+                                           ^^^ GAP HERE
+```
+
+**Fix approach for v1.4 (not yet implemented):**
+```powershell
+# 1. Get outer frame (what SetWindowPlacement uses)
+$OuterRect = New-Object RECT
+[Win32]::GetWindowRect($hWnd, [ref]$OuterRect)
+
+# 2. Get visible frame (what user sees)
+$VisibleRect = New-Object RECT
+[DwmApi]::DwmGetWindowAttribute($hWnd, DWMWA_EXTENDED_FRAME_BOUNDS, [ref]$VisibleRect, ...)
+
+# 3. Calculate invisible border sizes
+$BorderLeft = $VisibleRect.Left - $OuterRect.Left      # Usually ~7px
+$BorderRight = $OuterRect.Right - $VisibleRect.Right   # Usually ~7px
+$BorderBottom = $OuterRect.Bottom - $VisibleRect.Bottom # Usually ~7px
+
+# 4. Compensate zone position (move window OUTWARD by border size)
+$CompensatedX = $Zone.X - $BorderLeft
+$CompensatedY = $Zone.Y  # Top usually has no border
+$CompensatedWidth = $Zone.Width + $BorderLeft + $BorderRight
+$CompensatedHeight = $Zone.Height + $BorderBottom
+
+# 5. Apply compensated position
+$Placement.rcNormalPosition.Left = $CompensatedX
+$Placement.rcNormalPosition.Right = $CompensatedX + $CompensatedWidth
+# ... etc
+```
+
+This moves the outer frame outside the zone boundary so the visible content aligns perfectly.
 
 ---
 
 ## Changelog
 
-### Version 1.3 (2026-02-14)
+### Version 1.3 (2026-02-14) - CURRENT
 - Implemented profile-based configuration system
-- Added 8 preset profiles (2xChrome, WebDev, etc.)
+- Added 8 preset profiles (2xChrome, WebDev, DataAnalysis, etc.)
 - Added -LayoutProfile parameter
 - Improved logging with profile summaries
-- Fixed snap-to-edge calculation (complementary width)
-- Added wildcard to regex conversion
+- Fixed snap-to-edge calculation (complementary width prevents math gap)
+- Added wildcard to regex conversion for title patterns
 - Improved monitor enumeration logging
+- **Known issue:** DWM gaps still present (not addressed in this version)
 
 ### Version 1.2 (2026-02-14)
 - Switched from SetWindowPos to WINDOWPLACEMENT API
 - Better handling of maximized windows
 - Added window state detection (IsMaximized)
+- **Known issue:** DWM gaps identified but not fixed
 
 ### Version 1.1 (2026-02-14)
 - Initial implementation
 - Basic monitor detection
 - Window enumeration
 - Assignment tracking
-- Snap-to-edge logic
+- Snap-to-edge logic (mathematical only)
 
 ---
 
 **Document Version:** 1.3  
 **Last Updated:** 2026-02-14  
-**Script Version:** 1.3
+**Script Version:** 1.3  
+**Status:** Gaps issue ACTIVE, fix planned for v1.4

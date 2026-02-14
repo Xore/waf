@@ -18,6 +18,7 @@
     - Uses proper restore/maximize states (no keystroke forwarding)
     - Profile-based configurations via -LayoutProfile parameter
     - True edge-to-edge snapping without visible gaps
+    - Properly tracks windows by Handle to support multi-process apps like Chrome
     
     This script runs unattended without user interaction.
 
@@ -48,7 +49,7 @@
 .NOTES
     Script Name:    Window Layout Manager 1.ps1
     Author:         Windows Automation Framework
-    Version:        1.5
+    Version:        1.6
     Creation Date:  2026-02-14
     Last Modified:  2026-02-14
     
@@ -93,7 +94,7 @@ param(
 # CONFIGURATION
 # ============================================================================
 
-$ScriptVersion = "1.5"
+$ScriptVersion = "1.6"
 $LogLevel = "INFO"
 $VerbosePreference = 'SilentlyContinue'
 $DefaultTimeout = 30
@@ -919,6 +920,7 @@ function Select-WindowForRule {
         Selects best matching window for a placement rule
     .DESCRIPTION
         Finds an unassigned window matching the process name and optional title pattern.
+        Windows are tracked by Handle (not PID) to properly support multi-process apps.
         Supports wildcard patterns (*, ?) and regex patterns.
         Returns the window object or $null if no match.
     #>
@@ -931,15 +933,19 @@ function Select-WindowForRule {
         [hashtable]$Rule
     )
     
-    # Filter to matching process name
+    # Filter to matching process name AND not yet assigned
+    # Check AssignedToRule BEFORE selection to avoid selecting same window twice
     $Candidates = $Windows | Where-Object { 
         $_.ProcessName -eq $Rule.ApplicationName -and 
-        $null -eq $_.AssignedToRule  # Not yet assigned
+        $null -eq $_.AssignedToRule
     }
     
     if ($Candidates.Count -eq 0) {
+        Write-Log "  No available windows for process '$($Rule.ApplicationName)'" -Level DEBUG
         return $null
     }
+    
+    Write-Log "  Found $($Candidates.Count) candidate window(s) for '$($Rule.ApplicationName)'" -Level DEBUG
     
     # Apply title pattern filter if specified
     if ($Rule.TitlePattern) {
@@ -961,11 +967,15 @@ function Select-WindowForRule {
     # Prefer window already on target monitor
     $OnTargetMonitor = $Candidates | Where-Object { $_.MonitorNumber -eq $Rule.MonitorNumber }
     if ($OnTargetMonitor) {
-        return $OnTargetMonitor | Select-Object -First 1
+        $Selected = $OnTargetMonitor | Select-Object -First 1
+        Write-Log "  Selected window on target monitor (Handle: $($Selected.Handle))" -Level DEBUG
+        return $Selected
     }
     
     # Otherwise, take first available
-    return $Candidates | Select-Object -First 1
+    $Selected = $Candidates | Select-Object -First 1
+    Write-Log "  Selected first available window (Handle: $($Selected.Handle))" -Level DEBUG
+    return $Selected
 }
 
 # ============================================================================
@@ -1047,7 +1057,7 @@ try {
                 Write-Log "  Title filter: '$($Rule.TitlePattern)'" -Level INFO
             }
             
-            # Find matching window
+            # Find matching window (unassigned windows only)
             $Window = Select-WindowForRule -Windows $Windows -Rule $Rule
             
             if (-not $Window) {
@@ -1056,10 +1066,10 @@ try {
                 continue
             }
             
-            # Mark window as assigned to this rule
+            # Mark window as assigned IMMEDIATELY to prevent reuse
             $Window.AssignedToRule = $RuleName
             
-            Write-Log "  Found window: '$($Window.Title)' (PID: $($Window.ProcessId))" -Level INFO
+            Write-Log "  Found window: '$($Window.Title)' (Handle: $($Window.Handle), PID: $($Window.ProcessId))" -Level INFO
             Write-Log "  Current: Monitor $($Window.MonitorNumber), $($Window.Rect.Width)x$($Window.Rect.Height)$(if($Window.IsMaximized){' [Maximized]'})" -Level INFO
             
             # Get target zone

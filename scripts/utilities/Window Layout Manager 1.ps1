@@ -14,6 +14,7 @@
     - Accounts for taskbar in all calculations
     - Only moves exactly the number of windows declared in configuration
     - Handles multiple windows of same application with distinct placement
+    - Supports wildcard patterns in TitlePattern (e.g., *Chrome*, Jira*)
     
     This script runs unattended without user interaction.
 
@@ -34,7 +35,7 @@
 .NOTES
     Script Name:    Window Layout Manager 1.ps1
     Author:         Windows Automation Framework
-    Version:        1.0
+    Version:        1.1
     Creation Date:  2026-02-14
     Last Modified:  2026-02-14
     
@@ -76,7 +77,7 @@ param(
 # CONFIGURATION
 # ============================================================================
 
-$ScriptVersion = "1.0"
+$ScriptVersion = "1.1"
 $LogLevel = "INFO"
 $VerbosePreference = 'SilentlyContinue'
 $DefaultTimeout = 30
@@ -84,9 +85,12 @@ $DefaultTimeout = 30
 # Window layout configuration
 # Each entry defines one window placement rule
 # Key: Unique rule name
-# ApplicationName: Process name (e.g., 'chrome.exe')
+# ApplicationName: Process name (e.g., 'chrome', 'Code')
 # DisplayName: Friendly name for logging
-# TitlePattern: Optional regex to match specific windows (null = any window)
+# TitlePattern: Optional pattern to match window titles
+#               Supports wildcards: *Chrome*, Jira*, *Email*
+#               Or regex: '^Google Chrome.*'
+#               Set to $null to match any window
 # MonitorNumber: Target monitor (1, 2, 3... matching Windows display settings)
 # Position: 'left', 'right', or 'full'
 $WindowLayoutConfig = @{
@@ -104,13 +108,20 @@ $WindowLayoutConfig = @{
         MonitorNumber   = 1
         Position        = 'right'
     }
-    # Example: Specific Chrome window by title
+    # Example: Specific Chrome window by wildcard
     # ChromeJira = @{
     #     ApplicationName = 'chrome'
     #     DisplayName     = 'Chrome Jira'
-    #     TitlePattern    = 'Jira'
+    #     TitlePattern    = '*Jira*'  # Matches any window with "Jira" in title
     #     MonitorNumber   = 2
     #     Position        = 'left'
+    # }
+    # ChromeGmail = @{
+    #     ApplicationName = 'chrome'
+    #     DisplayName     = 'Chrome Gmail'
+    #     TitlePattern    = '*Gmail*'  # Matches any window with "Gmail" in title
+    #     MonitorNumber   = 2
+    #     Position        = 'right'
     # }
     # VSCodeFull = @{
     #     ApplicationName = 'Code'
@@ -248,6 +259,42 @@ function Write-Log {
             Write-Host $LogMessage -ForegroundColor Red
             $script:ErrorCount++ 
         }
+    }
+}
+
+function Convert-WildcardToRegex {
+    <#
+    .SYNOPSIS
+        Converts wildcard pattern to regex pattern
+    .DESCRIPTION
+        Converts simple wildcard patterns (*, ?) to equivalent regex.
+        If pattern is already regex (no wildcards), returns as-is.
+    .PARAMETER Pattern
+        Wildcard or regex pattern
+    .EXAMPLE
+        Convert-WildcardToRegex '*Chrome*' returns '.*Chrome.*'
+        Convert-WildcardToRegex 'Jira*' returns 'Jira.*'
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Pattern
+    )
+    
+    # Check if pattern contains wildcards
+    if ($Pattern -match '[*?]') {
+        # Escape regex special characters except * and ?
+        $Escaped = [regex]::Escape($Pattern)
+        
+        # Convert wildcards to regex
+        $Escaped = $Escaped -replace '\\\*', '.*'  # * becomes .*
+        $Escaped = $Escaped -replace '\\\?', '.'   # ? becomes .
+        
+        Write-Log "  Converted wildcard '$Pattern' to regex '$Escaped'" -Level DEBUG
+        return $Escaped
+    } else {
+        # No wildcards, treat as regex (or plain string)
+        return $Pattern
     }
 }
 
@@ -519,6 +566,7 @@ function Select-WindowForRule {
         Selects best matching window for a placement rule
     .DESCRIPTION
         Finds an unassigned window matching the process name and optional title pattern.
+        Supports wildcard patterns (*, ?) and regex patterns.
         Returns the window object or $null if no match.
     #>
     [CmdletBinding()]
@@ -542,11 +590,19 @@ function Select-WindowForRule {
     
     # Apply title pattern filter if specified
     if ($Rule.TitlePattern) {
-        $Candidates = $Candidates | Where-Object { $_.Title -match $Rule.TitlePattern }
+        # Convert wildcard to regex if needed
+        $RegexPattern = Convert-WildcardToRegex -Pattern $Rule.TitlePattern
+        
+        Write-Log "  Filtering by title pattern: '$($Rule.TitlePattern)'" -Level DEBUG
+        
+        $Candidates = $Candidates | Where-Object { $_.Title -match $RegexPattern }
         
         if ($Candidates.Count -eq 0) {
+            Write-Log "  No windows matched title pattern '$($Rule.TitlePattern)'" -Level DEBUG
             return $null
         }
+        
+        Write-Log "  Found $($Candidates.Count) window(s) matching title pattern" -Level DEBUG
     }
     
     # Prefer window already on target monitor
@@ -637,6 +693,9 @@ try {
             
             Write-Log "Applying rule '$RuleName' ($($Rule.DisplayName))..." -Level INFO
             Write-Log "  Target: Monitor $($Rule.MonitorNumber), Position: $($Rule.Position)" -Level INFO
+            if ($Rule.TitlePattern) {
+                Write-Log "  Title filter: '$($Rule.TitlePattern)'" -Level INFO
+            }
             
             # Find matching window
             $Window = Select-WindowForRule -Windows $Windows -Rule $Rule

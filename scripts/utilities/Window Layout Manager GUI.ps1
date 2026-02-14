@@ -30,7 +30,7 @@
 .NOTES
     Script Name:    Window Layout Manager GUI.ps1
     Author:         Windows Automation Framework
-    Version:        1.0
+    Version:        1.0.1
     Creation Date:  2026-02-14
     Last Modified:  2026-02-14
     
@@ -72,7 +72,7 @@ Add-Type -AssemblyName System.Drawing
 # CONFIGURATION
 # ============================================================================
 
-$ScriptVersion = "1.0"
+$ScriptVersion = "1.0.1"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $LayoutManagerScript = Join-Path $ScriptDir "Window Layout Manager 1.ps1"
 
@@ -559,8 +559,13 @@ $splitContainer = New-Object System.Windows.Forms.SplitContainer
 $splitContainer.Dock = "Fill"
 $splitContainer.Orientation = "Vertical"
 $splitContainer.SplitterDistance = 300
+
+# Calculate size explicitly to avoid array issues
+$containerWidth = $form.ClientSize.Width
+$containerHeight = ([int]$form.ClientSize.Height) - ([int]$menuStrip.Height)
+
 $splitContainer.Location = New-Object System.Drawing.Point(0, $menuStrip.Height)
-$splitContainer.Size = New-Object System.Drawing.Size($form.ClientSize.Width, $form.ClientSize.Height - $menuStrip.Height)
+$splitContainer.Size = New-Object System.Drawing.Size($containerWidth, $containerHeight)
 
 # ============================================================================
 # LEFT PANEL - RULES LIST
@@ -677,7 +682,9 @@ $panelRight.Controls.Add($cmbProcessName)
 
 $btnRefreshProcesses = New-Object System.Windows.Forms.Button
 $btnRefreshProcesses.Text = "Refresh"
-$btnRefreshProcesses.Location = New-Object System.Drawing.Point(380, $y - 2)
+# Fix arithmetic: explicitly calculate Y position
+$refreshButtonY = ([int]$y) - 2
+$btnRefreshProcesses.Location = New-Object System.Drawing.Point(380, $refreshButtonY)
 $btnRefreshProcesses.Size = New-Object System.Drawing.Size(90, 24)
 $btnRefreshProcesses.Add_Click({
     $cmbProcessName.Items.Clear()
@@ -707,7 +714,9 @@ $panelRight.Controls.Add($txtTitlePattern)
 
 $lblPatternHelp = New-Object System.Windows.Forms.Label
 $lblPatternHelp.Text = "(Use * for any characters, ? for single character. Leave empty for any window)"
-$lblPatternHelp.Location = New-Object System.Drawing.Point(170, $y + 22)
+# Fix arithmetic: explicitly calculate Y position
+$patternHelpY = ([int]$y) + 22
+$lblPatternHelp.Location = New-Object System.Drawing.Point(170, $patternHelpY)
 $lblPatternHelp.Size = New-Object System.Drawing.Size(450, 20)
 $lblPatternHelp.ForeColor = [System.Drawing.Color]::Gray
 $lblPatternHelp.Font = New-Object System.Drawing.Font("Segoe UI", 8)

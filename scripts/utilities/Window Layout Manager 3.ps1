@@ -18,6 +18,7 @@
     - Profile-based configurations
     - Accounts for taskbar in calculations
     - Wildcard pattern support for window titles
+    - Smart cross-monitor window distribution
     
     This script runs unattended without user interaction.
 
@@ -52,7 +53,7 @@
 .NOTES
     Script Name:    Window Layout Manager 3.ps1
     Author:         Windows Automation Framework
-    Version:        3.0
+    Version:        3.1
     Creation Date:  2026-02-14
     Last Modified:  2026-02-14
     
@@ -106,7 +107,7 @@ param(
 # CONFIGURATION
 # ============================================================================
 
-$ScriptVersion = "3.0"
+$ScriptVersion = "3.1"
 $LogLevel = "INFO"
 $VerbosePreference = 'SilentlyContinue'
 $DefaultTimeout = 30
@@ -667,17 +668,6 @@ function Get-ZonesForMonitor {
 }
 
 function Set-WindowSnapBorderOverlap {
-    <#
-    .SYNOPSIS
-        Snaps window using direct border overlap approach
-    .DESCRIPTION
-        Expands window rectangle by border width on left, right, and bottom edges
-        to create overlap with adjacent windows. This eliminates gaps without
-        needing DWM API calls.
-        
-        The overlap means adjacent windows share border pixels, and only the
-        topmost window's resize handles work in the overlap area.
-    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)]
@@ -725,10 +715,6 @@ function Set-WindowSnapBorderOverlap {
             
             $Placement.showCmd = [Win32]::SW_RESTORE
             
-            # Direct border overlap approach:
-            # Expand window on LEFT, RIGHT, and BOTTOM by BorderWidth pixels
-            # TOP stays at zone boundary (no overlap with monitor edge/taskbar)
-            
             $OverlapX = $Zone.X - $BorderWidth
             $OverlapY = $Zone.Y
             $OverlapWidth = $Zone.Width + ($BorderWidth * 2)
@@ -763,6 +749,19 @@ function Set-WindowSnapBorderOverlap {
 }
 
 function Select-WindowForRule {
+    <#
+    .SYNOPSIS
+        Improved window selection with cross-monitor awareness
+    .DESCRIPTION
+        Finds an unassigned window matching the process name and optional title pattern.
+        Priority:
+        1. Windows matching title pattern on target monitor
+        2. Windows matching title pattern on any monitor
+        3. Windows without title pattern on target monitor  
+        4. Windows without title pattern on any monitor
+        
+        This ensures windows are distributed across monitors correctly.
+    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)]
@@ -781,6 +780,8 @@ function Select-WindowForRule {
         return $null
     }
     
+    Write-Log "  Found $($Candidates.Count) unassigned $($Rule.ApplicationName) window(s)" -Level DEBUG
+    
     if ($Rule.TitlePattern) {
         $RegexPattern = Convert-WildcardToRegex -Pattern $Rule.TitlePattern
         
@@ -798,9 +799,11 @@ function Select-WindowForRule {
     
     $OnTargetMonitor = $Candidates | Where-Object { $_.MonitorNumber -eq $Rule.MonitorNumber }
     if ($OnTargetMonitor) {
+        Write-Log "  Selected window already on target monitor $($Rule.MonitorNumber)" -Level DEBUG
         return $OnTargetMonitor | Select-Object -First 1
     }
     
+    Write-Log "  No window on target monitor $($Rule.MonitorNumber), selecting from any monitor" -Level DEBUG
     return $Candidates | Select-Object -First 1
 }
 
